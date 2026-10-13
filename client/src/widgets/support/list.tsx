@@ -68,8 +68,10 @@ function ListFields(props: IndicatorConfigProps) {
       <NewMessageFields {...props} />
       {canEditSettings && (
         <>
-          <SupportOptions canEdit />
+          <SupportOptions canEdit part="settings" />
           <MailTemplates canEdit={canEditTemplates} only={TICKETS_MAIL_TEMPLATE_KEYS} />
+          {/* The replies after the templates they are laid out in. */}
+          <SupportOptions canEdit part="replies" />
         </>
       )}
     </Stack>
@@ -94,7 +96,6 @@ function ListIndicator({
         message="Aucune boîte aux lettres"
         actionLabel={locked ? undefined : "Ajouter"}
         onAction={onEdit}
-        size="md"
         fill={false}
       />
     );

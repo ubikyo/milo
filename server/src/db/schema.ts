@@ -1,7 +1,7 @@
 // The schema. It is created empty and is never modified here: an existing
 // database goes through the migrations (migrations.ts).
 
-import { CONTACT_SETTINGS_DEFAULTS } from "@milo/shared";
+import { CONTACT_SETTINGS_DEFAULTS, WAREHOUSE_SETTINGS_DEFAULTS } from "@milo/shared";
 import { DECLARED_ASSET_INDEXES, DECLARED_ASSET_SCHEMA } from "./declared-asset-tables.js";
 
 /** A default list, as a column's SQL default. */
@@ -41,6 +41,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     -- Ancien emplacement des jalons, avant les types de jalons
     -- (milestone_types) : plus lu, gardé pour les bases qui le portent.
@@ -100,13 +101,15 @@ export const SCHEMA = `
     PRIMARY KEY (principal_type, principal_id)
   );
 
-  -- Les types de jalons (Commande, Développement…), réglés une fois pour toute
-  -- l'application : un projet en choisit un, qui pose les marques et les
-  -- couleurs de son curseur d'avancement. Les jalons sont un tableau JSON de
+  -- Les types de jalons (Commande, Développement…), propres à chaque widget
+  -- « Projets » (son tableau et sa clé de liste) : un projet en choisit un des
+  -- siens, qui pose les marques et les couleurs de son curseur d'avancement. Les jalons sont un tableau JSON de
   -- { value, label, color }.
   CREATE TABLE IF NOT EXISTS milestone_types (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL COLLATE NOCASE,
     milestones TEXT NOT NULL DEFAULT '[]'
   );
 
@@ -165,7 +168,10 @@ export const SCHEMA = `
     default_board TEXT NOT NULL DEFAULT '',
     -- Their notification settings (JSON), chosen in the preferences. Empty,
     -- or a field missing: the application's defaults.
-    notification_settings TEXT NOT NULL DEFAULT ''
+    notification_settings TEXT NOT NULL DEFAULT '',
+    -- How an e-mail being written first shows: "content", its text alone;
+    -- "layout", in its template.
+    reply_editor TEXT NOT NULL DEFAULT 'layout'
   );
 
   -- Les acteurs favoris de chaque personne : ils passent en tête des listes
@@ -225,9 +231,10 @@ export const SCHEMA = `
   -- (routes/label-templates.ts), as JSON: name, paper format, ZPL.
   CREATE TABLE IF NOT EXISTS board_label_templates (
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     kind TEXT NOT NULL,
     templates TEXT NOT NULL DEFAULT '[]',
-    PRIMARY KEY (board_id, kind)
+    PRIMARY KEY (board_id, list_key, kind)
   );
 
   -- The asset number templates of a board's declared asset widgets, kind by
@@ -235,9 +242,10 @@ export const SCHEMA = `
   -- by the browser.
   CREATE TABLE IF NOT EXISTS board_asset_number_templates (
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     kind TEXT NOT NULL,
     templates TEXT NOT NULL DEFAULT '[]',
-    PRIMARY KEY (board_id, kind)
+    PRIMARY KEY (board_id, list_key, kind)
   );
 
   -- The last reference given in each list widget (repositories/references.ts):
@@ -331,6 +339,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS project_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -339,6 +348,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS project_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     -- Its group, on the same board. "position" orders the whole board,
     -- group after group (repositories/label-groups.ts).
     group_id INTEGER REFERENCES project_label_groups(id),
@@ -511,6 +521,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -519,6 +530,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     -- Its group, on the same board. "position" orders the whole board,
     -- group after group (repositories/label-groups.ts).
     group_id INTEGER REFERENCES label_groups(id),
@@ -535,6 +547,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS managed_device_asset_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -543,6 +556,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS managed_device_asset_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     group_id INTEGER REFERENCES managed_device_asset_label_groups(id),
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT 'blue.6',
@@ -559,6 +573,7 @@ ${DECLARED_ASSET_SCHEMA}
   CREATE TABLE IF NOT EXISTS contact_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -567,6 +582,7 @@ ${DECLARED_ASSET_SCHEMA}
   CREATE TABLE IF NOT EXISTS contact_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     group_id INTEGER REFERENCES contact_label_groups(id),
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT 'blue.6',
@@ -620,11 +636,103 @@ ${DECLARED_ASSET_SCHEMA}
 
   -- A board's contact lists, as JSON: its defaults until it records its own.
   CREATE TABLE IF NOT EXISTS board_contact_settings (
-    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     payment_terms TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.payment_terms)},
     currencies TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.currencies)},
-    countries TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.countries)}
+    countries TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.countries)},
+    PRIMARY KEY (board_id, list_key)
   );
+  -- The warehouses of a board's "Entrepôts" widgets (shared, warehouses.ts):
+  -- their name and their address, as a contact's.
+  CREATE TABLE IF NOT EXISTS warehouse_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS warehouse_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    group_id INTEGER REFERENCES warehouse_label_groups(id),
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS warehouses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    line1 TEXT NOT NULL DEFAULT '',
+    line2 TEXT NOT NULL DEFAULT '',
+    postal_code TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    country TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS warehouse_label_links (
+    warehouse_id INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES warehouse_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (warehouse_id, label_id)
+  );
+
+  -- A widget's warehouse lists, as JSON: its defaults until it records its own.
+  CREATE TABLE IF NOT EXISTS board_warehouse_settings (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    countries TEXT NOT NULL DEFAULT ${jsonDefault(WAREHOUSE_SETTINGS_DEFAULTS.countries)},
+    PRIMARY KEY (board_id, list_key)
+  );
+
+  -- The locations of a board's "Emplacements" widgets (shared, locations.ts):
+  -- their name, their warehouse, and their places — a tree, as JSON, each
+  -- place with its name, its type and its code.
+  CREATE TABLE IF NOT EXISTS location_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS location_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    group_id INTEGER REFERENCES location_label_groups(id),
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+    places TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS location_label_links (
+    location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES location_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (location_id, label_id)
+  );
+
   -- The products of a board's "Produits" widgets (shared, products.ts): their
   -- variants — its own attributes and their colored values — as a JSON list,
   -- in their order; their photos, documents and comments as a declared
@@ -632,6 +740,7 @@ ${DECLARED_ASSET_SCHEMA}
   CREATE TABLE IF NOT EXISTS product_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -640,6 +749,7 @@ ${DECLARED_ASSET_SCHEMA}
   CREATE TABLE IF NOT EXISTS product_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     group_id INTEGER REFERENCES product_label_groups(id),
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT 'blue.6',
@@ -651,12 +761,15 @@ ${DECLARED_ASSET_SCHEMA}
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     list_key TEXT NOT NULL DEFAULT '',
+    sku TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
     favorite INTEGER NOT NULL DEFAULT 0,
     notes TEXT NOT NULL DEFAULT '',
     tracking TEXT NOT NULL DEFAULT 'none',
     category TEXT NOT NULL DEFAULT '',
     variants TEXT NOT NULL DEFAULT '[]',
+    suppliers TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -669,8 +782,11 @@ ${DECLARED_ASSET_SCHEMA}
 
   -- A board's product lists, as JSON: its categories tree, stored flat.
   CREATE TABLE IF NOT EXISTS board_product_settings (
-    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
-    categories TEXT NOT NULL DEFAULT '[]'
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    categories TEXT NOT NULL DEFAULT '[]',
+    taxes TEXT NOT NULL DEFAULT '[{"rate":20},{"rate":0}]',
+    PRIMARY KEY (board_id, list_key)
   );
 
   CREATE TABLE IF NOT EXISTS product_photos (
@@ -704,13 +820,128 @@ ${DECLARED_ASSET_SCHEMA}
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+  -- The orders of a board's "Commandes" widgets (shared, orders.ts): their
+  -- supplier — a company of a Contact widget — and its currency frozen at
+  -- each save, their lines as a JSON list, in their order; their actors,
+  -- labels and comments as a product's.
+  CREATE TABLE IF NOT EXISTS order_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS order_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    group_id INTEGER REFERENCES order_label_groups(id),
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'quote',
+    supplier_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    supplier_name TEXT NOT NULL DEFAULT '',
+    currency TEXT NOT NULL DEFAULT '',
+    due_date TEXT NOT NULL DEFAULT '',
+    warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+    lines TEXT NOT NULL DEFAULT '[]',
+    ordered_at TEXT NOT NULL DEFAULT '',
+    -- Its numbers, each with the index of its format's count it was drawn with.
+    quote_number TEXT NOT NULL DEFAULT '',
+    quote_index INTEGER NOT NULL DEFAULT 0,
+    order_number TEXT NOT NULL DEFAULT '',
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  -- An order's documents — a supplier's quote —, as a product's.
+  CREATE TABLE IF NOT EXISTS order_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    -- "document", or "invoice": the order's invoice, once it is one.
+    kind TEXT NOT NULL DEFAULT 'document',
+    file TEXT NOT NULL,
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- A "Commandes" widget's numbering formats, by format, as JSON (routes/orders.ts).
+  CREATE TABLE IF NOT EXISTS board_order_settings (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    number_templates TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (board_id, list_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS order_label_links (
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES order_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (order_id, label_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS order_actors (
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (order_id, user_id)
+  );
+
+  -- An order's actors among its supplier's contacts: the company, its people.
+  CREATE TABLE IF NOT EXISTS order_contact_actors (
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    PRIMARY KEY (order_id, contact_id)
+  );
+
+  -- An order's exchanges: the e-mails sent from Milo to its supplier contacts.
+  CREATE TABLE IF NOT EXISTS order_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL DEFAULT '',
+    -- The order's status when it was sent: "quote", "order", "cancelled".
+    order_status TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    mail_status TEXT NOT NULL DEFAULT '',
+    mail_to TEXT NOT NULL DEFAULT '',
+    mail_cc TEXT NOT NULL DEFAULT '',
+    mail_bcc TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS order_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    system INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
   -- The tables of a board's managed device asset widgets
   -- (lib/managed-device-asset-models.ts, lib/managed-device-asset-vlans.ts), as JSON. models NULL: the starting table of Apple
   -- models; vlans: none until the board records some.
   CREATE TABLE IF NOT EXISTS board_managed_device_asset_settings (
-    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     models TEXT,
-    vlans TEXT NOT NULL DEFAULT '[]'
+    vlans TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (board_id, list_key)
   );
 
   CREATE TABLE IF NOT EXISTS card_labels (
@@ -876,6 +1107,7 @@ ${DECLARED_ASSET_SCHEMA}
   CREATE TABLE IF NOT EXISTS support_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -886,6 +1118,7 @@ ${DECLARED_ASSET_SCHEMA}
     -- Its board: null only for a database from before (migrations.ts,
     -- supportLabelsByBoard).
     board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     -- Its group, on the same board. "position" orders the whole board,
     -- group after group (repositories/label-groups.ts).
     group_id INTEGER REFERENCES support_label_groups(id),
@@ -918,6 +1151,17 @@ ${DECLARED_ASSET_SCHEMA}
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     html TEXT NOT NULL DEFAULT '',
     event TEXT NOT NULL DEFAULT ''
+  );
+
+  -- Les contenus par défaut des commandes, comme ceux du Support : posés
+  -- dans l'éditeur d'un e-mail au fournisseur. L'évènement dit lequel
+  -- (« all », « quote_request »…) ; vide : jamais.
+  CREATE TABLE IF NOT EXISTS order_contents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    html TEXT NOT NULL DEFAULT '',
+    event TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS support_request_labels (
@@ -1070,6 +1314,20 @@ ${DECLARED_ASSET_SCHEMA}
     updated_at TEXT NOT NULL
   );
 
+  -- Les documents d'un projet, comme les pièces jointes d'une carte : un
+  -- fichier de « medias », cité ici sous son nom d'origine.
+  CREATE TABLE IF NOT EXISTS project_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file TEXT NOT NULL,
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
   -- Les postes du mode Assets : ce qu'un agent d'inventaire (FusionInventory,
   -- GLPI Agent) remonte d'une machine.
   --
@@ -1116,6 +1374,27 @@ export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_categories_board ON categories(board_id);
   CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 
+  -- Ce qu'un widget de liste possède — ses étiquettes, ses catégories, ses
+  -- types de jalons — se lit par son tableau et sa clé de liste.
+  CREATE INDEX IF NOT EXISTS idx_categories_list ON categories(board_id, list_key, position);
+  CREATE INDEX IF NOT EXISTS idx_milestone_types_list ON milestone_types(board_id, list_key);
+  CREATE INDEX IF NOT EXISTS idx_project_labels_list ON project_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_project_label_groups_list ON project_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_labels_list ON labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_label_groups_list ON label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_managed_device_asset_labels_list ON managed_device_asset_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_managed_device_asset_label_groups_list ON managed_device_asset_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_contact_labels_list ON contact_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_contact_label_groups_list ON contact_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_product_labels_list ON product_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_product_label_groups_list ON product_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_warehouse_labels_list ON warehouse_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_warehouse_label_groups_list ON warehouse_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_location_labels_list ON location_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_location_label_groups_list ON location_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_labels_list ON support_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_label_groups_list ON support_label_groups(board_id, list_key, position, id);
+
 
   -- Les projets se lisent filtrés, et toujours rangés du plus récent au plus
   -- ancien : l'index porte donc le tri avec le filtre.
@@ -1159,6 +1438,22 @@ ${DECLARED_ASSET_INDEXES}
   CREATE INDEX IF NOT EXISTS idx_product_photos_product ON product_photos(product_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_product_attachments_product ON product_attachments(product_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_product_comments_product ON product_comments(product_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_warehouse_labels_group ON warehouse_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_warehouses_board ON warehouses(board_id, list_key);
+  CREATE INDEX IF NOT EXISTS idx_warehouse_label_links_label ON warehouse_label_links(label_id);
+  CREATE INDEX IF NOT EXISTS idx_location_labels_group ON location_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_locations_board ON locations(board_id, list_key);
+  CREATE INDEX IF NOT EXISTS idx_locations_warehouse ON locations(warehouse_id);
+  CREATE INDEX IF NOT EXISTS idx_location_label_links_label ON location_label_links(label_id);
+  CREATE INDEX IF NOT EXISTS idx_order_labels_list ON order_labels(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_order_label_groups_list ON order_label_groups(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_order_labels_group ON order_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_orders_board ON orders(board_id, list_key);
+  CREATE INDEX IF NOT EXISTS idx_orders_supplier ON orders(supplier_id);
+  CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_order_label_links_label ON order_label_links(label_id);
+  CREATE INDEX IF NOT EXISTS idx_order_actors_user ON order_actors(user_id);
+  CREATE INDEX IF NOT EXISTS idx_order_comments_order ON order_comments(order_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_labels_group ON labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_label_groups_board ON label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_card_labels_label ON card_labels(label_id);
@@ -1203,6 +1498,7 @@ ${DECLARED_ASSET_INDEXES}
   -- Les fils se lisent du plus ancien au plus récent : l'index porte ce tri.
   CREATE INDEX IF NOT EXISTS idx_card_comments_card ON card_comments(card_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_comments_project ON comments(project_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_project_attachments_project ON project_attachments(project_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_support_comments_request
     ON support_comments(request_id, created_at);
 

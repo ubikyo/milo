@@ -9,6 +9,8 @@
 // its data — "Support" at Modifier handles requests —; "Supprimer" removes it
 // from a board, and deletes its data too.
 
+import type { Id } from "./domain.js";
+import { INDICATOR_DATA, INDICATOR_TYPES } from "./indicators.js";
 import type { Mode } from "./modes.js";
 
 export const WIDGET_KINDS = [
@@ -23,8 +25,13 @@ export const WIDGET_KINDS = [
   // applications entered by hand.
   { value: "unmanaged_device_asset", label: "Équipements déclarés" },
   { value: "application_asset", label: "Applications" },
-  // The logistics: the contacts (contacts.ts), the products (products.ts).
+  // The logistics: the contacts (contacts.ts), the products (products.ts),
+  // the orders (orders.ts), the warehouses (warehouses.ts), the locations
+  // (locations.ts).
   { value: "logistics", label: "Logistique" },
+  // The figures — a number, a breakdown — of the data any list widget
+  // gives (client widgets/indicators).
+  { value: "indicator", label: "Indicateurs" },
 ] as const;
 
 export type WidgetKind = (typeof WIDGET_KINDS)[number]["value"];
@@ -128,13 +135,10 @@ export const COMMON_WIDGET_TYPES = [
 
 /**
  * The mail widgets that count rather than list: the "Indicateur" (unread,
- * total…) and "Messages par dossier". They name no mailbox: each counts what a
- * Mail widget of its board reads (MAIL_SOURCE), under that one's consent.
+ * total…) and "Messages par dossier". They name no mailbox: each counts what
+ * the Mail widgets it names read (SOURCES), under their consent.
  */
 export const MAIL_COUNT_TYPES = ["mail_count", "mail_folders"] as const;
-
-/** The Mail widget a counting one follows: its id; absent, all the board's. */
-export const MAIL_SOURCE = "source";
 
 /**
  * The folders "Messages par dossier" counts, by person of its Mail widget
@@ -146,27 +150,72 @@ export const COUNTED_FOLDERS = "counted_folders";
 export const countedFoldersOf = (config: unknown): Map<string, string[]> =>
   choicesByPerson(config, COUNTED_FOLDERS, "folders");
 
-/** The Mail widget a configuration follows; null: all the board's. */
-export const mailSourceOf = (config: unknown): number | null => {
-  const value = Number((config as Record<string, unknown> | null)?.[MAIL_SOURCE]);
-  return Number.isInteger(value) && value > 0 ? value : null;
-};
-
 /**
- * The calendar widgets that follow a Calendar widget of their board
- * (CALENDAR_SOURCE) and read what it reads, under its consent: "Rendez-vous",
- * the appointments listed, and its "Indicateur", their number.
+ * The calendar widgets that follow the Calendar widgets they name (SOURCES)
+ * and read what they read, under their consent: "Rendez-vous", the
+ * appointments listed, and its "Indicateur", their number.
  */
 export const APPOINTMENT_TYPES = ["appointments", "appointment_count"] as const;
 
-/** The Calendar widget an appointment widget follows: its id; absent, all the board's. */
-export const CALENDAR_SOURCE = "source";
+/**
+ * The configuration key of a widget that counts — an indicator, a chart —:
+ * the keys of the widgets it reads (ownKeyOf), a list's, a Mail or Calendar
+ * widget's, on any board one sees, of any view. It reads at least one.
+ */
+export const SOURCES = "sources";
 
-/** The Calendar widget a configuration follows; null: all the board's. */
-export const calendarSourceOf = (config: unknown): number | null => {
-  const value = Number((config as Record<string, unknown> | null)?.[CALENDAR_SOURCE]);
-  return Number.isInteger(value) && value > 0 ? value : null;
+/**
+ * The keys a configuration reads, each once, in their order — under SOURCES,
+ * or another key: a "Commandes" widget reads its suppliers and its products
+ * apart (orders.ts).
+ */
+export const sourcesOf = (config: unknown, field: string = SOURCES): string[] => {
+  const value = (config as Record<string, unknown> | null)?.[field];
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((k): k is string => typeof k === "string" && k !== ""))];
 };
+
+/** The data types whose counting widgets read their lists ("project.list"…). */
+const COUNTED_PREFIXES = ["project", "task", "support", "managed_device_asset"];
+
+
+/**
+ * The type of the widgets a counting one reads: a list's, "mail" or
+ * "calendar"; null for a widget that reads none. The logistics' indicator
+ * reads the Contact lists or the Produits lists, by what it counts.
+ */
+export const sourceTypeOf = (type: string, config: unknown): string | null => {
+  if ((MAIL_COUNT_TYPES as readonly string[]).includes(type)) return "mail";
+  if ((APPOINTMENT_TYPES as readonly string[]).includes(type)) return "calendar";
+  if (type.startsWith("indicator.")) {
+    const data = (config as Record<string, unknown> | null)?.[INDICATOR_DATA];
+    if (data === "mail") return "mail";
+    return typeof data === "string" && data ? `${data}.list` : null;
+  }
+  if (type === "contact.contacts") {
+    return (config as Record<string, unknown> | null)?.type === "products" ? "product.list" : "contact.list";
+  }
+  const dot = type.indexOf(".");
+  const prefix = type.slice(0, dot);
+  if (dot < 0 || type.slice(dot + 1) === "list" || !COUNTED_PREFIXES.includes(prefix)) return null;
+  return `${prefix}.list`;
+};
+
+/** A widget a counting one can read, wherever it is (SOURCES). */
+export interface SourceWidget {
+  id: Id;
+  type: string;
+  /** Its key (ownKeyOf): what the counting widget names. */
+  key: string;
+  /** "#A1B2", as its drawer shows it (widgetReference). */
+  reference: string;
+  board_id: Id;
+  board: string;
+  view_id: Id;
+  view: string;
+  /** Its configuration: whose mailbox or calendar it reads, for one. */
+  config: unknown;
+}
 
 /**
  * The widgets specific to a data type, under their prefix: those of
@@ -174,14 +223,20 @@ export const calendarSourceOf = (config: unknown): number | null => {
  * ("project.") and tasks ("task.").
  */
 const OWN = {
-  support: ["list", "tickets", "status", "actors", "trend", "age", "due", "labels", "senders"],
-  managed_device_asset: ["list", "assets", "compliance", "systems", "disks"],
+  support: ["list"],
+  managed_device_asset: ["list"],
   unmanaged_device_asset: ["list"],
   application_asset: ["list"],
-  contact: ["list", "contacts"],
+  contact: ["list"],
   product: ["list"],
-  project: ["list", "projects", "progress", "categories", "actors", "labels"],
-  task: ["list", "cards", "lists", "due", "members", "labels"],
+  order: ["list"],
+  warehouse: ["list"],
+  location: ["list"],
+  project: ["list"],
+  task: ["list"],
+  // The figures of the data chosen (INDICATOR_DATA): they replace those each
+  // kind carried (indicators.ts, legacyIndicator).
+  indicator: INDICATOR_TYPES,
 } as const;
 
 /** The prefix of the widgets of each data type, and the widget type that goes with it. */
@@ -192,8 +247,12 @@ const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
   application_asset: "application_asset",
   contact: "logistics",
   product: "logistics",
+  order: "logistics",
+  warehouse: "logistics",
+  location: "logistics",
   project: "project",
   task: "task",
+  indicator: "indicator",
 };
 
 /** The widget types, and permissions, named before the assets were named by kind. */
@@ -224,7 +283,6 @@ export const renamedWidgetKinds = (rights: Record<string, unknown>): Record<stri
  */
 export const BOARD_WIDGET_TYPES: readonly string[] = [
   ...COMMON_WIDGET_TYPES,
-  ...MAIL_COUNT_TYPES,
   ...APPOINTMENT_TYPES,
   ...Object.entries(OWN).flatMap(([prefix, types]) =>
     types.map((type) => `${prefix}.${type}`),
@@ -249,6 +307,9 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
   "application_asset.list",
   "contact.list",
   "product.list",
+  "order.list",
+  "warehouse.list",
+  "location.list",
 ];
 
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);

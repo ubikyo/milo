@@ -86,6 +86,8 @@ export interface PublicUser {
   default_board: string;
   /** How they are notified: on screen, by e-mail, grouped or not. */
   notification_settings: NotificationSettings;
+  /** How an e-mail being written first shows: its text alone, or in its template. */
+  reply_editor: ReplyEditorView;
   /**
    * The workspace they work in: its views, boards and rights are
    * those of this workspace. "null" if they have none.
@@ -323,6 +325,9 @@ export const DEFAULT_MILESTONE_TYPE = "Défaut";
 
 export interface MilestoneType {
   id: Id;
+  /** The "Projets" widget that owns it: its board and its list key. */
+  board_id: Id;
+  list_key: string;
   name: string;
   /** Stored by value; empty until they have been set. */
   milestones: Milestone[];
@@ -336,6 +341,8 @@ export interface MilestoneType {
 export interface Category {
   id: Id;
   board_id: Id;
+  /** The list widget that owns it: its key (shared, LIST_KEY). */
+  list_key: string;
   name: string;
   parent_id: Id | null;
   /** The milestones of the projects of this category, stored by value; empty if none. */
@@ -347,6 +354,8 @@ export interface Category {
 export interface ProjectLabel {
   id: Id;
   board_id: Id;
+  /** The list widget that owns it: its key (shared, LIST_KEY). */
+  list_key: string;
   /** Its group: every label belongs to one (LabelGroup). */
   group_id: Id;
   /** The name of its group, on the lists that read it along. */
@@ -393,8 +402,14 @@ export interface Comment {
   author: Actor | null;
 }
 
+/** A document of a project, as a card's attachment. */
+export interface ProjectAttachment extends Omit<Attachment, "card_id"> {
+  project_id: Id;
+}
+
 export interface ProjectDetail extends Project {
   comments: Comment[];
+  attachments: ProjectAttachment[];
 }
 
 // --- Tasks mode ------------------------------------------------------------
@@ -407,6 +422,8 @@ export interface ProjectDetail extends Project {
 export interface LabelGroup {
   id: Id;
   board_id?: Id;
+  /** The list widget that owns them: its key (shared, LIST_KEY). */
+  list_key: string;
   name: string;
   position: number;
   created_at: string;
@@ -421,6 +438,8 @@ export interface LabelGroupLayout {
 export interface Label {
   id: Id;
   board_id: Id;
+  /** The list widget that owns it: its key (shared, LIST_KEY). */
+  list_key: string;
   /** Its group: every label belongs to one (LabelGroup). */
   group_id: Id;
   /** The name of its group, on the lists that read it along. */
@@ -802,6 +821,8 @@ export interface SupportLabel {
   id: Id;
   /** Its board: Support's labels, like the other kinds, belong to one. */
   board_id: Id;
+  /** The list widget that owns it: its key (shared, LIST_KEY). */
+  list_key: string;
   /** Its group: every label belongs to one (LabelGroup). */
   group_id: Id;
   /** The name of its group, on the lists that read it along. */
@@ -1496,3 +1517,15 @@ export interface ManagedDeviceAssetRefresh {
   /** The address actually called, to report it when it fails. */
   address: string;
 }
+
+/**
+ * How an e-mail being written shows in its editor: "content", the text
+ * alone; "layout", inside its template — what it opens on, unless the
+ * profile says otherwise.
+ */
+export const REPLY_EDITOR_VIEWS = ["content", "layout"] as const;
+
+export type ReplyEditorView = (typeof REPLY_EDITOR_VIEWS)[number];
+
+export const isReplyEditorView = (value: unknown): value is ReplyEditorView =>
+  (REPLY_EDITOR_VIEWS as readonly unknown[]).includes(value);

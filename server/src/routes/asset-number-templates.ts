@@ -1,6 +1,6 @@
-// The asset number templates of a board's declared asset widgets, kind by
-// kind (shared, asset-number-templates.ts): a name, and TypeScript that draws
-// a new asset's number. They are the board's, as its label templates; like
+// The asset number templates of a declared asset widget (shared,
+// asset-number-templates.ts): a name, and TypeScript that draws a new asset's
+// number. They are the widget's own, as its label templates; like
 // those, they follow the permission on the widget type. The server only keeps
 // them: the browser runs them, in a worker (client, lib/assetNumber.ts).
 //
@@ -15,20 +15,21 @@ import {
   isDeclaredAssetKind,
   labelGroupVariable,
 } from "@milo/shared";
-import type { AssetNumberTemplate, AssetNumberTemplates, DeclaredAssetKind, Id } from "@milo/shared";
+import type { AssetNumberTemplate, AssetNumberTemplates, DeclaredAssetKind } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { badRequest, fail } from "../lib/http.js";
-import { groupsOf, verifyBoard } from "./label-templates.js";
+import type { ListScope } from "../repositories/lists.js";
+import { groupsOf, verifyList } from "./label-templates.js";
 
-/** A board holds this many templates of a kind at most. */
+/** A widget holds this many templates at most. */
 const TEMPLATES_MAX = 100;
 
 const read = selection<{ templates: string }>(
-  "SELECT templates FROM board_asset_number_templates WHERE board_id = ? AND kind = ?",
+  "SELECT templates FROM board_asset_number_templates WHERE board_id = ? AND list_key = ? AND kind = ?",
 );
 const write = mutation(
-  `INSERT INTO board_asset_number_templates (board_id, kind, templates) VALUES (?, ?, ?)
-   ON CONFLICT (board_id, kind) DO UPDATE SET templates = excluded.templates`,
+  `INSERT INTO board_asset_number_templates (board_id, list_key, kind, templates) VALUES (?, ?, ?, ?)
+   ON CONFLICT (board_id, list_key, kind) DO UPDATE SET templates = excluded.templates`,
 );
 
 const parsed = (saved: string | undefined): AssetNumberTemplate[] => {
@@ -41,9 +42,9 @@ const parsed = (saved: string | undefined): AssetNumberTemplate[] => {
   }
 };
 
-const templatesOf = (kind: DeclaredAssetKind, boardId: Id): AssetNumberTemplates => ({
-  templates: parsed(read.get(boardId, kind)?.templates),
-  variables: groupsOf(kind, boardId).map((g) => ({
+const templatesOf = (kind: DeclaredAssetKind, scope: ListScope): AssetNumberTemplates => ({
+  templates: parsed(read.get(scope.board, scope.list, kind)?.templates),
+  variables: groupsOf(kind, scope).map((g) => ({
     group: "Étiquettes",
     label: g.name,
     name: labelGroupVariable(g.name),
@@ -76,7 +77,7 @@ const readTemplates = (received: unknown): AssetNumberTemplate[] => {
     if (code.length > ASSET_NUMBER_CODE_MAX) badRequest(`Le format « ${name} » est trop volumineux`);
     list.push({ name, code });
   }
-  if (list.length > TEMPLATES_MAX) badRequest(`Un tableau tient en ${TEMPLATES_MAX} formats`);
+  if (list.length > TEMPLATES_MAX) badRequest(`Un widget tient en ${TEMPLATES_MAX} formats`);
   return list;
 };
 
@@ -84,13 +85,13 @@ export const assetNumberTemplateRoutes = Router();
 
 assetNumberTemplateRoutes.get("/:kind", (req, res) => {
   const kind = kindOf(req);
-  res.json(templatesOf(kind, verifyBoard(req, kind, false)));
+  res.json(templatesOf(kind, verifyList(req, kind, false)));
 });
 
 /** The list is replaced entirely. */
 assetNumberTemplateRoutes.put("/:kind", (req, res) => {
   const kind = kindOf(req);
-  const boardId = verifyBoard(req, kind, true);
-  write.run(boardId, kind, JSON.stringify(readTemplates(req.body?.templates)));
-  res.json(templatesOf(kind, boardId));
+  const scope = verifyList(req, kind, true);
+  write.run(scope.board, scope.list, kind, JSON.stringify(readTemplates(req.body?.templates)));
+  res.json(templatesOf(kind, scope));
 });

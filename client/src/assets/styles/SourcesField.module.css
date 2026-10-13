@@ -1,0 +1,8 @@
+/* The checkboxes of the "Widgets associés" tree: checked or partly checked,
+   the application's green, not Mantine's primary blue (lib/sources.tsx). */
+.dropdown.dropdown [data-checked],
+.dropdown.dropdown [data-indeterminate] {
+  --checkbox-color: var(--milo-sources-check);
+  background-color: var(--milo-sources-check);
+  border-color: var(--milo-sources-check);
+}

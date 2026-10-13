@@ -1,12 +1,14 @@
-import { Box, Group, Input, ScrollArea, Select, Stack, TextInput } from "@mantine/core";
+import { Box, Cascader, Group, Input, ScrollArea, Select, Stack, Text, TextInput } from "@mantine/core";
 import { IconFileImport } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, ComponentType, DragEvent, ReactNode } from "react";
+import type { DeclaredAssetLocation } from "@milo/shared";
 import scroll from "../../assets/styles/ListScroll.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { PLUS_SIZE } from "../../themes/plus";
 import AddButton from "./AddButton";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { TREE_CASCADER, locationTreeData, treePath } from "./EditableTree";
 import {
   ROUNDING,
   EmptyList,
@@ -51,7 +53,8 @@ export type Row = string[];
 /**
  * A column: its label, its length, and its width — fixed, or the rest
  * of the row. An "optional" column may stay empty. With "options", the
- * field is a choice among them rather than typed. With "pattern", a value
+ * field is a choice among them rather than typed; with "tree", a node of it
+ * picked level after level — the row holds its id. With "pattern", a value
  * that does not match it is refused, and "invalid" says why.
  */
 export interface Column {
@@ -61,9 +64,12 @@ export interface Column {
   digital?: boolean;
   optional?: boolean;
   options?: string[];
+  tree?: DeclaredAssetLocation[];
   pattern?: RegExp;
   invalid?: (value: string) => string;
   placeholder?: string;
+  /** Shown at the field's end, the value right-aligned before it: a rate's "%". */
+  suffix?: string;
 }
 
 const empty = (columns: Column[]): Row => columns.map(() => "");
@@ -168,7 +174,23 @@ function EditableRow({
           button keeps that room on its right. */}
       {leading && <Box style={{ flexShrink: 0, marginRight: NAME_INSET }}>{leading}</Box>}
       {columns.map((column, i) =>
-        column.options ? (
+        column.tree ? (
+          <TreeChoice
+            key={column.label}
+            column={column}
+            tree={column.tree}
+            value={draft[i] ?? ""}
+            onChange={(chosen) => setDraft((before) => before.map((v, j) => (j === i ? chosen : v)))}
+            onEscape={() => {
+              cancelled.current = true;
+            }}
+            autoFocus={newRow && i === 0}
+            focused={focus === i}
+            onFocus={() => setFocus(i)}
+            onBlur={() => setFocus(null)}
+            first={i === 0}
+          />
+        ) : column.options ? (
           <Select
             key={column.label}
             size="sm"
@@ -226,18 +248,83 @@ function EditableRow({
             onPaste={i === 0 ? onPaste : undefined}
             maxLength={column.maxLength}
             inputMode={column.digital ? "numeric" : undefined}
+            rightSection={
+              column.suffix ? (
+                <Text size="sm" c="dimmed">
+                  {column.suffix}
+                </Text>
+              ) : undefined
+            }
             autoFocus={newRow && i === 0}
             onFocus={() => setFocus(i)}
             onBlurCapture={() => setFocus(null)}
             // The first field aligns with the checkbox, as a drawer column's
             // with its handle.
             style={{ ...columnStyle(column), ...(i === 0 ? { marginLeft: -NAME_INSET } : null) }}
-            styles={{ input: nameFieldStyle(focus === i) }}
+            styles={{ input: { ...nameFieldStyle(focus === i), ...(column.suffix && { textAlign: "right" as const }) } }}
           />
         ),
       )}
       {trailing}
     </Group>
+  );
+}
+
+/** A "tree" column's field: a node picked level after level, its name alone shown. */
+function TreeChoice({
+  column,
+  tree,
+  value,
+  onChange,
+  onEscape,
+  autoFocus,
+  focused,
+  onFocus,
+  onBlur,
+  first,
+}: {
+  column: Column;
+  tree: DeclaredAssetLocation[];
+  value: string;
+  onChange: (id: string) => void;
+  onEscape: () => void;
+  autoFocus?: boolean;
+  focused: boolean;
+  onFocus: () => void;
+  onBlur: () => void;
+  first: boolean;
+}) {
+  const data = useMemo(() => locationTreeData(tree), [tree]);
+  const path = value ? treePath(tree, value) : [];
+  return (
+    <Cascader
+      size="sm"
+      radius={ROUNDING}
+      placeholder={column.label}
+      aria-label={column.label}
+      data={data}
+      value={path.length ? path : null}
+      onChange={(chosen) => {
+        const id = chosen?.at(-1);
+        if (id) onChange(id);
+      }}
+      nothingFoundMessage="Aucun choix"
+      {...TREE_CASCADER}
+      // In a row, the node alone: its path would not fit.
+      formatValue={({ options }) => options.at(-1)?.label ?? ""}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          onEscape();
+          e.currentTarget.blur();
+        }
+      }}
+      data-mantine-stop-propagation
+      autoFocus={autoFocus}
+      onFocus={onFocus}
+      onBlurCapture={onBlur}
+      style={{ ...columnStyle(column), ...(first ? { marginLeft: -NAME_INSET } : null) }}
+      styles={{ ...TREE_CASCADER.styles, input: nameFieldStyle(focused) }}
+    />
   );
 }
 
@@ -391,7 +478,7 @@ export function ListRows({
     <Input.Wrapper
       label={title}
       description={description}
-      styles={{ description: { paddingBottom: 20 } }}
+      styles={{ description: { paddingBottom: description ? 20 : 0 } }}
     >
       {total === 0 ? (
         <EmptyList icon={emptyIcon} message={emptyText} />

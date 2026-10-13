@@ -158,6 +158,9 @@ const theme = createTheme({
     // A checked box takes the green of the application's actions, like the
     // switches and the "Ajouter" buttons.
     Checkbox: { defaultProps: { color: "teal" } },
+    // The same for a box drawn alone, without its input — a tree's
+    // (EditableTree): Mantine sets it apart, and it stayed blue.
+    CheckboxIndicator: { defaultProps: { color: "teal" } },
     // Menus with sharper corners than the rest ("xs" instead of the default
     // "sm"): the radius applies to the menu and to its rows on hover.
     Menu: { defaultProps: { radius: "xs" } },

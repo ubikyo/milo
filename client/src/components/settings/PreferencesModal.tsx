@@ -18,7 +18,14 @@ import { initialsOf } from "../ui/ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { setThemeChoice, themeChoice, useThemes, type ThemeChoice } from "../../lib/themeColors";
-import type { Id, NotificationSettings, OpeningView, PublicUser, Theme } from "@milo/shared";
+import type {
+  Id,
+  NotificationSettings,
+  OpeningView,
+  PublicUser,
+  ReplyEditorView,
+  Theme,
+} from "@milo/shared";
 import type { ComponentType } from "react";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
@@ -75,7 +82,7 @@ interface PreferencesModalProps {
  * The preferences. Identity comes from Entra and is edited there: it is read
  * here, and re-read at each sign-in. The password is the Microsoft one. What
  * remains is what each person sets for themselves — in the Préférences tab, the
- * opening workspace, view and board, the theme; in the Notifications tab, how
+ * opening workspace, view and board, the e-mail editor's view, the theme; in the Notifications tab, how
  * they are notified —, which only apply on save: "Fermer" leaves them as they
  * were. The theme shows as soon as it is chosen, and "Fermer" puts back the
  * one in place at opening.
@@ -98,6 +105,7 @@ export default function PreferencesModal({
   const { themes } = useThemes();
   const [theme, setTheme] = useState<string>(SYSTEM);
   const [notifying, setNotifying] = useState<NotificationSettings | null>(null);
+  const [replyEditor, setReplyEditor] = useState<ReplyEditorView>("layout");
   const [tab, setTab] = useState<string | null>("profile");
   const [busy, setBusy] = useState(false);
   // The theme and Mantine's scheme in place at opening, put back unless saved.
@@ -115,6 +123,7 @@ export default function PreferencesModal({
     original.current = { choice: chosen, scheme: colorScheme };
     setTheme(themes.some((t) => t.id === chosen) ? String(chosen) : SYSTEM);
     setNotifying(user?.notification_settings ?? null);
+    setReplyEditor(user?.reply_editor ?? "layout");
     setTab("profile");
     // The theme is only re-read on opening: re-reading it while choosing
     // would wipe the choice in progress.
@@ -184,11 +193,13 @@ export default function PreferencesModal({
       const notifyingChanged =
         notifying &&
         JSON.stringify(notifying) !== JSON.stringify(user?.notification_settings);
-      if (openingChanged || notifyingChanged)
+      const replyEditorChanged = user && replyEditor !== user.reply_editor;
+      if (openingChanged || notifyingChanged || replyEditorChanged)
         onUpdated(
           await api.updateMe({
             ...(openingChanged ? opening : {}),
             ...(notifyingChanged ? { notification_settings: notifying } : {}),
+            ...(replyEditorChanged ? { reply_editor: replyEditor } : {}),
           }),
         );
       applyTheme(theme);
@@ -347,6 +358,25 @@ export default function PreferencesModal({
                 onChange={(value) => value && setBoard(value)}
                 allowDeselect={false}
                 disabled={!views}
+                w={FIELD_WIDTH}
+              />
+            </Group>
+
+            {/* How an e-mail being written first shows: its text alone,
+                or in its template (SupportReply). */}
+            <Group gap={GAP} wrap="nowrap" align="center">
+              <Text size="sm" fw={500} w={LABEL_WIDTH} data-field-label>
+                Éditeur par défaut
+              </Text>
+              <Select
+                aria-label="Éditeur par défaut"
+                data={[
+                  { value: "content", label: "Contenu" },
+                  { value: "layout", label: "Mise en page" },
+                ]}
+                value={replyEditor}
+                onChange={(value) => value && setReplyEditor(value as ReplyEditorView)}
+                allowDeselect={false}
                 w={FIELD_WIDTH}
               />
             </Group>

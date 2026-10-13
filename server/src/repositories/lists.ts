@@ -7,6 +7,7 @@
 // last widget holding their key.
 
 import { randomUUID } from "node:crypto";
+import db from "../db/index.js";
 import {
   CALENDAR_KEY,
   DECLARED_ASSET_KINDS,
@@ -20,6 +21,7 @@ import type { DeclaredAssetKind, Id } from "@milo/shared";
 import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { mutation, selection } from "../db/query.js";
 import type { Mutation } from "../db/query.js";
+import { badRequest } from "../lib/http.js";
 
 const read = (config: string): Record<string, unknown> => {
   try {
@@ -79,6 +81,25 @@ export const keyInBoard = (boardId: Id, type: string, received: unknown): string
   return keys[0] ?? "";
 };
 
+/**
+ * What a list widget owns besides its items — its labels, its categories,
+ * its tables: its board, and its key.
+ */
+export interface ListScope {
+  board: Id;
+  list: string;
+}
+
+/**
+ * The list a request names on this board: a widget of this type must hold
+ * its key. Refused otherwise — a list's settings are its own.
+ */
+export const listInBoard = (boardId: Id, type: string, received: unknown): ListScope => {
+  const held = boardKeys.all(boardId, type).some((l) => l.key && l.key === received);
+  if (!held) badRequest("Widget inconnu");
+  return { board: boardId, list: received as string };
+};
+
 /** Does a widget of this type, in this board, hold this key? */
 const holdsKey = (type: string, board: string, key: string) =>
   `EXISTS (SELECT 1 FROM board_widgets w JOIN board_sections s ON s.id = w.section_id
@@ -136,15 +157,139 @@ const orphans = {
     `DELETE FROM products
      WHERE list_key != '' AND NOT ${holdsKey("product.list", "products.board_id", "products.list_key")}`,
   ),
+  orders: mutation(
+    `DELETE FROM orders
+     WHERE list_key != '' AND NOT ${holdsKey("order.list", "orders.board_id", "orders.list_key")}`,
+  ),
+  warehouses: mutation(
+    `DELETE FROM warehouses
+     WHERE list_key != '' AND NOT ${holdsKey("warehouse.list", "warehouses.board_id", "warehouses.list_key")}`,
+  ),
+  locations: mutation(
+    `DELETE FROM locations
+     WHERE list_key != '' AND NOT ${holdsKey("location.list", "locations.board_id", "locations.list_key")}`,
+  ),
   ...declaredOrphans,
 } as const;
 
 /**
- * What no widget holds anymore goes away: the items of a deleted widget —
- * alone, with its section, or with the personal copy that carried it. Returns
- * the affected resources.
+ * What a list widget owns besides its items, table by table with the type of
+ * its widget — labels before their groups, which they point to.
  */
-export const cleanLists = (): (keyof typeof orphans)[] =>
-  (Object.keys(orphans) as (keyof typeof orphans)[]).filter(
+const OWNED: [table: string, type: string][] = [
+  ["labels", "task.list"],
+  ["label_groups", "task.list"],
+  ["project_labels", "project.list"],
+  ["project_label_groups", "project.list"],
+  ["categories", "project.list"],
+  ["milestone_types", "project.list"],
+  ["support_labels", "support.list"],
+  ["support_label_groups", "support.list"],
+  ["managed_device_asset_labels", "managed_device_asset.list"],
+  ["managed_device_asset_label_groups", "managed_device_asset.list"],
+  ["board_managed_device_asset_settings", "managed_device_asset.list"],
+  ["contact_labels", "contact.list"],
+  ["contact_label_groups", "contact.list"],
+  ["board_contact_settings", "contact.list"],
+  ["product_labels", "product.list"],
+  ["product_label_groups", "product.list"],
+  ["board_product_settings", "product.list"],
+  ["order_labels", "order.list"],
+  ["order_label_groups", "order.list"],
+  ["board_order_settings", "order.list"],
+  ["warehouse_labels", "warehouse.list"],
+  ["warehouse_label_groups", "warehouse.list"],
+  ["board_warehouse_settings", "warehouse.list"],
+  ["location_labels", "location.list"],
+  ["location_label_groups", "location.list"],
+  ...DECLARED_ASSET_KINDS.flatMap((kind): [string, string][] => {
+    const t = declaredAssetTables(kind);
+    const type = declaredAssetListType(kind);
+    return [
+      [t.labels, type],
+      [t.labelGroups, type],
+      [t.settings, type],
+    ];
+  }),
+];
+
+// Rows kept without a key belong to no widget either: a board's, from before
+// each widget had its own (db/settings-per-list.ts).
+const ownedOrphans: Mutation[] = [
+  ...OWNED.map(([table, type]) =>
+    mutation(
+      `DELETE FROM ${table}
+       WHERE board_id IS NOT NULL AND NOT ${holdsKey(type, `${table}.board_id`, `${table}.list_key`)}`,
+    ),
+  ),
+  // The templates name their asset kind, and so their widget's type.
+  ...["board_label_templates", "board_asset_number_templates"].map((table) =>
+    mutation(
+      `DELETE FROM ${table}
+       WHERE NOT EXISTS (SELECT 1 FROM board_widgets w JOIN board_sections s ON s.id = w.section_id
+                         WHERE s.board_id = ${table}.board_id AND w.type = ${table}.kind || '.list'
+                           AND json_valid(w.config)
+                           AND json_extract(w.config, '$.${LIST_KEY}') = ${table}.list_key)`,
+    ),
+  ),
+];
+
+/**
+ * What no widget holds anymore goes away: the items of a deleted widget —
+ * alone, with its section, or with the personal copy that carried it —, then
+ * its labels, categories and tables. Returns the affected resources.
+ */
+export const cleanLists = (): (keyof typeof orphans)[] => {
+  const touched = (Object.keys(orphans) as (keyof typeof orphans)[]).filter(
     (resource) => orphans[resource].run().changes > 0,
   );
+  for (const statement of ownedOrphans) statement.run();
+  return touched;
+};
+
+/**
+ * The tables whose rows belong to a list by its key, and to a board: its
+ * items, its labels, its categories, its tables, its templates. Read once
+ * from the schema: a table added later follows on its own.
+ */
+let keyedTables: { name: string; context: boolean }[] | null = null;
+
+const tablesWithKey = () => {
+  keyedTables ??= (
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all() as { name: string }[]
+  ).flatMap(({ name }) => {
+    const columns = new Set(
+      (db.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map((c) => c.name),
+    );
+    return columns.has("list_key") && columns.has("board_id")
+      ? [{ name, context: columns.has("context_id") }]
+      : [];
+  });
+  return keyedTables;
+};
+
+/**
+ * A list widget cut from a board and pasted into another: what it owns
+ * follows it — its items and everything that carries its key. The contexts
+ * stay with their board: the items leave theirs. To call within the
+ * transaction that moves the widget.
+ */
+export const moveList = (type: string, config: string, from: Id, to: Id): void => {
+  if (!isListWidgetType(type) || from === to) return;
+  const key = read(config)[LIST_KEY];
+  if (typeof key !== "string" || !key) return;
+  for (const table of tablesWithKey()) {
+    if (table.context) {
+      db.prepare(
+        `UPDATE "${table.name}" SET context_id = NULL WHERE board_id = ? AND list_key = ?`,
+      ).run(from, key);
+    }
+    db.prepare(`UPDATE "${table.name}" SET board_id = ? WHERE board_id = ? AND list_key = ?`).run(
+      to,
+      from,
+      key,
+    );
+  }
+};

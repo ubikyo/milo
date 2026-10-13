@@ -11,7 +11,6 @@
 import express, { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import {
-  DECLARED_ASSET_RESOURCES,
   LIST_KEY,
   shownCalendarsOf,
   SECTIONS_GAP_DEFAULT,
@@ -25,16 +24,19 @@ import {
   isBoardWidgetType,
   isListWidgetType,
   isMailMetric,
-  mailSourceOf,
   APPOINTMENT_TYPES,
-  calendarSourceOf,
+  INDICATOR_DATA,
+  SOURCES,
+  ownKeyOf,
+  sourceTypeOf,
+  sourcesOf,
   countedFoldersOf,
   isSectionWidthUnit,
   migrateWidgetConfig,
   currentWidget,
   widgetReference,
 } from "@milo/shared";
-import type { DeclaredAssetKind, Id, NotificationScope } from "@milo/shared";
+import type { Id, NotificationScope } from "@milo/shared";
 import { concerned, notifyBoard, root } from "../lib/notify.js";
 import type {
   AccessCalendar,
@@ -71,11 +73,9 @@ import { quoteOf, quoteSettings } from "../lib/quotes.js";
 import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/sections.js";
 import { signalWrite, touch, touchNow } from "../middleware/events.js";
 import { byId, deleteWithUndo } from "../lib/undo.js";
-import { ensureDefaultType } from "./milestone-types.js";
 import { reassignWorkstations } from "../repositories/managed-device-assets.js";
-import { ensureSupportLabels } from "../repositories/support.js";
-import { ensureProjectPriorities } from "../repositories/projects.js";
-import { ensureDeclaredAssetLabels } from "../repositories/declared-asset-labels.js";
+import { seedListWidget } from "../repositories/list-seeds.js";
+import { readSources } from "./source-widgets.js";
 import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/lists.js";
 import { receivedTags } from "../repositories/inboxes.js";
 import { boardSections, boardWidgets, renderedWidget } from "../repositories/board-widgets.js";
@@ -129,6 +129,22 @@ const configuration = (type: string, value: unknown, defaultValue: string): stri
     badRequest("Configuration invalide");
   }
   return JSON.stringify(migrateWidgetConfig(type, value));
+};
+
+/**
+ * A counting widget reads at least one widget (SOURCES): created without, it
+ * reads those of its type on its board.
+ */
+const withSources = (type: string, config: string, boardId: Id): string => {
+  const read = readConfig(config);
+  const sourceType = sourceTypeOf(type, read);
+  if (!sourceType || sourcesOf(read).length > 0) return config;
+  const keys = boardWidgets
+    .all(boardId)
+    .filter((w) => w.type === sourceType)
+    .map((w) => ownKeyOf(w.type, readConfig(w.config)))
+    .filter((k) => k !== "");
+  return JSON.stringify({ ...read, [SOURCES]: [...new Set(keys)] });
 };
 
 // --- What a board carries ---------------------------------------------------
@@ -321,6 +337,16 @@ boardContentRoutes.post("/import", (req, res) => {
     .map((w) => w.id);
   const itemsGo = [...concerned.board(board.id), ...concerned.projectBoard(board.id), ...concerned.supportBoard(board.id)];
   boardSections.importSections(board.id, sections, keptCount);
+  // A list that got a new key brings its own default labels; a counting
+  // widget that names no widget — exported before they named theirs by key —
+  // reads those of its type on the board.
+  for (const widget of boardWidgets.all(board.id)) {
+    if (isListWidgetType(widget.type) && !takenKeys.has(listKey(readConfig(widget.config)))) {
+      touchNow(res, ...seedListWidget(widget.type, widget.config, board.id));
+    }
+    const config = withSources(widget.type, widget.config, board.id);
+    if (config !== widget.config) boardWidgets.update.run(config, widget.id);
+  }
   notifyBoard({
     boardId: board.id,
     message: "a importé une disposition",
@@ -367,6 +393,10 @@ boardSectionRoutes.post("/:id/duplicate", (req, res) => {
   const { section: existing, board } = openedSection(req.params.id, req.user);
   requireStructure(req, board);
   const copy = boardSections.duplicate(existing);
+  // Its lists got new keys: each brings its own default labels.
+  for (const widget of boardWidgets.bySection(copy)) {
+    touchNow(res, ...seedListWidget(widget.type, widget.config, board.id));
+  }
   announce(req, board.id, "a dupliqué une section");
   res.status(201).json(boardSections.byId(copy));
 });
@@ -423,29 +453,12 @@ boardWidgetRoutes.post("/", (req, res) => {
   const id = boardWidgets.create(
     section.id,
     type as string,
-    configuration(type as string, req.body.config, "{}"),
+    withSources(type as string, configuration(type as string, req.body.config, "{}"), board.id),
   );
-  // A projects widget sets the "Défaut" milestone type, which its projects
-  // receive on creation.
-  if ((type as string).startsWith("project.") && ensureDefaultType()) {
-    touchNow(res, "lookups", "projects");
-  }
-  // A projects widget brings the "Priorités" labels (repositories/projects.ts).
-  if (type === "project.list" && ensureProjectPriorities(board.id)) {
-    touchNow(res, "project-labels");
-  }
-  // A board's first Support widget brings the default labels
-  // (repositories/support.ts).
-  if (type === "support.list" && ensureSupportLabels(board.id)) {
-    touchNow(res, "support-labels");
-  }
-  // A declared asset widget brings its kind's default labels
-  // (repositories/declared-asset-labels.ts).
-  if (ensureDeclaredAssetLabels(type as string, board.id)) {
-    const kind = (type as string).split(".")[0] as DeclaredAssetKind;
-    touchNow(res, DECLARED_ASSET_RESOURCES[kind]);
-  }
+  // A list widget brings its own default labels and milestone type
+  // (repositories/list-seeds.ts).
   const created = boardWidgets.byId(id)!;
+  touchNow(res, ...seedListWidget(created.type, created.config, board.id));
   announce(req, board.id, `a ajouté ${widgetName(created)}`);
   res.status(201).json(renderedWidget(created));
 });
@@ -483,6 +496,63 @@ boardWidgetRoutes.post("/:id/duplicate", (req, res) => {
   const copy = boardWidgets.duplicate(widget);
   announce(req, board.id, `a dupliqué ${widgetName(widget)}`);
   res.status(201).json(renderedWidget(boardWidgets.byId(copy)!));
+});
+
+/** What a list widget's items and settings are re-read through. */
+const LIST_RESOURCES: Resource[] = [
+  "categories",
+  "projects",
+  "task-lists",
+  "labels",
+  "project-labels",
+  "support-requests",
+  "support-labels",
+  "managed-device-assets",
+  "unmanaged-device-assets",
+  "application-assets",
+  "contacts",
+  "products",
+  "orders",
+  "warehouses",
+  "locations",
+];
+
+/**
+ * Move a widget — cut, then pasted (client, lib/clipboard.ts) — into a
+ * section of this board or of another, at the given place. It stays the same
+ * widget: its configuration and its keys — a calendar its consents, a list
+ * its items, which follow it to the other board. Taken from its board as by
+ * a deletion: "Supprimer" on its type, and the structure of both boards.
+ */
+boardWidgetRoutes.put("/:id/move", (req, res) => {
+  const { widget, board: from } = openWidget(req.params.id, req);
+  requireWidget(req, widget.type, "delete");
+  requireStructure(req, from);
+  const { section, board: to } = openedSection(req.body.section_id, req.user);
+  requireStructure(req, to);
+  const index = Number(req.body.index);
+  const key = listKey(readConfig(widget.config));
+  // A list shown twice on its board — its key held by another widget —
+  // cannot take its items away from the other.
+  if (
+    from.id !== to.id &&
+    key !== "" &&
+    boardWidgets
+      .all(from.id)
+      .some((w) => w.id !== widget.id && w.type === widget.type && listKey(readConfig(w.config)) === key)
+  ) {
+    badRequest("Cette liste est affichée ailleurs sur son tableau : elle ne peut pas changer de tableau");
+  }
+  boardWidgets.move(widget, from.id, section.id, to.id, Number.isFinite(index) ? index : Number.MAX_SAFE_INTEGER);
+  if (from.id !== to.id) {
+    announce(req, from.id, `a déplacé ${widgetName(widget)} vers un autre tableau`, {
+      itemsGo: isListWidgetType(widget.type),
+    });
+    // Its items changed board: the tabs re-read them.
+    if (isListWidgetType(widget.type)) touchNow(res, ...LIST_RESOURCES);
+  }
+  announce(req, to.id, `a déplacé ${widgetName(widget)}`);
+  res.json(renderedWidget(boardWidgets.byId(widget.id)!));
 });
 
 boardWidgetRoutes.delete("/:id", (req, res) => {
@@ -593,7 +663,7 @@ const periodOf = (req: Request): { start: Date; end: Date } => {
  */
 const agendaOf = (
   req: Request,
-  widget: BoardWidgetRow,
+  widget: { config: string },
   { start, end }: { start: Date; end: Date },
 ): Promise<AccessCalendar> => {
   const config = readConfig(widget.config);
@@ -642,21 +712,18 @@ boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
 
 /**
  * The appointments of a "Rendez-vous" widget, or of its "Indicateur": those of
- * the Calendar widget it follows, on its own board (CALENDAR_SOURCE) — none
- * set, or one since removed, those of all the board's Calendar widgets. An
- * appointment several of them read comes several times: the client counts it
- * once. Without a Calendar widget, none.
+ * the Calendar widgets it follows (SOURCES), on any board this person sees —
+ * one since removed reads nothing. An appointment several of them read comes
+ * several times: the client counts it once.
  */
 boardWidgetRoutes.get("/:id/appointments", (req, res, next) => {
-  const { widget, board } = openWidget(req.params.id, req);
+  const { widget } = openWidget(req.params.id, req);
   if (!(APPOINTMENT_TYPES as readonly string[]).includes(widget.type)) {
     badRequest("Ce widget ne lit pas de rendez-vous");
   }
   const period = periodOf(req);
-  const calendars = boardWidgets.all(board.id).filter((w) => w.type === "calendar");
-  const chosen = calendarSourceOf(readConfig(widget.config));
-  const source = calendars.find((w) => w.id === chosen);
-  Promise.all((source ? [source] : calendars).map((c) => agendaOf(req, c, period)))
+  const calendars = readSources(req, "calendar", sourcesOf(readConfig(widget.config)));
+  Promise.all(calendars.map((c) => agendaOf(req, c, period)))
     .then((agendas) => {
       const calendar: AccessCalendar = { events: [], errors: [] };
       for (const a of agendas) {
@@ -687,7 +754,7 @@ interface MailSource {
  * What a Mail widget reads: the folders chosen of the people it names who have
  * consented (lib/mail-optin.ts) — none chosen, their inbox.
  */
-const mailSourcesOf = (widget: BoardWidgetRow) => {
+const mailSourcesOf = (widget: { config: string }) => {
   const config = readConfig(widget.config);
   const confirmed = mailOptin.confirmed(mailKey(config));
   const others = [...shownFoldersOf(config)].filter(([email]) => confirmed.has(email));
@@ -711,24 +778,25 @@ const openMailbox = (req: Request) => {
 };
 
 /**
- * What a widget that counts reads: that of the Mail widget it follows, on its
- * own board (MAIL_SOURCE) — none set, or one since removed, that of all the
- * board's Mail widgets, each folder once. Without a Mail widget, nothing. "folders", the folders it counts itself of
- * each person, among those that Mail widget's consent covers.
+ * What a widget that counts reads: that of the Mail widgets it follows
+ * (SOURCES), on any board this person sees, each folder once — one since
+ * removed reads nothing. "folders", the folders it counts itself of each
+ * person, among those the Mail widgets' consent covers.
  */
 const openCounted = (
   req: Request,
   type: string,
   folders: (config: unknown) => Map<string, string[]> = () => new Map(),
 ): MailSource[] => {
-  const { widget, board } = openWidget(req.params.id, req);
-  if (widget.type !== type) badRequest("Ce widget ne compte pas d'e-mails");
-  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
-  const mails = boardWidgets.all(board.id).filter((w) => w.type === "mail");
+  const { widget } = openWidget(req.params.id, req);
   const config = readConfig(widget.config);
-  const chosen = mailSourceOf(config);
-  const source = mails.find((w) => w.id === chosen);
-  const read = (source ? [source] : mails).map(mailSourcesOf);
+  // An "Indicateurs" widget counts e-mails when it reads the Mail widgets.
+  const indicator =
+    widget.type.startsWith("indicator.") &&
+    (config as Record<string, unknown> | null)?.[INDICATOR_DATA] === "mail";
+  if (widget.type !== type && !indicator) badRequest("Ce widget ne compte pas d'e-mails");
+  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+  const read = readSources(req, "mail", sourcesOf(config)).map(mailSourcesOf);
   const sources = read.flatMap((r) => r.sources);
   const people = new Set(read.flatMap((r) => [...r.people]));
   const own = folders(config);

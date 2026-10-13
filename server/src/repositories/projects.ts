@@ -5,6 +5,7 @@ import type { Actor, Id, Project, ProjectLabel } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { IdRow, NextRow, ProjectJoinedRow, ProjectRow } from "../db/rows.js";
 import { projectLabelGroups } from "./label-groups.js";
+import type { ListScope } from "./lists.js";
 import { actorOf } from "./users.js";
 
 /**
@@ -153,35 +154,49 @@ export const replaceActors = transaction((projectId: Id, actorIds: Id[]) => {
 });
 
 const deleteLabels = mutation("DELETE FROM project_label_links WHERE project_id = ?");
-const addLabel = mutation(
+const addLabelStatement = mutation(
   `INSERT OR IGNORE INTO project_label_links (project_id, label_id)
-   SELECT ?, id FROM project_labels WHERE id = ? AND board_id = ?`,
+   SELECT ?, id FROM project_labels WHERE id = ? AND board_id = ? AND list_key = ?`,
 );
+const addLabel = (projectId: Id, labelId: Id, scope: ListScope) =>
+  addLabelStatement.run(projectId, labelId, scope.board, scope.list);
 
 /**
- * A project carries only its own board's labels: those of another are
+ * A project carries only its own list's labels: those of another are
  * ignored rather than refused, as for actors.
  */
 /**
- * The destination board's label that matches this one: itself in its own
- * board, its twin elsewhere — same name, same color —, created if needed. The
+ * The destination list's label that matches this one: itself in its own
+ * list, its twin elsewhere — same name, same color —, created if needed. The
  * same rule as for copying a list (copy-list.ts): without it, the copy would
  * arrive bare and we would no longer know what the project carried.
  */
 const twinLabel = selection<{ id: Id }>(
   `SELECT id FROM project_labels
-   WHERE board_id = ? AND name = ? COLLATE NOCASE AND color = ?
+   WHERE board_id = ? AND list_key = ? AND name = ? COLLATE NOCASE AND color = ?
    ORDER BY position, id`,
 );
-const nextLabelRank = scalar<NextRow>(
-  "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM project_labels WHERE board_id = ?",
+const nextLabelRankStatement = scalar<NextRow>(
+  `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM project_labels
+   WHERE board_id = ? AND list_key = ?`,
 );
-const createLabel = mutation(
-  "INSERT INTO project_labels (board_id, group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+const nextLabelRank = (scope: ListScope) => nextLabelRankStatement(scope.board, scope.list);
+const createLabelStatement = mutation(
+  `INSERT INTO project_labels (board_id, list_key, group_id, name, color, position, created_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
+const createLabel = (
+  scope: ListScope,
+  group: Id,
+  label: { name: string; color: string },
+  position: number,
+  timestamp: string,
+) =>
+  createLabelStatement.run(scope.board, scope.list, group, label.name, label.color, position, timestamp);
 const fullLabels = selection<{
   id: Id;
   board_id: Id;
+  list_key: string;
   group_id: Id;
   name: string;
   color: string;
@@ -195,64 +210,81 @@ const fullLabels = selection<{
 
 const priorityGroup = selection<IdRow>(
   `SELECT id FROM project_label_groups
-   WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
+   WHERE board_id = ? AND list_key = ? AND name = ? COLLATE NOCASE LIMIT 1`,
 );
 
 /**
  * A projects widget brings the "Priorités" group and its labels
- * (PROJECT_PRIORITY_LABELS), when the board has no group of that name yet:
- * the board's projects widgets share them. True when they were created.
+ * (PROJECT_PRIORITY_LABELS), when it has no group of that name yet: each
+ * widget has its own. True when they were created.
  */
-export const ensureProjectPriorities = transaction((boardId: Id): boolean => {
-  if (priorityGroup.get(boardId, DEFAULT_LABEL_GROUP)) return false;
-  const group = projectLabelGroups.create(boardId, DEFAULT_LABEL_GROUP);
+export const ensureProjectPriorities = transaction((scope: ListScope): boolean => {
+  if (!scope.list || priorityGroup.get(scope.board, scope.list, DEFAULT_LABEL_GROUP)) return false;
+  const group = projectLabelGroups.create(scope, DEFAULT_LABEL_GROUP);
   const timestamp = new Date().toISOString();
-  let position = nextLabelRank(boardId).next;
+  let position = nextLabelRank(scope).next;
   for (const label of PROJECT_PRIORITY_LABELS) {
-    createLabel.run(boardId, group, label.name, label.color, position++, timestamp);
+    createLabel(scope, group, label, position++, timestamp);
   }
-  projectLabelGroups.renumber(boardId);
+  projectLabelGroups.renumber(scope);
   return true;
 });
 
 /** The twin, created in the group of the same name — itself created if needed. */
 const createTwin = (
   label: { group_id: Id; name: string; color: string },
-  targetBoard: Id,
+  target: ListScope,
   timestamp: string,
 ): Id => {
   const groupName = projectLabelGroups.byId(label.group_id)?.name ?? DEFAULT_LABEL_GROUP;
   const id = Number(
-    createLabel.run(
-      targetBoard,
-      projectLabelGroups.named(targetBoard, groupName),
-      label.name,
-      label.color,
-      nextLabelRank(targetBoard).next,
+    createLabel(
+      target,
+      projectLabelGroups.named(target, groupName),
+      label,
+      nextLabelRank(target).next,
       timestamp,
     ).lastInsertRowid,
   );
-  projectLabelGroups.renumber(targetBoard);
+  projectLabelGroups.renumber(target);
   return id;
 };
 
-/** A project's labels, carried over to its copy. */
+/** A project's labels, carried over to its copy, in the copy's list. */
 export const copyProjectLabels = transaction(
-  (sourceId: Id, copyId: Id, targetBoard: Id, timestamp: string) => {
+  (sourceId: Id, copyId: Id, target: ListScope, timestamp: string) => {
     for (const label of fullLabels.all(sourceId)) {
       const id =
-        label.board_id === targetBoard
+        label.board_id === target.board && label.list_key === target.list
           ? label.id
-          : (twinLabel.get(targetBoard, label.name, label.color)?.id ??
-            createTwin(label, targetBoard, timestamp));
-      addLabel.run(copyId, id, targetBoard);
+          : (twinLabel.get(target.board, target.list, label.name, label.color)?.id ??
+            createTwin(label, target, timestamp));
+      addLabel(copyId, id, target);
     }
   },
 );
 
+/** A project moved to another list: its labels become their twins there. */
+export const moveProjectLabels = transaction((projectId: Id, target: ListScope, timestamp: string) => {
+  const carried = fullLabels.all(projectId);
+  deleteLabels.run(projectId);
+  for (const label of carried) {
+    const id =
+      label.board_id === target.board && label.list_key === target.list
+        ? label.id
+        : (twinLabel.get(target.board, target.list, label.name, label.color)?.id ??
+          createTwin(label, target, timestamp));
+    addLabel(projectId, id, target);
+  }
+});
+
+/**
+ * A project's labels, replaced wholesale: those of its list only, the others
+ * are ignored.
+ */
 export const replaceProjectLabels = transaction(
-  (projectId: Id, labelIds: Id[], boardId: Id) => {
+  (projectId: Id, labelIds: Id[], scope: ListScope) => {
     deleteLabels.run(projectId);
-    for (const labelId of labelIds) addLabel.run(projectId, labelId, boardId);
+    for (const labelId of labelIds) addLabel(projectId, labelId, scope);
   },
 );

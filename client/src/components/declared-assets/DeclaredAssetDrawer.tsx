@@ -18,6 +18,7 @@ import {
   IconPhoto,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DatePickerInput } from "@mantine/dates";
 import { IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import {
   DECLARED_ASSET_DESCRIPTION_MAX,
@@ -25,11 +26,13 @@ import {
   DECLARED_ASSET_NAME_MAX,
   DECLARED_ASSET_PRICE_MAX,
   DECLARED_ASSET_QUANTITY_MAX,
+  DECLARED_ASSET_SUPPLIER,
   DECLARED_ASSET_TYPED_VALUE_MAX,
   DECLARED_ASSET_VERSION_MAX,
   DECLARED_ASSET_WEBSITE_MAX,
   DECLARED_ASSET_WORDS,
 } from "@milo/shared";
+import type { TreeNodeData } from "@mantine/core";
 import type {
   DeclaredAsset,
   DeclaredAssetAttachment,
@@ -42,6 +45,7 @@ import type {
   Label,
 } from "@milo/shared";
 import { api } from "../../api";
+import { listOf } from "../../lib/list-ref";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { BARE_FIELDSET } from "../../lib/rights";
 import { shrinkImage } from "../../lib/shrinkImage";
@@ -54,18 +58,23 @@ import ActorPicker from "../ui/ActorPicker";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import DrawerFooter from "../ui/DrawerFooter";
 import DrawerScrollArea, { DRAWER_PADDING, DRAWER_STYLES } from "../ui/DrawerScroll";
+import AddButton from "../ui/AddButton";
 import { TREE_CASCADER, locationTreeData, treePath } from "../ui/EditableTree";
 import { pluralize } from "../ui/DrawerRows";
 import { ListRows } from "../ui/EditableRows";
 import LabelPicker, { declaredAssetLabelsApi } from "../ui/LabelPicker";
 import PrintLabelButton from "../ui/PrintLabelButton";
+import AddDeclaredProductModal from "./AddDeclaredProductModal";
+import AddDeclaredEntryModal from "./AddDeclaredEntryModal";
+import AddDeclaredTreeNodeModal from "./AddDeclaredTreeNodeModal";
 import GenerateNumberButton from "./GenerateNumberButton";
 
 // A declared asset's drawer, laid out like a card's (CardDrawer): its actors
-// and labels first, then its name; its category, maker and product on one
-// line — a device type, a brand and a model; a software type, a publisher and
-// an application —, its supplier, quantity and price on another — the names
-// chosen in the board's lists (DeclaredAssetTablesFields) —; a description
+// and labels first, then its name; its product — a model, an application —,
+// picked in a Cascader through its category and its maker — a device type
+// and a brand; a software type and a publisher —, or added from under it;
+// its supplier, quantity and price on another line — the names chosen in the
+// board's lists (DeclaredAssetTablesFields) —; a description
 // and notes. A device has more after its supplier: its location — a place of
 // its board's locations tree, Société > Bâtiment > Baie > Position, picked in
 // a Cascader —, and its identifications — typed values, a serial number, a
@@ -123,9 +132,15 @@ const websiteHref = (typed: string): string =>
 const NAME_BUTTONS_GAP = 4;
 const NAME_BUTTONS_WIDTH = 2 * 28 + 2 * NAME_BUTTONS_GAP;
 
+/** The purchase date's width, beside the asset's number. */
+const PURCHASE_DATE_WIDTH = 160;
+
 // The widths of the quantity and the price, on the supplier's line.
 const QUANTITY_WIDTH = 100;
 const PRICE_WIDTH = 140;
+
+/** A device's places, as the window that adds one names them. */
+const LOCATION_NOUN = { a: "un emplacement", ofThe: "de l'emplacement", none: "Aucun emplacement" };
 
 const PHOTO_WORDS = { title: "Photos", one: "la photo", many: "photos" };
 const DOCUMENT_WORDS = { title: "Documents", one: "le document", many: "documents" };
@@ -140,6 +155,8 @@ interface Form {
   product: string;
   quantity: number | "";
   price: number | "";
+  /** "2026-10-12"; empty, none. */
+  purchase_date: string;
   description: string;
   notes: string;
   /** A device's identifications and place; an application's version, website and license information. */
@@ -160,6 +177,7 @@ const EMPTY: Form = {
   product: "",
   quantity: 1,
   price: "",
+  purchase_date: "",
   description: "",
   notes: "",
   identifications: [],
@@ -179,6 +197,7 @@ const formOf = (asset: DeclaredAsset): Form => ({
   product: asset.product,
   quantity: asset.quantity,
   price: asset.price ?? "",
+  purchase_date: asset.purchase_date ?? "",
   description: asset.description,
   notes: asset.notes,
   identifications: asset.identifications ?? [],
@@ -211,6 +230,36 @@ const NO_LISTS: DeclaredAssetSettings = { categories: [], suppliers: [], makers:
  */
 const options = (names: string[], current: string): string[] =>
   current && !names.includes(current) ? [current, ...names] : names;
+
+/** A level of the products Cascader: a category, a maker, a product — unique in the tree. */
+const categoryValue = (id: string) => JSON.stringify(["c", id]);
+const makerValue = (categoryId: string, maker: string) => JSON.stringify(["m", categoryId, maker]);
+const productValue = (p: { category: string; maker: string; name: string }) =>
+  JSON.stringify(["p", p.category, p.maker, p.name]);
+
+/**
+ * The products as a Cascader reads them: the categories tree, under each
+ * category the makers of its own products, under each maker its products.
+ * A category with no product, even below, is left out: nothing to pick there.
+ */
+const productTreeData = (lists: DeclaredAssetSettings): TreeNodeData[] => {
+  const childrenOf = (parent: string | null): TreeNodeData[] =>
+    lists.categories
+      .filter((c) => c.parent === parent)
+      .map((c): TreeNodeData => {
+        const own = lists.products.filter((p) => p.category === c.id);
+        const makers = [...new Set(own.map((p) => p.maker))].map((maker) => ({
+          value: makerValue(c.id, maker),
+          label: maker,
+          children: own
+            .filter((p) => p.maker === maker)
+            .map((p) => ({ value: productValue(p), label: p.name })),
+        }));
+        return { value: categoryValue(c.id), label: c.name, children: [...childrenOf(c.id), ...makers] };
+      })
+      .filter((c) => c.children!.length > 0);
+  return childrenOf(null);
+};
 
 /**
  * A file waiting for its asset to be created: shown like a sent one, a
@@ -280,21 +329,34 @@ export default function DeclaredAssetDrawer({
   const [attachments, setAttachments] = useState<(DeclaredAssetAttachment | Pending)[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** The window that adds a product to the board's lists. */
+  const [addingProduct, setAddingProduct] = useState(false);
+  /** The window that adds a supplier to the board's lists. */
+  const [addingSupplier, setAddingSupplier] = useState(false);
+  /** The window that adds a place to the board's locations tree. */
+  const [addingLocation, setAddingLocation] = useState(false);
   const photoField = useRef<HTMLInputElement>(null);
   const fileField = useRef<HTMLInputElement>(null);
   // Files dragged over the page: the drop zones show, even under full lists.
   const dragging = useFileDrag(opened && canSave);
   const readOnly = !canSave;
 
+  // Its labels and lists are its widget's: the asset's own, or the one it is
+  // added from.
+  const list = useMemo(
+    () => (asset ? listOf(asset) : { board: boardId, list: listKey }),
+    [asset, boardId, listKey],
+  );
+
   const readLabels = useCallback(async () => {
     try {
-      setLabels(await api.getDeclaredAssetLabels(kind, boardId));
+      setLabels(await api.getDeclaredAssetLabels(kind, list));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [kind, boardId]);
+  }, [kind, list]);
 
-  // Each opening starts from the asset, and re-reads the board's lists,
+  // Each opening starts from the asset, and re-reads its widget's lists,
   // its labels and the asset's files.
   useEffect(() => {
     if (!opened) return;
@@ -302,7 +364,7 @@ export default function DeclaredAssetDrawer({
     setPhotos([]);
     setAttachments([]);
     api
-      .getDeclaredAssetSettings(kind, boardId)
+      .getDeclaredAssetSettings(kind, list)
       .then(setLists)
       .catch((e) => notifyError(errorMessage(e)));
     void readLabels();
@@ -315,32 +377,47 @@ export default function DeclaredAssetDrawer({
         })
         .catch((e) => notifyError(errorMessage(e)));
     }
-  }, [opened, asset, kind, boardId, readLabels]);
+  }, [opened, asset, kind, list, readLabels]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // With a category chosen, only the makers that have a product of it;
-  // all of them otherwise.
-  const makers = form.category
-    ? lists.makers
-        .map((b) => b.name)
-        .filter((name) =>
-          lists.products.some((m) => m.maker === name && m.category === form.category),
-        )
-    : lists.makers.map((b) => b.name);
+  // The board's products, to pick the asset's from through its category and
+  // its maker.
+  const productData = useMemo(() => productTreeData(lists), [lists]);
 
-  // The products of the chosen maker and category — all of them while none is chosen.
-  // The board's locations tree, to pick the device's place from.
-  const locationData = useMemo(() => locationTreeData(lists.locations ?? []), [lists.locations]);
+  /** The asset's product as the Cascader's path: none for one no longer in the lists. */
+  const productPath = (): string[] | null => {
+    const chosen = lists.products.find(
+      (p) => p.category === form.category && p.maker === form.maker && p.name === form.product,
+    );
+    if (!chosen) return null;
+    return [
+      ...treePath(lists.categories, chosen.category).map(categoryValue),
+      makerValue(chosen.category, chosen.maker),
+      productValue(chosen),
+    ];
+  };
 
-  const products = lists.products
-    .filter(
-      (m) =>
-        (!form.maker || m.maker === form.maker) &&
-        (!form.category || m.category === form.category),
-    )
-    .map((m) => m.name);
+  // The board's locations tree, to pick the device's place from. When the
+  // asset carries a label a root is tied to, only those roots are offered,
+  // with the roots tied to none — and the place it already has.
+  const locationData = useMemo(() => {
+    const locations = lists.locations ?? [];
+    const tied = new Set(locations.flatMap((l) => (l.parent === null && l.label ? [String(l.label)] : [])));
+    const carried = new Set(form.label_ids.filter((id) => tied.has(id)));
+    if (carried.size === 0) return locationTreeData(locations);
+    const current = form.location ? treePath(locations, form.location)[0] : undefined;
+    const roots = new Set(
+      locations
+        .filter((l) => l.parent === null && (!l.label || carried.has(String(l.label)) || l.id === current))
+        .map((l) => l.id),
+    );
+    // A parent comes before its children: what is under a kept root is kept.
+    const kept = new Set<string>();
+    for (const l of locations) if (l.parent === null ? roots.has(l.id) : kept.has(l.parent)) kept.add(l.id);
+    return locationTreeData(locations.filter((l) => kept.has(l.id)));
+  }, [lists.locations, form.label_ids, form.location]);
 
   // --- Photos and attachments ----------------------------------------------
 
@@ -441,6 +518,10 @@ export default function DeclaredAssetDrawer({
       notifyError("Le champ « Asset » est requis");
       return;
     }
+    if (!form.product) {
+      notifyError(`Le champ « ${words.product.title} » est requis`);
+      return;
+    }
     setSaving(true);
     try {
       if (asset) {
@@ -509,118 +590,88 @@ export default function DeclaredAssetDrawer({
                     labels={labels}
                     value={form.label_ids}
                     onChange={(ids) => set("label_ids", ids)}
-                    boardId={boardId}
+                    list={list}
                     onLabelsChanged={readLabels}
                     labelsApi={declaredAssetLabelsApi(kind)}
                   />
                 </div>
               </Group>
 
-              <TextInput
-                label="Asset"
-                placeholder="Asset"
-                value={form.name}
-                onChange={(e) => set("name", e.currentTarget.value)}
-                maxLength={DECLARED_ASSET_NAME_MAX}
-                required
-                // On the right, a number drawn from the board's formats, from
-                // the labels chosen — a new asset's too —, then the saved
-                // asset's label, printed from the board's templates.
-                rightSectionWidth={NAME_BUTTONS_WIDTH}
-                rightSection={
-                  <Group gap={NAME_BUTTONS_GAP} wrap="nowrap" justify="flex-end" w="100%" pr={NAME_BUTTONS_GAP}>
-                    <GenerateNumberButton
-                      kind={kind}
-                      boardId={boardId}
-                      labels={labels.filter((l) => form.label_ids.includes(String(l.id)))}
-                      onGenerated={(number) => set("name", number)}
-                      disabled={readOnly}
-                    />
-                    {asset && <PrintLabelButton kind={kind} boardId={boardId} assetId={asset.id} />}
-                  </Group>
-                }
-              />
-
+              {/* The asset's number, then on its right its purchase date. */}
               <Group align="flex-start" gap="md" wrap="nowrap">
-                <Select
-                  label={words.category.title}
-                  placeholder={`Choisir ${words.category.a}`}
-                  data={options(
-                    lists.categories.map((t) => t.name),
-                    form.category,
-                  )}
-                  value={form.category || null}
-                  onChange={(v) =>
-                    // Another category: the maker and product chosen stay only if
-                    // they still go with it.
-                    setForm((f) => {
-                      const type = v ?? "";
-                      const fits = (maker: string, product?: string) =>
-                        !type ||
-                        lists.products.some(
-                          (m) =>
-                            m.category === type &&
-                            m.maker === maker &&
-                            (product === undefined || m.name === product),
-                        );
-                      const maker = f.maker && fits(f.maker) ? f.maker : "";
-                      const product = maker && f.product && fits(maker, f.product) ? f.product : "";
-                      return { ...f, category: type, maker, product };
-                    })
+                <TextInput
+                  label="Asset"
+                  placeholder="Asset"
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={form.name}
+                  onChange={(e) => set("name", e.currentTarget.value)}
+                  maxLength={DECLARED_ASSET_NAME_MAX}
+                  required
+                  // On the right, a number drawn from the board's formats, from
+                  // the labels chosen — a new asset's too —, then the saved
+                  // asset's label, printed from the board's templates.
+                  rightSectionWidth={NAME_BUTTONS_WIDTH}
+                  rightSection={
+                    <Group gap={NAME_BUTTONS_GAP} wrap="nowrap" justify="flex-end" w="100%" pr={NAME_BUTTONS_GAP}>
+                      <GenerateNumberButton
+                        kind={kind}
+                        list={list}
+                        labels={labels.filter((l) => form.label_ids.includes(String(l.id)))}
+                        onGenerated={(number) => set("name", number)}
+                        disabled={readOnly}
+                      />
+                      {asset && <PrintLabelButton kind={kind} list={list} assetId={asset.id} />}
+                    </Group>
                   }
-                  nothingFoundMessage={words.category.none}
-                  clearable
-                  searchable
-                  style={{ flex: 1, minWidth: 0 }}
                 />
-                <Select
-                  label={words.maker.title}
-                  placeholder={`Choisir ${words.maker.a}`}
-                  data={options(makers, form.maker)}
-                  value={form.maker || null}
-                  onChange={(v) =>
-                    // Another maker: the product chosen is no longer one of its.
-                    setForm((f) => ({
-                      ...f,
-                      maker: v ?? "",
-                      product: lists.products.some((m) => m.maker === v && m.name === f.product)
-                        ? f.product
-                        : "",
-                    }))
-                  }
-                  nothingFoundMessage={words.maker.none}
+                <DatePickerInput
+                  label="Date d'achat"
+                  placeholder="Choisir une date"
+                  value={form.purchase_date || null}
+                  onChange={(d) => set("purchase_date", d ? String(d).slice(0, 10) : "")}
+                  valueFormat="DD/MM/YYYY"
                   clearable
-                  searchable
-                  style={{ flex: 1, minWidth: 0 }}
-                />
-                <Select
-                  label={words.product.title}
-                  placeholder={`Choisir ${words.product.a}`}
-                  data={options([...new Set(products)], form.product)}
-                  value={form.product || null}
-                  onChange={(v) => {
-                    const chosen = lists.products.find(
-                      (m) => m.name === v && (!form.maker || m.maker === form.maker),
-                    );
-                    // A product chosen first brings its maker and its category.
-                    setForm((f) => ({
-                      ...f,
-                      product: v ?? "",
-                      maker: f.maker || chosen?.maker || "",
-                      category: f.category || chosen?.category || "",
-                    }));
-                  }}
-                  nothingFoundMessage={words.product.none}
-                  clearable
-                  searchable
-                  style={{ flex: 1, minWidth: 0 }}
+                  popoverProps={{ withinPortal: true }}
+                  w={PURCHASE_DATE_WIDTH}
+                  style={{ flexShrink: 0 }}
                 />
               </Group>
 
+              {/* In columns, level after level — the category, the maker, the
+                  product —: only a product may be chosen. One missing from the
+                  lists is added from under the field, without leaving the asset. */}
+              <div>
+                <Cascader
+                  label={words.product.title}
+                  placeholder={`Choisir ${words.product.a}`}
+                  data={productData}
+                  value={productPath()}
+                  onChange={(path) => {
+                    const leaf = path?.at(-1);
+                    const [level, category = "", maker = "", product = ""] = leaf
+                      ? (JSON.parse(leaf) as string[])
+                      : [];
+                    if (level !== "p") return;
+                    setForm((f) => ({ ...f, category, maker, product }));
+                  }}
+                  nothingFoundMessage={words.product.none}
+                  {...TREE_CASCADER}
+                  changeOnSelect={false}
+                  searchable
+                  required
+                />
+                {!readOnly && (
+                  <AddButton
+                    label={`Ajouter ${words.product.a}`}
+                    onClick={() => setAddingProduct(true)}
+                    mt={4}
+                  />
+                )}
+              </div>
+
               {/* An application's version and website, under what names it. */}
               {extras.includes("version") && (
-                // Three columns, as the line above: the version as wide as
-                // the category, the website the rest.
+                // Three columns: the version in one, the website the rest.
                 <SimpleGrid cols={3} spacing="md">
                   <TextInput
                     label="Version"
@@ -659,20 +710,30 @@ export default function DeclaredAssetDrawer({
 
 
               <Group align="flex-start" gap="md" wrap="nowrap">
-                <Select
-                  label="Fournisseur"
-                  placeholder="Choisir un fournisseur"
-                  data={options(
-                    lists.suppliers.map((s) => s.name),
-                    form.supplier,
+                {/* One missing from the lists is added from under the field,
+                    as the product is. */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Select
+                    label="Fournisseur"
+                    placeholder="Choisir un fournisseur"
+                    data={options(
+                      lists.suppliers.map((s) => s.name),
+                      form.supplier,
+                    )}
+                    value={form.supplier || null}
+                    onChange={(v) => set("supplier", v ?? "")}
+                    nothingFoundMessage="Aucun fournisseur"
+                    clearable
+                    searchable
+                  />
+                  {!readOnly && (
+                    <AddButton
+                      label="Ajouter un fournisseur"
+                      onClick={() => setAddingSupplier(true)}
+                      mt={4}
+                    />
                   )}
-                  value={form.supplier || null}
-                  onChange={(v) => set("supplier", v ?? "")}
-                  nothingFoundMessage="Aucun fournisseur"
-                  clearable
-                  searchable
-                  style={{ flex: 1, minWidth: 0 }}
-                />
+                </div>
                 <NumberInput
                   label="Quantité"
                   value={form.quantity}
@@ -704,18 +765,28 @@ export default function DeclaredAssetDrawer({
                   application's license information: lists of typed values. */}
               {extras.includes("location") && (
                 // In columns, level after level; any level may be chosen. The
-                // device keeps the place's id, the field reads its path.
-                <Cascader
-                  label="Emplacement"
-                  placeholder="Choisir un emplacement"
-                  data={locationData}
-                  value={form.location ? treePath(lists.locations ?? [], form.location) : null}
-                  onChange={(path) => set("location", path?.at(-1) ?? "")}
-                  nothingFoundMessage="Aucun emplacement"
-                  {...TREE_CASCADER}
-                  clearable
-                  searchable
-                />
+                // device keeps the place's id, the field reads its path. One
+                // missing from the tree is added from under the field.
+                <div>
+                  <Cascader
+                    label="Emplacement"
+                    placeholder="Choisir un emplacement"
+                    data={locationData}
+                    value={form.location ? treePath(lists.locations ?? [], form.location) : null}
+                    onChange={(path) => set("location", path?.at(-1) ?? "")}
+                    nothingFoundMessage="Aucun emplacement"
+                    {...TREE_CASCADER}
+                    clearable
+                    searchable
+                  />
+                  {!readOnly && (
+                    <AddButton
+                      label="Ajouter un emplacement"
+                      onClick={() => setAddingLocation(true)}
+                      mt={4}
+                    />
+                  )}
+                </div>
               )}
               {TYPED_LISTS.filter((l) => extras.includes(l.field)).map((l) => {
                 const types = (lists[l.types] ?? []).map((t) => t.name);
@@ -847,6 +918,49 @@ export default function DeclaredAssetDrawer({
         />
       </Drawer>
 
+      <AddDeclaredProductModal
+        kind={kind}
+        opened={addingProduct}
+        onClose={() => setAddingProduct(false)}
+        list={list}
+        lists={lists}
+        onListsSaved={setLists}
+        onSaved={(saved, added) => {
+          // The asset takes the product just added.
+          setLists(saved);
+          setForm((f) => ({ ...f, category: added.category, maker: added.maker, product: added.name }));
+        }}
+      />
+      <AddDeclaredEntryModal
+        kind={kind}
+        entries="suppliers"
+        noun={DECLARED_ASSET_SUPPLIER}
+        opened={addingSupplier}
+        onClose={() => setAddingSupplier(false)}
+        list={list}
+        lists={lists}
+        onSaved={(saved, supplier) => {
+          // The asset takes the supplier just added.
+          setLists(saved);
+          set("supplier", supplier);
+        }}
+      />
+      <AddDeclaredTreeNodeModal
+        kind={kind}
+        tree="locations"
+        noun={LOCATION_NOUN}
+        opened={addingLocation}
+        onClose={() => setAddingLocation(false)}
+        list={list}
+        lists={lists}
+        parents={locationData}
+        initialParent={form.location}
+        onSaved={(saved, location) => {
+          // The device takes the place just added.
+          setLists(saved);
+          set("location", location);
+        }}
+      />
       <DeleteConfirmModal
         opened={confirmDelete}
         onClose={() => setConfirmDelete(false)}

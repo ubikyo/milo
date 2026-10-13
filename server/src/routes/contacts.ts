@@ -50,7 +50,8 @@ import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
 import { SYSTEM_COMMENT, creationNote, withAuthor } from "../repositories/comments.js";
-import { keyInBoard } from "../repositories/lists.js";
+import { keyInBoard, listInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 import { widgetRights } from "../repositories/users.js";
 
 const NOT_FOUND = "Contact introuvable";
@@ -113,9 +114,10 @@ const rowsOf = <T>(
   return list;
 };
 
+/** Its e-mail address: one at most, kept in a list. */
 const emailsOf = (value: unknown): string[] => {
   const seen = new Set<string>();
-  return rowsOf(value, "Les e-mails", (entry) => {
+  const emails = rowsOf(value, "Les e-mails", (entry) => {
     // Received as plain strings, or as rows.
     const email = text(typeof entry === "object" ? entry.value : entry, CONTACT_EMAIL_MAX, "Un e-mail");
     if (!email) return null;
@@ -124,6 +126,8 @@ const emailsOf = (value: unknown): string[] => {
     seen.add(email.toLowerCase());
     return email;
   });
+  if (emails.length > 1) badRequest("Un contact a une seule adresse e-mail");
+  return emails;
 };
 
 const phonesOf = (value: unknown): ContactPhone[] =>
@@ -261,7 +265,7 @@ const photo = (id: Id): Field[] => {
     { label: "Contacts", value: list(c.member_ids.map((m) => names.get(m) ?? "")) },
     { label: "Conditions de paiement", value: c.payment_term || NONE },
     { label: "Devise", value: c.currency || NONE },
-    { label: "E-mails", value: inOrder(c.emails) },
+    { label: "E-mail", value: c.emails[0] || NONE },
     {
       label: "Numéros de téléphone",
       value: inOrder(c.phones.map((p) => [p.label, p.number].filter(Boolean).join(" "))),
@@ -329,10 +333,12 @@ const update = mutation(
 const remove = mutation("DELETE FROM contacts WHERE id = ?");
 
 const clearLabels = mutation("DELETE FROM contact_label_links WHERE contact_id = ?");
-// Only a label of the contact's board.
+// Only a label of the contact's widget.
 const addLabel = mutation(
   `INSERT OR IGNORE INTO contact_label_links (contact_id, label_id)
-   SELECT ?, id FROM contact_labels WHERE id = ? AND board_id = ?`,
+   SELECT x.id, l.id FROM contacts x
+   JOIN contact_labels l ON l.board_id = x.board_id AND l.list_key = x.list_key
+   WHERE x.id = ? AND l.id = ? AND x.board_id = ?`,
 );
 const clearMembers = mutation("DELETE FROM contact_members WHERE company_id = ?");
 // Only another contact of the company's board.
@@ -465,19 +471,28 @@ contactRoutes.delete("/comments/:comment", (req, res) => {
   res.status(204).end();
 });
 
-// --- The board's lists -------------------------------------------------------
+// --- A widget's lists -------------------------------------------------------
 
 const readSettings = selection<{ payment_terms: string; currencies: string; countries: string }>(
-  "SELECT payment_terms, currencies, countries FROM board_contact_settings WHERE board_id = ?",
+  `SELECT payment_terms, currencies, countries FROM board_contact_settings
+   WHERE board_id = ? AND list_key = ?`,
 );
-const ensureSettings = mutation("INSERT OR IGNORE INTO board_contact_settings (board_id) VALUES (?)");
-const writePaymentTerms = mutation("UPDATE board_contact_settings SET payment_terms = ? WHERE board_id = ?");
-const writeCurrencies = mutation("UPDATE board_contact_settings SET currencies = ? WHERE board_id = ?");
-const writeCountries = mutation("UPDATE board_contact_settings SET countries = ? WHERE board_id = ?");
+const ensureSettings = mutation(
+  "INSERT OR IGNORE INTO board_contact_settings (board_id, list_key) VALUES (?, ?)",
+);
+const writePaymentTerms = mutation(
+  "UPDATE board_contact_settings SET payment_terms = ? WHERE board_id = ? AND list_key = ?",
+);
+const writeCurrencies = mutation(
+  "UPDATE board_contact_settings SET currencies = ? WHERE board_id = ? AND list_key = ?",
+);
+const writeCountries = mutation(
+  "UPDATE board_contact_settings SET countries = ? WHERE board_id = ? AND list_key = ?",
+);
 
-/** A board's lists; without a row, their defaults. */
-const settingsOf = (boardId: Id): ContactSettings => {
-  const row = readSettings.get(boardId);
+/** A Contact widget's lists; without a row, their defaults. */
+const settingsOf = (scope: ListScope): ContactSettings => {
+  const row = readSettings.get(scope.board, scope.list);
   if (!row) return CONTACT_SETTINGS_DEFAULTS;
   return {
     payment_terms: parsed<ContactPaymentTerm>(row.payment_terms),
@@ -507,7 +522,7 @@ const paymentTermsOf = (value: unknown): ContactPaymentTerm[] =>
 /** Every country of the world fits. */
 const COUNTRIES_MAX = 300;
 
-const countriesOf = (value: unknown): ContactCountry[] =>
+export const countriesOf = (value: unknown): ContactCountry[] =>
   unique(
     rowsOf(value, "Les pays", (entry) => {
       const name = text(entry.name, CONTACT_FIELD_MAX, "Un pays");
@@ -528,23 +543,25 @@ const currenciesOf = (value: unknown): ContactCurrency[] =>
     }),
   );
 
-const saveSettings = transaction((boardId: Id, lists: Partial<ContactSettings>) => {
-  ensureSettings.run(boardId);
-  if (lists.payment_terms) writePaymentTerms.run(JSON.stringify(lists.payment_terms), boardId);
-  if (lists.currencies) writeCurrencies.run(JSON.stringify(lists.currencies), boardId);
-  if (lists.countries) writeCountries.run(JSON.stringify(lists.countries), boardId);
+const saveSettings = transaction((scope: ListScope, lists: Partial<ContactSettings>) => {
+  const where = [scope.board, scope.list] as const;
+  ensureSettings.run(...where);
+  if (lists.payment_terms) writePaymentTerms.run(JSON.stringify(lists.payment_terms), ...where);
+  if (lists.currencies) writeCurrencies.run(JSON.stringify(lists.currencies), ...where);
+  if (lists.countries) writeCountries.run(JSON.stringify(lists.countries), ...where);
 });
 
 /**
- * The lists of a board's Contact widgets: not a widget's configuration but
- * the board's — every Contact widget on it shares them.
+ * The lists of a Contact widget: not its configuration but its own data
+ * (ListScope), named by "?board=&list=".
  */
 export const contactSettingsRoutes = Router();
 
 contactSettingsRoutes.use(touch("contacts"));
 
 contactSettingsRoutes.get("/", (req, res) => {
-  res.json(settingsOf(verifyBoard(req, req.query.board, "view")));
+  const board = verifyBoard(req, req.query.board, "view");
+  res.json(settingsOf(listInBoard(board, "contact.list", req.query.list)));
 });
 
 /** Each received list is replaced entirely; a list not sent stays as it is. */
@@ -552,6 +569,7 @@ contactSettingsRoutes.put("/", (req, res) => {
   requireAccess(req, "update");
   const board = openBoard(req.query.board, req.user);
   requireBoardControl(board, req.user);
+  const scope = listInBoard(board.id, "contact.list", req.query.list);
   const body = (req.body ?? {}) as Record<string, unknown>;
   if (body.payment_terms === undefined && body.currencies === undefined && body.countries === undefined) {
     badRequest("Rien à enregistrer");
@@ -561,6 +579,6 @@ contactSettingsRoutes.put("/", (req, res) => {
   const payment_terms = body.payment_terms === undefined ? undefined : paymentTermsOf(body.payment_terms);
   const currencies = body.currencies === undefined ? undefined : currenciesOf(body.currencies);
   const countries = body.countries === undefined ? undefined : countriesOf(body.countries);
-  saveSettings(board.id, { payment_terms, currencies, countries });
-  res.json(settingsOf(board.id));
+  saveSettings(scope, { payment_terms, currencies, countries });
+  res.json(settingsOf(scope));
 });

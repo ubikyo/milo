@@ -275,6 +275,7 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "sunken-bg", group: "drawers", label: "Fond encadré", hint: "Lignes des tiroirs, pièces jointes, survol des boutons gris", light: "gray.0", dark: "#2e2e2e" },
   { key: "sunken-hover", group: "drawers", label: "Survol d'un fond encadré", light: "white", dark: "dark.5" },
   { key: "header-bg", group: "drawers", label: "En-têtes", hint: "En-têtes des tiroirs, poignées, bordures de l'éditeur", light: "gray.3", dark: "dark.5" },
+  { key: "total-bg", group: "drawers", label: "Totaux", hint: "Cases des totaux de la grille des variantes", light: "@header-bg", dark: "dark.8" },
   { key: "subtle-bg", group: "surfaces", label: "Fond discret", hint: "Choix segmentés, références", light: "gray.2", dark: "dark.5" },
   { key: "field-hover", group: "surfaces", label: "Survol dans un champ", hint: "Lignes d'une liste éditable, barre de l'éditeur", light: "gray.1", dark: "dark.5" },
   { key: "menu-hover", group: "surfaces", label: "Survol dans les menus", light: "gray.2", dark: "dark.4" },

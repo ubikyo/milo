@@ -69,11 +69,11 @@ export const reassignWorkstations = transaction((): void => {
   }
 });
 
-/** The asset labels of a board named as a tag, case aside. */
+/** The asset labels of a list named as a tag, case aside. */
 const labelsOfTag = selection<Label>(
   `SELECT l.*, g.name AS group_name FROM managed_device_asset_labels l
    LEFT JOIN managed_device_asset_label_groups g ON g.id = l.group_id
-   WHERE l.board_id = ? AND lower(trim(l.name)) = lower(trim(?))
+   WHERE l.board_id = ? AND l.list_key = ? AND lower(trim(l.name)) = lower(trim(?))
    ORDER BY l.position, l.id`,
 );
 
@@ -250,7 +250,7 @@ export const managedDeviceAssetOf = (row: ManagedDeviceAssetRow, content: Tree =
   board_id: row.board_id,
   list_key: row.list_key,
   tag: row.tag,
-  labels: row.board_id === null || !row.tag.trim() ? [] : labelsOfTag.all(row.board_id, row.tag),
+  labels: row.board_id === null || !row.tag.trim() ? [] : labelsOfTag.all(row.board_id, row.list_key, row.tag),
   user: row.last_user,
   last_inventory: row.last_inventory,
   system_disk: systemDisk(content),
@@ -507,7 +507,8 @@ const displayedSections = (
 export const managedDeviceAssetDetail = (row: ManagedDeviceAssetRow): ManagedDeviceAssetDetail => {
   const content = contentOf(row);
   const sections = sectionsOf(content);
-  const tables: BoardTables = { models: templates(row.board_id), vlans: vlans(row.board_id) };
+  const scope = row.board_id === null ? null : { board: row.board_id, list: row.list_key };
+  const tables: BoardTables = { models: templates(scope), vlans: vlans(scope) };
 
   return {
     ...managedDeviceAssetOf(row, content),

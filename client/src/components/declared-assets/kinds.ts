@@ -28,8 +28,6 @@ export interface DeclaredAssetLook {
   categoryIcon: Icon;
   makerIcon: Icon;
   productIcon: Icon;
-  /** "de type équipement déclaré": the widgets its lists are shared by. */
-  scope: string;
   /** Its labels, in the widget's drawer (LabelGroupFields). */
   labels: "unmanaged-device-asset-labels" | "application-asset-labels";
 }
@@ -41,7 +39,6 @@ export const DECLARED_ASSET_LOOKS: Record<DeclaredAssetKind, DeclaredAssetLook> 
     categoryIcon: IconCategory,
     makerIcon: IconBuildingFactory2,
     productIcon: IconDeviceLaptop,
-    scope: "de type équipement déclaré",
     labels: "unmanaged-device-asset-labels",
   },
   application_asset: {
@@ -50,7 +47,6 @@ export const DECLARED_ASSET_LOOKS: Record<DeclaredAssetKind, DeclaredAssetLook> 
     categoryIcon: IconCategory,
     makerIcon: IconBuildingStore,
     productIcon: IconAppWindow,
-    scope: "de type application",
     labels: "application-asset-labels",
   },
 };
@@ -59,10 +55,6 @@ export const SUPPLIER_ICON = IconTruckDelivery;
 
 /** The agreement of a noun: "e" for a feminine one. */
 export const agreement = (noun: DeclaredAssetNoun): string => (noun.feminine ? "e" : "");
-
-/** A list's description: whom it is shared by, in its noun's gender. */
-export const listDescription = (noun: DeclaredAssetNoun, scope: string): string =>
-  `Les ${noun.titles.toLowerCase()} configuré${agreement(noun)}s ci-dessous sont commun${agreement(noun)}s à l'ensemble des widgets, ${scope}, du tableau actuel et uniquement pour ce tableau.`;
 
 /** "La marque « Dell » est utilisée": the start of a refusal to delete. */
 export const usedBy = (noun: DeclaredAssetNoun, name: string): string =>
@@ -79,8 +71,6 @@ export const EXTRA_ENTRY_LISTS = {
     add: "Ajouter un type",
     remove: "Supprimer le type",
     word: "type",
-    description:
-      "Les types d'identification configurés ci-dessous sont communs à l'ensemble des widgets, de type équipement déclaré, du tableau actuel et uniquement pour ce tableau.",
   },
   license_info_types: {
     title: "Types d'informations de licence",
@@ -89,8 +79,6 @@ export const EXTRA_ENTRY_LISTS = {
     add: "Ajouter un type",
     remove: "Supprimer le type",
     word: "type",
-    description:
-      "Les types d'informations de licence configurés ci-dessous sont communs à l'ensemble des widgets, de type application, du tableau actuel et uniquement pour ce tableau.",
   },
 } as const;
 
@@ -98,6 +86,4 @@ export const EXTRA_ENTRY_LISTS = {
 export const LOCATIONS_LOOK = {
   title: "Emplacements",
   icon: IconMapPin,
-  description:
-    "Les emplacements configurés ci-dessous sont communs à l'ensemble des widgets, de type équipement déclaré, du tableau actuel et uniquement pour ce tableau. Chacun peut en contenir d'autres : Société > Bâtiment > Baie > Position.",
 };

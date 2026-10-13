@@ -1,21 +1,22 @@
-// The VLAN table of a board's Asset widgets: a subnet ("10.1.106.0/24"), the
-// VLAN that carries it (106) and its name. Empty as long as the board has
+// The VLAN table of an Asset widget: a subnet ("10.1.106.0/24"), the VLAN
+// that carries it (106) and its name. Empty as long as the widget has
 // recorded nothing.
 
-import type { ManagedDeviceAssetVlan, Id } from "@milo/shared";
+import type { ManagedDeviceAssetVlan } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
+import type { ListScope } from "../repositories/lists.js";
 
 const read = selection<{ vlans: string }>(
-  "SELECT vlans FROM board_managed_device_asset_settings WHERE board_id = ?",
+  "SELECT vlans FROM board_managed_device_asset_settings WHERE board_id = ? AND list_key = ?",
 );
 const write = mutation(
-  `INSERT INTO board_managed_device_asset_settings (board_id, vlans) VALUES (?, ?)
-   ON CONFLICT(board_id) DO UPDATE SET vlans = excluded.vlans`,
+  `INSERT INTO board_managed_device_asset_settings (board_id, list_key, vlans) VALUES (?, ?, ?)
+   ON CONFLICT(board_id, list_key) DO UPDATE SET vlans = excluded.vlans`,
 );
 
-/** The board's VLANs; none for a workstation without a board. */
-export const vlans = (boardId: Id | null): ManagedDeviceAssetVlan[] => {
-  const saved = boardId === null ? undefined : read.get(boardId)?.vlans;
+/** The widget's VLANs; none for a workstation without a widget. */
+export const vlans = (scope: ListScope | null): ManagedDeviceAssetVlan[] => {
+  const saved = scope === null ? undefined : read.get(scope.board, scope.list)?.vlans;
   if (!saved) return [];
   try {
     const list = JSON.parse(saved) as unknown;
@@ -28,8 +29,8 @@ export const vlans = (boardId: Id | null): ManagedDeviceAssetVlan[] => {
   }
 };
 
-export const saveVlans = (boardId: Id, list: ManagedDeviceAssetVlan[]): void => {
-  write.run(boardId, JSON.stringify(list));
+export const saveVlans = (scope: ListScope, list: ManagedDeviceAssetVlan[]): void => {
+  write.run(scope.board, scope.list, JSON.stringify(list));
 };
 
 /** An IPv4 address as a 32-bit number, or null if it is not one. */

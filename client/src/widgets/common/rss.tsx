@@ -267,7 +267,6 @@ function Feed({ blockId, config, onEdit, locked }: WidgetDisplayProps) {
         message="Aucun flux RSS"
         actionLabel={locked ? undefined : "Ajouter"}
         onAction={onEdit}
-        size="md"
         fill={false}
       />
     );

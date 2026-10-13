@@ -2,25 +2,15 @@
 // knows them: the widgets drawer, the panel and the settings one take from it
 // what they need.
 
-import { cardsIndicator } from "./cards";
-import { taskDuesIndicator } from "./dueDates";
-import { taskLabelsIndicator } from "./labels";
-import { listsIndicator } from "./lists";
 import { taskListIndicator } from "./list";
-import { membersIndicator } from "./members";
 import { accessWidgets } from "../in-section";
 import type { TaskIndicatorDisplayProps, TaskIndicatorWidget } from "./types";
 import type { TaskIndicatorType } from "@milo/shared";
 
-/** In the order in which the widgets drawer presents them. */
+/** In the order in which the widgets drawer presents them; their figures are the "Indicateurs" widgets' (widgets/indicators). */
 export const TASK_INDICATORS: TaskIndicatorWidget[] = [
   taskListIndicator,
   ...accessWidgets<TaskIndicatorType, TaskIndicatorDisplayProps>(),
-  cardsIndicator,
-  listsIndicator,
-  taskDuesIndicator,
-  membersIndicator,
-  taskLabelsIndicator,
 ];
 
 const BY_TYPE = new Map<TaskIndicatorType, TaskIndicatorWidget>(

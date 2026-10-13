@@ -148,8 +148,11 @@ const identificationValues = (stored: string): string[] => {
   }
 };
 
-/** A device's place, by its path: it is found by its building, its rack… */
-const locationOf = (id: string, stored: string | null): string => {
+/**
+ * A node of a stored tree, by its path: a device's place is found by its
+ * building, its rack…; an asset's category by its parents.
+ */
+const pathOf = (id: string, stored: string | null): string => {
   if (!id || !stored) return "";
   try {
     const list = JSON.parse(stored) as unknown;
@@ -176,6 +179,8 @@ interface FoundDeclaredAsset {
   location: string;
   /** Its board's locations tree, as stored: a JSON list. */
   board_locations: string | null;
+  /** Its board's categories tree, as stored: a JSON list. */
+  board_categories: string | null;
   board_id: Id;
   board: string;
   /** The widget that shows it: the one that opens it. */
@@ -194,9 +199,11 @@ const foundDeclaredAssets = Object.fromEntries(
               ${
                 DECLARED_ASSET_EXTRA_LISTS[kind].includes("locations")
                   ? `(SELECT locations FROM ${declaredAssetTables(kind).settings}
-                      WHERE board_id = x.board_id)`
+                      WHERE board_id = x.board_id AND list_key = x.list_key)`
                   : "NULL"
               } AS board_locations,
+              (SELECT categories FROM ${declaredAssetTables(kind).settings}
+                WHERE board_id = x.board_id AND list_key = x.list_key) AS board_categories,
               b.id AS board_id, b.name AS board,
               (SELECT w.id FROM board_widgets w JOIN board_sections s ON s.id = w.section_id
                 WHERE s.board_id = x.board_id AND w.type = '${declaredAssetListType(kind)}'
@@ -389,10 +396,10 @@ searchRoutes.get("/", (req, res) => {
                 item: String(a.id),
                 board_id: a.board_id,
                 title: a.name,
-                context: joinParts(a.category, a.maker, a.product, a.board),
+                context: joinParts(pathOf(a.category, a.board_categories), a.maker, a.product, a.board),
                 keywords: joinParts(
                   ...identificationValues(a.identifications),
-                  locationOf(a.location, a.board_locations),
+                  pathOf(a.location, a.board_locations),
                   a.supplier,
                   a.description,
                   a.notes,

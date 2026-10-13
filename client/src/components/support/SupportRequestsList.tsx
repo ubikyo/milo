@@ -39,6 +39,7 @@ import { inList } from "../../lib/lists";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import type { CSSProperties, ReactNode } from "react";
 import type { Actor, Id, SupportRequest, SupportStatus } from "@milo/shared";
+import { NewShortcut } from "../../lib/newShortcut";
 
 // The Support mode's request list: a section widget, like the
 // indicators (widgets/support/list.tsx). What it shows and what can be done in it —
@@ -547,7 +548,16 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
   // Outside Support mode, nothing to list. The rest lives in a separate
   // component: its hooks are thus called on each render, in the same order.
   if (!list) return null;
-  return <RequestsList config={config} list={list} />;
+  const { onAddRequest } = list;
+  return (
+    // "N" adds one, as "Nouveau ticket" does (lib/newShortcut).
+    <NewShortcut
+      action="Nouvelle demande"
+      run={onAddRequest && (() => onAddRequest(listKey(config)))}
+    >
+      <RequestsList config={config} list={list} />
+    </NewShortcut>
+  );
 }
 
 function RequestsList({ config, list }: { config: unknown; list: SupportList }) {
@@ -799,7 +809,6 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         message="Aucune demande"
         actionLabel="Nouveau ticket"
         onAction={onAddRequest}
-        size="md"
       />
     );
   }

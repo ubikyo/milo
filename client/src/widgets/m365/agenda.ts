@@ -1,13 +1,12 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import { useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api } from "../../api";
-import { BoardWidgetsContext } from "../../components/ui/IndicatorsPanel";
-import type { Indicator } from "../../components/ui/IndicatorsPanel";
 import { notifyError } from "../../lib/errors";
+import { useSources } from "../../lib/sources";
 import { usePublishedResults } from "../../lib/searchSources";
-import { calendarSourceOf, m365Event, shownCalendarsOf, widgetReference } from "@milo/shared";
-import type { AccessCalendar, AccessCalendarEvent, Id } from "@milo/shared";
+import { m365Event, shownCalendarsOf } from "@milo/shared";
+import type { AccessCalendar, AccessCalendarEvent, Id, SourceWidget } from "@milo/shared";
 
 // What the Calendar widget and those that follow it — "Rendez-vous" and its
 // "Indicateur" (appointments.tsx) — share: the days an appointment covers, the
@@ -85,30 +84,8 @@ export const useLastChosenDay = (calendarIds: Id[]): string =>
 
 // --- The Calendar widgets a widget follows ------------------------------------
 
-/** The board's Calendar widgets, in column order. */
-export const useCalendarWidgets = (): Indicator<string>[] =>
-  useContext(BoardWidgetsContext).filter((w) => w.type === "calendar");
-
-/**
- * The Calendar widget a widget names; undefined for all the board's — none
- * named, or one since removed.
- */
-export const useCalendarSource = (config: unknown): Indicator<string> | undefined => {
-  const calendars = useCalendarWidgets();
-  const chosen = calendarSourceOf(config);
-  return calendars.find((w) => w.id === chosen);
-};
-
-/** The Calendar widgets a widget follows: the one it names, otherwise all the board's. */
-export const useCalendarSources = (config: unknown): Indicator<string>[] => {
-  const calendars = useCalendarWidgets();
-  const source = useCalendarSource(config);
-  return source ? [source] : calendars;
-};
-
-/** A Calendar widget, as the drawer offers it: by its reference alone. */
-export const calendarLabel = (w: Indicator<string>, rank: number) =>
-  widgetReference(w.type, w.config) || String(rank + 1);
+/** The Calendar widgets a widget follows (SOURCES), on any board one sees. */
+export const useCalendarSources = (config: unknown): SourceWidget[] => useSources("calendar", config);
 
 /** The calendars a Calendar widget reads, as a key: they are read again when they change. */
 export const shownKeyOf = (config: unknown) =>

@@ -1020,13 +1020,34 @@ export interface Sending {
   text: string;
   html?: string;
   attachments?: MailAttachment[];
+  /** Copies, and hidden copies: an order's e-mail's. */
+  cc?: string[];
+  bcc?: string[];
+  /** Kept in the mailbox's sent items: correspondence, as an order's e-mail. */
+  keep?: boolean;
+  /** Headers of its own — "X-Milo-Reference" —, which a reply may be traced by. */
+  headers?: Record<string, string>;
+  /** Attached files, not cited by the HTML: an order's e-mail's. */
+  files?: { name: string; mime: string; content: Buffer }[];
 }
 
 /**
  * A send on behalf of a mailbox, through Graph (Mail.Send). The message is
  * not kept in its sent items: these are notifications, not correspondence.
  */
-export const sendViaGraph = async ({ from, to, subject, text, html, attachments }: Sending) => {
+export const sendViaGraph = async ({
+  from,
+  to,
+  subject,
+  text,
+  html,
+  attachments,
+  cc,
+  bcc,
+  keep,
+  headers,
+  files,
+}: Sending) => {
   await graph(`/users/${encodeURIComponent(from)}/sendMail`, {
     method: "POST",
     body: {
@@ -1034,16 +1055,29 @@ export const sendViaGraph = async ({ from, to, subject, text, html, attachments 
         subject,
         body: html ? { contentType: "HTML", content: html } : { contentType: "Text", content: text },
         toRecipients: [{ emailAddress: { address: to } }],
-        attachments: (attachments ?? []).map((p) => ({
-          "@odata.type": "#microsoft.graph.fileAttachment",
-          name: p.filename,
-          contentType: p.contentType,
-          contentBytes: p.content.toString("base64"),
-          isInline: true,
-          contentId: p.cid,
-        })),
+        ...(headers && {
+          internetMessageHeaders: Object.entries(headers).map(([name, value]) => ({ name, value })),
+        }),
+        ...(cc?.length && { ccRecipients: cc.map((address) => ({ emailAddress: { address } })) }),
+        ...(bcc?.length && { bccRecipients: bcc.map((address) => ({ emailAddress: { address } })) }),
+        attachments: [
+          ...(attachments ?? []).map((p) => ({
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            name: p.filename,
+            contentType: p.contentType,
+            contentBytes: p.content.toString("base64"),
+            isInline: true,
+            contentId: p.cid,
+          })),
+          ...(files ?? []).map((f) => ({
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            name: f.name,
+            contentType: f.mime,
+            contentBytes: f.content.toString("base64"),
+          })),
+        ],
       },
-      saveToSentItems: false,
+      saveToSentItems: keep === true,
     },
   });
 };

@@ -9,6 +9,7 @@ import type {
   Id,
   ListColor,
   PublicUser,
+  ReplyEditorView,
   SectionWidthUnit,
   SupportStatus,
 } from "./domain.js";
@@ -63,6 +64,8 @@ export interface UpdateMeInput {
   default_board?: string;
   /** Their notification settings: only the fields given change. */
   notification_settings?: Partial<NotificationSettings>;
+  /** How an e-mail being written first shows. */
+  reply_editor?: ReplyEditorView;
 }
 
 /**
@@ -232,6 +235,8 @@ export interface ProjectInput {
  */
 export interface ProjectCopyInput {
   board_id?: Id;
+  /** The "Projets" widget it goes to; without one, its own at home, the first elsewhere. */
+  list_key?: string;
   category_id?: Id;
   name?: string;
 }
@@ -314,6 +319,15 @@ export interface SupportLabelInput {
 }
 
 /** The routes of a kind of labels: those of cards, of projects, of Support. */
+/**
+ * A list widget, as its settings are addressed: its board and its key
+ * (LIST_KEY). Its labels, categories, milestone types and tables are its own.
+ */
+export interface ListRef {
+  board: Id;
+  list: string;
+}
+
 export type LabelsBase =
   | "/labels"
   | "/project-labels"
@@ -322,7 +336,10 @@ export type LabelsBase =
   | "/unmanaged-device-asset-labels"
   | "/application-asset-labels"
   | "/contact-labels"
-  | "/product-labels";
+  | "/product-labels"
+  | "/order-labels"
+  | "/warehouse-labels"
+  | "/location-labels";
 
 /**
  * The confirmation of a support mailbox: while it is pending, nothing is

@@ -1,4 +1,5 @@
 import { IconCode, IconHash } from "@tabler/icons-react";
+import { useListRef } from "../../lib/list-ref";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ASSET_NUMBER_TEMPLATE_NAME_MAX,
@@ -34,7 +35,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export default function AssetNumberTemplateFields({ kind }: { kind: DeclaredAssetKind }) {
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
   // A paste from the "Actions" menu may change the board: it is re-read.
   const pastes = board?.pastes ?? 0;
 
@@ -47,15 +48,15 @@ export default function AssetNumberTemplateFields({ kind }: { kind: DeclaredAsse
   const [toReset, setToReset] = useState<number | null>(null);
 
   const reload = useCallback(async () => {
-    if (boardId === null) return;
+    if (list === null) return;
     try {
-      const read = await api.getAssetNumberTemplates(kind, boardId);
+      const read = await api.getAssetNumberTemplates(kind, list);
       setOriginal(read);
       setDraft(read);
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [kind, boardId]);
+  }, [kind, list]);
 
   useEffect(() => {
     void reload();
@@ -68,17 +69,17 @@ export default function AssetNumberTemplateFields({ kind }: { kind: DeclaredAsse
     state.current = { original, draft };
   }, [original, draft]);
   useEffect(() => {
-    if (!register || boardId === null) return;
+    if (!register || list === null) return;
     return register(async () => {
       const { original: before, draft: after } = state.current;
       if (same(before.templates, after.templates)) return;
-      const saved = await api.updateAssetNumberTemplates(kind, boardId, after.templates);
+      const saved = await api.updateAssetNumberTemplates(kind, list, after.templates);
       setOriginal(saved);
       setDraft(saved);
     });
-  }, [register, kind, boardId]);
+  }, [register, kind, list]);
 
-  if (boardId === null || !register) return null;
+  if (list === null || !register) return null;
 
   /**
    * The rows as typed, back to templates: each keeps its code — by its rank
@@ -106,7 +107,7 @@ export default function AssetNumberTemplateFields({ kind }: { kind: DeclaredAsse
    */
   const writeCode = async (rank: number, code: string) => {
     const templates = draft.templates.map((t, i) => (i === rank ? { ...t, code } : t));
-    const saved = await api.updateAssetNumberTemplates(kind, boardId, templates);
+    const saved = await api.updateAssetNumberTemplates(kind, list, templates);
     setOriginal(saved);
     setDraft(saved);
   };
@@ -126,7 +127,6 @@ export default function AssetNumberTemplateFields({ kind }: { kind: DeclaredAsse
     <>
       <ListRows
         title="Formats de numéro d'asset"
-        description="Les formats configurés ci-dessous sont communs à l'ensemble des widgets, de ce type, du tableau actuel et uniquement pour ce tableau. Écrit en TypeScript, chacun construit le numéro d'un nouvel asset à partir de ses étiquettes."
         columns={COLUMNS}
         rows={draft.templates.map((t) => [t.name])}
         save={save}

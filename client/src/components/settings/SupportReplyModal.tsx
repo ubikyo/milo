@@ -1,6 +1,6 @@
 import { Button, Group, Modal, Splitter, Stack, Switch } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
@@ -22,7 +22,7 @@ import MailPreview, {
 import VariablesPane from "./VariablesPane";
 import type { PaneVariable } from "./VariablesPane";
 import { SUPPORT_REPLY_VARIABLES, SUPPORT_VARIABLE_GROUPS, fillSupportTemplate } from "@milo/shared";
-import type { SupportPerson, SupportVariableGroup } from "@milo/shared";
+import type { ReplyTemplateKey, SupportPerson, SupportVariableGroup } from "@milo/shared";
 import { DEFAULT_CONTENT_SUBJECT, inSampleReply, supportSample } from "../../lib/support-sample";
 import { themeWindow } from "../../lib/themeWindow";
 
@@ -38,7 +38,34 @@ interface SupportReplyModalProps {
   /** The variable sources offered: all, by default. */
   groups?: readonly SupportVariableGroup[];
   /** The e-mail template the message is previewed in. */
-  previewTemplate: "support_reply" | "support_auto_reply";
+  previewTemplate: ReplyTemplateKey;
+  /** Variables of its own, listed after the groups, each with its preview value. */
+  extraVariables?: readonly ExtraVariable[];
+}
+
+/**
+ * A variable as cited: "{{ orders.products }}", spaces allowed inside the
+ * braces — with the paragraph it stands alone in, if it does: a table there
+ * would close it before itself, and leave an empty one under.
+ */
+const variablePattern = (key: string) => {
+  const cited = `\\{\\{\\s*${key.replace(/\./g, "\\.")}\\s*\\}\\}`;
+  return new RegExp(`<p(?:\\s[^>]*)?>\\s*${cited}\\s*</p>|${cited}`, "g");
+};
+
+/** No variable of its own: one array, the preview's values stay the same. */
+const NO_EXTRA: readonly ExtraVariable[] = [];
+
+/** A variable beyond Support's: an order's supplier's, its contact's. */
+export interface ExtraVariable {
+  group: string;
+  /** As cited, between braces: "supplier.name". */
+  key: string;
+  label: string;
+  /** What the preview shows in its place. */
+  sample: string;
+  /** Its sample is HTML — an order's table —, put in as it is. */
+  html?: boolean;
 }
 
 // As wide as the e-mail templates' window (MailTemplateModal).
@@ -68,6 +95,7 @@ export default function SupportReplyModal({
   canEdit,
   groups = SUPPORT_VARIABLE_GROUPS,
   previewTemplate,
+  extraVariables = NO_EXTRA,
 }: SupportReplyModalProps) {
   // In Settings order, whatever the order received.
   const displayedGroups = SUPPORT_VARIABLE_GROUPS.filter((g) =>
@@ -128,6 +156,28 @@ export default function SupportReplyModal({
     () => supportSample(user, reply?.event, isContent ? DEFAULT_CONTENT_SUBJECT : undefined),
     [user, reply, isContent],
   );
+  // Its own variables' preview values, with the sample's; those that are
+  // HTML go in first, as they are — the others are escaped.
+  const values = useMemo(
+    () => ({
+      ...sample.values,
+      ...Object.fromEntries(extraVariables.filter((v) => !v.html).map((v) => [v.key, v.sample])),
+    }),
+    [sample, extraVariables],
+  );
+  const fill = useCallback(
+    (template: string) =>
+      fillSupportTemplate(
+        extraVariables
+          .filter((v) => v.html)
+          .reduce(
+            (text, v) => text.replace(variablePattern(v.key), () => v.sample),
+            template,
+          ),
+        values,
+      ),
+    [extraVariables, values],
+  );
 
   useEffect(() => {
     if (!reply) return;
@@ -135,8 +185,8 @@ export default function SupportReplyModal({
     api
       .previewReply(previewTemplate, {
         content: isContent
-          ? inSampleReply(fillSupportTemplate(typed, sample.values))
-          : fillSupportTemplate(typed, sample.values),
+          ? inSampleReply(fill(typed))
+          : fill(typed),
         ticket: sample.ticket,
         subject: sample.subject,
         name: reply.name,
@@ -148,12 +198,15 @@ export default function SupportReplyModal({
     return () => {
       current = false;
     };
-  }, [reply, typed, previewTemplate, sample, isContent]);
+  }, [reply, typed, previewTemplate, sample, fill, isContent]);
 
   const insert = (text: string) => editor?.chain().focus().insertContent(text).run();
   const variables: PaneVariable[] = SUPPORT_REPLY_VARIABLES.filter((v) =>
     displayedGroups.includes(v.group),
-  ).map((v) => ({ group: v.group, label: v.label, token: `{{${v.key}}}`, inserted: `{{${v.key}}}` }));
+  )
+    .map((v): { group: string; label: string; key: string } => ({ group: v.group, label: v.label, key: v.key }))
+    .concat(extraVariables.map((v) => ({ group: v.group, label: v.label, key: v.key })))
+    .map((v) => ({ group: v.group, label: v.label, token: `{{${v.key}}}`, inserted: `{{${v.key}}}` }));
 
   const save = async () => {
     setSaving(true);
@@ -205,7 +258,7 @@ export default function SupportReplyModal({
 
           <Splitter.Pane defaultSize={PANE_SIZES.editor} min={PANE_MINS.editor} collapsible style={paneStyle(undefined, panes.folded(1))}>
             <FoldablePane label="Message" folded={panes.folded(1)} onUnfold={() => panes.unfold(1)}>
-              <RichTextField editor={editor} fill />
+              <RichTextField editor={editor} fill noBlocks />
             </FoldablePane>
           </Splitter.Pane>
 

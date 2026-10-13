@@ -2,7 +2,7 @@ import { Button, Cascader, Modal, Select, Stack, Text, TextInput } from "@mantin
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import type { Category, Project, ProjectBoard } from "@milo/shared";
+import type { Category, Project, ProjectBoard, SourceWidget } from "@milo/shared";
 import { categoryNodes } from "../../lib/categories";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { TREE_CASCADER, locationTreeData, treePath } from "../ui/EditableTree";
@@ -10,12 +10,12 @@ import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
 import { themeWindow } from "../../lib/themeWindow";
 
-// Move or copy a project to a board. Both gestures ask the same
-// question — which one? — and the same dialog answers it, as for a list
+// Move or copy a project to a board's "Projets" widget. Both gestures ask the
+// same question — which one? — and the same dialog answers it, as for a list
 // (MoveOrCopyListModal).
 //
-// Categories being specific to each board, the project changes its own too:
-// we therefore ask which one hosts it in the target board.
+// Categories being specific to each widget, the project changes its own too:
+// we therefore ask which one hosts it in the target widget.
 //
 // What sets them apart: moving takes the project elsewhere, so its own board
 // is not a destination and its name does not change. Copying leaves it where
@@ -34,7 +34,7 @@ interface MoveOrCopyProjectModalProps {
    * are enough: the list's board gives a whole one, the drawer only
    * these.
    */
-  project: Pick<Project, "id" | "board_id" | "name" | "category_id"> | null;
+  project: Pick<Project, "id" | "board_id" | "list_key" | "name" | "category_id"> | null;
   boards: ProjectBoard[];
   onMoved: () => void | Promise<void>;
 }
@@ -51,7 +51,10 @@ export default function MoveOrCopyProjectModal({
   onMoved,
 }: MoveOrCopyProjectModalProps) {
   const [boardId, setBoardId] = useState<string | null>(null);
-  // "null" until the target board's categories are read.
+  // The "Projets" widgets one sees, and the one chosen in the target board.
+  const [widgets, setWidgets] = useState<SourceWidget[]>([]);
+  const [listKey, setListKey] = useState<string | null>(null);
+  // "null" until the target widget's categories are read.
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -67,11 +70,42 @@ export default function MoveOrCopyProjectModal({
     setCategories(null);
     setCategoryId(null);
     setName(project ? copyName(project.name) : "");
+    let abandoned = false;
+    api
+      .getSourceWidgets("project.list")
+      .then((read) => !abandoned && setWidgets(read))
+      .catch((e: unknown) => !abandoned && notifyError(errorMessage(e)));
+    return () => {
+      abandoned = true;
+    };
   }, [opened, project, copy]);
 
-  // The target board's categories, as soon as it is chosen.
+  // Moving leaves the project's own widget: it is no destination. Copying
+  // accepts it — duplicating in place is the common case.
+  const targets = useMemo(
+    () =>
+      widgets.filter(
+        (w) => copy || !(w.board_id === project?.board_id && w.key === project?.list_key),
+      ),
+    [widgets, copy, project],
+  );
+  const boardWidgets = useMemo(
+    () => targets.filter((w) => String(w.board_id) === boardId),
+    [targets, boardId],
+  );
+
+  // The target board's widget: the project's own when it is there, the first
+  // otherwise.
   useEffect(() => {
-    if (!boardId) {
+    const own = boardWidgets.find(
+      (w) => w.board_id === project?.board_id && w.key === project?.list_key,
+    );
+    setListKey((own ?? boardWidgets[0])?.key ?? null);
+  }, [boardWidgets, project]);
+
+  // The target widget's categories, as soon as it is chosen.
+  useEffect(() => {
+    if (!boardId || !listKey) {
       setCategories(null);
       setCategoryId(null);
       return undefined;
@@ -81,15 +115,14 @@ export default function MoveOrCopyProjectModal({
     setCategories(null);
     setCategoryId(null);
     api
-      .getCategories(boardId)
+      .getCategories({ board: Number(boardId), list: listKey })
       .then((list) => {
         if (abandoned) return;
         setCategories(list);
-        // In its own board, the project keeps its category; elsewhere, the
+        // In its own widget, the project keeps its category; elsewhere, the
         // first one offered, which can be changed.
         const own = list.find((c) => c.id === project?.category_id);
-        const chosen = Number(boardId) === project?.board_id ? own : undefined;
-        setCategoryId((chosen ? String(chosen.id) : categoryNodes(list)[0]?.id) ?? null);
+        setCategoryId((own ? String(own.id) : categoryNodes(list)[0]?.id) ?? null);
       })
       .catch((e: unknown) => {
         if (!abandoned) notifyError(errorMessage(e));
@@ -98,30 +131,33 @@ export default function MoveOrCopyProjectModal({
     return () => {
       abandoned = true;
     };
-  }, [boardId, project]);
+  }, [boardId, listKey, project]);
 
   // The destination's tree, to pick the category in, level after level.
   const nodes = useMemo(() => categoryNodes(categories ?? []), [categories]);
   const categoryData = useMemo(() => locationTreeData(nodes), [nodes]);
 
-  // Moving excludes the board that already holds the project; copying accepts it.
+  // The boards with a widget to go to.
   const boardOptions = boards
-    .filter((board) => copy || board.id !== project?.board_id)
+    .filter((board) => targets.some((w) => w.board_id === board.id))
     .map((board) => ({ value: String(board.id), label: board.name }));
+  const widgetOptions = boardWidgets.map((w) => ({ value: w.key, label: w.reference }));
 
   const validate = async () => {
-    if (!boardId || !categoryId || !project) return;
+    if (!boardId || !listKey || !categoryId || !project) return;
     setSaving(true);
     try {
       if (copy) {
         await api.copyProject(project.id, {
           board_id: Number(boardId),
+          list_key: listKey,
           category_id: Number(categoryId),
           name: name.trim(),
         });
       } else {
         await api.updateProject(project.id, {
           board_id: Number(boardId),
+          list_key: listKey,
           category_id: Number(categoryId),
         });
       }
@@ -148,7 +184,7 @@ export default function MoveOrCopyProjectModal({
 
         {boardOptions.length === 0 ? (
           <Text size="sm" c="dimmed">
-            Il n'existe aucun autre tableau où déplacer ce projet.
+            Il n'existe aucun autre widget « Projets » où déplacer ce projet.
           </Text>
         ) : (
           <>
@@ -161,17 +197,28 @@ export default function MoveOrCopyProjectModal({
               allowDeselect={false}
             />
 
-            {/* A project always has a category, and those of the destination board
-                are not those of the source board. A board with none
-                says so in the field: moving then remains
-                impossible. */}
+            {/* A board may carry several "Projets" widgets: each has its
+                projects, its categories and its labels. */}
+            {widgetOptions.length > 1 && (
+              <Select
+                label="Widget de destination"
+                data={widgetOptions}
+                value={listKey}
+                onChange={setListKey}
+                allowDeselect={false}
+              />
+            )}
+
+            {/* A project always has a category, and those of the destination
+                widget are not those of the source widget. A widget with none
+                says so in the field: moving then remains impossible. */}
             <Cascader
-              label="Catégorie dans ce tableau"
+              label="Catégorie dans ce widget"
               placeholder={
                 !boardId
                   ? "Choisissez d'abord un tableau"
                   : categories?.length === 0
-                    ? "Aucune catégorie dans ce tableau"
+                    ? "Aucune catégorie dans ce widget"
                     : "Choisir une catégorie"
               }
               data={categoryData}
@@ -183,7 +230,7 @@ export default function MoveOrCopyProjectModal({
               nothingFoundMessage="Aucune catégorie"
               {...TREE_CASCADER}
               searchable
-              disabled={!boardId || categories === null}
+              disabled={!boardId || !listKey || categories === null}
               required
             />
 
@@ -211,7 +258,7 @@ export default function MoveOrCopyProjectModal({
           color="teal"
           onClick={validate}
           loading={saving}
-          disabled={!boardId || !categoryId || (copy && !name.trim())}
+          disabled={!boardId || !listKey || !categoryId || (copy && !name.trim())}
         >
           {copy ? "Copier" : "Déplacer"}
         </Button>

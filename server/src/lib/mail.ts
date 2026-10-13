@@ -26,6 +26,15 @@ export interface Mail {
   html?: string;
   /** What the HTML cites as "cid:" — the header logo. */
   attachments?: MailAttachment[];
+  /** Copies, and hidden copies. */
+  cc?: string[];
+  bcc?: string[];
+  /** Kept in the sending mailbox's sent items. */
+  keep?: boolean;
+  /** Headers of its own: "X-Milo-Reference". */
+  headers?: Record<string, string>;
+  /** Attached files: an order's e-mail's. */
+  files?: { name: string; mime: string; content: Buffer }[];
 }
 
 /**

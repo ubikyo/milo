@@ -56,18 +56,18 @@ export const DELETION = "delete_after_import";
 
 const boardOf = selection<{ name: string }>("SELECT name FROM boards WHERE id = ?");
 const supportLabel = selection<{ id: Id; name: string }>(
-  "SELECT id, name FROM support_labels WHERE id = ? AND board_id = ?",
+  "SELECT id, name FROM support_labels WHERE id = ? AND board_id = ? AND list_key = ?",
 );
-const boardSupportLabels = selection<{ id: Id; name: string }>(
-  "SELECT id, name FROM support_labels WHERE board_id = ? ORDER BY position, id",
+const listSupportLabels = selection<{ id: Id; name: string }>(
+  "SELECT id, name FROM support_labels WHERE board_id = ? AND list_key = ? ORDER BY position, id",
 );
 
 /**
  * The labels a list sets on every incoming e-mail: those it chose, among its
- * board's; without a choice, those of its board bearing the default names.
+ * own; without a choice, those of its own bearing the default names.
  */
 const newMessageLabels = (config: Record<string, unknown>, boardId: Id): Id[] => {
-  const labels = boardSupportLabels.all(boardId);
+  const labels = listSupportLabels.all(boardId, listKey(config));
   const chosen = config[NEW_MESSAGE_LABELS];
   if (Array.isArray(chosen)) {
     return chosen.map(Number).filter((id) => labels.some((l) => l.id === id));
@@ -107,7 +107,9 @@ const inboxes = (
     for (const entry of list) {
       const value = typeof entry?.[key] === "string" ? (entry[key] as string).trim() : "";
       if (!value || (uniquePerValue && views.has(value.toLowerCase()))) continue;
-      const label = entry.label_id ? supportLabel.get(entry.label_id, widget.board_id) : undefined;
+      const label = entry.label_id
+        ? supportLabel.get(entry.label_id, widget.board_id, listKey(config))
+        : undefined;
       const board = boardOf.get(widget.board_id)?.name ?? "";
       const inbox: Inbox = {
         value,

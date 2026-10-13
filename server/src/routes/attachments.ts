@@ -103,6 +103,7 @@ cardMediaRoutes.post("/attachments", fileBody, (req, res) => {
     content.length,
     req.user.id,
     now(),
+    card.id,
   );
 
   notify({

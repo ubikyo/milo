@@ -4,13 +4,13 @@ import {
   IconChevronRight,
   IconMessage,
   IconPencil,
-  IconSend2,
+  IconSend,
   IconTrash,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { Fragment, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { RED } from "../../themes/colors";
+import { GREEN, RED } from "../../themes/colors";
 import { PersonAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import EmptyPanel from "../ui/EmptyPanel";
@@ -274,6 +274,19 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
   );
 }
 
+/**
+ * The send button, as the test button of the sending address in Settings /
+ * Entra (SenderField): 26 px in a 36 px high field, 5 px from its edges, and
+ * 5 px more between the text and the button.
+ */
+const FIELD_HEIGHT = 36;
+const SEND_SIZE = 26;
+const SEND_INSET = (FIELD_HEIGHT - SEND_SIZE) / 2;
+const SEND_SECTION = SEND_SIZE + 2 * SEND_INSET + 5;
+// Mantine sets the right section 1 px inside the field, off its border: the
+// button's insets are counted from the border's outer edge.
+const SECTION_OFFSET = 1;
+
 interface CommentThreadProps {
   comments: ThreadItem[];
   onAdd: (text: string) => void;
@@ -306,32 +319,48 @@ export default function CommentThread({
       {/* The input keeps its 30 px below it; the stack's gap is zero,
           otherwise it would add to that inset. */}
       {!readOnly && (
-        <Group align="flex-end" gap="xs" pb={30}>
-          <Textarea
-            placeholder="Ajouter un commentaire…"
-            value={draft}
-            onChange={(e) => setDraft(e.currentTarget.value)}
-            autosize
-            minRows={1}
-            maxRows={4}
-            style={{ flex: 1 }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-          />
-          <ActionIcon
-            variant="filled"
-            color="teal"
-            size="lg"
-            onClick={submit}
-            aria-label="Envoyer le commentaire"
-          >
-            <IconSend2 size={16} />
-          </ActionIcon>
-        </Group>
+        <Textarea
+          pb={30}
+          placeholder="Ajouter un commentaire…"
+          value={draft}
+          onChange={(e) => setDraft(e.currentTarget.value)}
+          autosize
+          minRows={1}
+          maxRows={4}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          // The send button inside the field, at its right: on its last
+          // line as it grows.
+          rightSectionWidth={SEND_SECTION}
+          rightSectionProps={{
+            style: {
+              alignItems: "flex-end",
+              justifyContent: "flex-end",
+              paddingBottom: SEND_INSET - SECTION_OFFSET,
+              paddingRight: SEND_INSET - SECTION_OFFSET,
+            },
+          }}
+          // On a single line, a multiline field is a little lower than a
+          // TextInput (about 35 px): brought back to its 36 px, the button sits
+          // centered in it, as in Entra.
+          styles={{ input: { minHeight: FIELD_HEIGHT } }}
+          rightSection={
+            <ActionIcon
+              variant="filled"
+              radius={3}
+              size={SEND_SIZE}
+              onClick={submit}
+              aria-label="Envoyer le commentaire"
+              style={{ backgroundColor: GREEN, color: "#ffffff" }}
+            >
+              <IconSend size={16} />
+            </ActionIcon>
+          }
+        />
       )}
 
       {comments.length === 0 ? (

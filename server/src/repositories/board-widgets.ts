@@ -6,7 +6,7 @@
 import type { BoardWidget, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { BoardSectionRow, BoardWidgetRow, NextRow } from "../db/rows.js";
-import { withNewKey } from "./lists.js";
+import { moveList, withNewKey } from "./lists.js";
 import { now } from "../lib/time.js";
 
 /** The widget as the API returns it: its configuration re-read as an object. */
@@ -202,6 +202,20 @@ export const boardWidgets = {
    */
   store: transaction((sectionId: Id, ids: Id[]) => {
     ids.forEach((id, place) => placeWidget.run(sectionId, place, id));
+  }),
+  /**
+   * The widget, moved to another section — of its board or of another — at
+   * the given place. It stays the same widget: its id, its configuration; a
+   * list's items follow it to the other board (repositories/lists.ts).
+   */
+  move: transaction((widget: BoardWidgetRow, from: Id, sectionId: Id, to: Id, index: number) => {
+    const ids = sectionWidgets
+      .all(sectionId)
+      .map((w) => w.id)
+      .filter((other) => other !== widget.id);
+    ids.splice(Math.min(Math.max(0, index), ids.length), 0, widget.id);
+    ids.forEach((wid, place) => placeWidget.run(sectionId, place, wid));
+    moveList(widget.type, widget.config, from, to);
   }),
   /** The copy, of the same type and configuration, is placed just under the original. */
   duplicate: transaction((original: BoardWidgetRow): Id => {

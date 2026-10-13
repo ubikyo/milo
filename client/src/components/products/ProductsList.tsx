@@ -1,4 +1,4 @@
-import { Center, Group, Table, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Center, Group, Table, Text, UnstyledButton } from "@mantine/core";
 import {
   IconChevronDown,
   IconChevronUp,
@@ -52,9 +52,11 @@ import { inList } from "../../lib/lists";
 import { useWidgetAccess } from "../../lib/rights";
 import { clearRequest, useRequestedItem } from "../../lib/searchSources";
 import { useProducts } from "../../lib/products";
+import { useListRef } from "../../lib/list-ref";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { STRONG_TEXT } from "../../themes/colors";
+import { NewShortcut } from "../../lib/newShortcut";
 
 // The list of a Produits widget (widgets/product): the products entered by
 // hand. The same grid as the contacts' (ContactsList): its header, its sort,
@@ -79,7 +81,7 @@ const LABELS_SHOWN = 2;
 const LABEL_HEIGHT = 20;
 
 export type ColumnKey =
-  "labels" | "favorite" | "name" | "category" | "tracking";
+  "labels" | "favorite" | "sku" | "name" | "category" | "tracking";
 
 /** A product as the grid reads it: its category's path beside its id. */
 type Row = Product & { category_path: string; category_name: string };
@@ -107,6 +109,7 @@ const VALUES: Record<ColumnKey, (p: Row) => string | number | null> = {
   labels: (p) => labelRank(p.labels, null),
   // The favorites first.
   favorite: (p) => (p.favorite ? 0 : 1),
+  sku: (p) => p.sku || null,
   name: (p) => p.name || null,
   category: (p) => p.category_path || null,
   tracking: (p) => productTrackingLabel(p.tracking),
@@ -140,11 +143,9 @@ const CHOICES: Record<
 
 /** Does the product pass every filter? */
 const chosen = (f: Filters, p: Row): boolean => {
-  if (
-    f.name.trim() &&
-    !p.name.toLowerCase().includes(f.name.trim().toLowerCase())
-  )
-    return false;
+  // The name's filter finds a product by its SKU too.
+  const searched = f.name.trim().toLowerCase();
+  if (searched && ![p.name, p.sku].some((v) => v.toLowerCase().includes(searched))) return false;
   return (Object.keys(CHOICES) as (keyof typeof CHOICES)[]).every(
     (key) =>
       f[key] === ALL_OPTION || CHOICES[key](p).some((o) => o.value === f[key]),
@@ -156,6 +157,7 @@ export const PRODUCT_COLUMNS: (ListColumn & { key: ColumnKey })[] = [
   // It picks the group it shows.
   { key: "labels", label: "Étiquettes", labelGroups: PRODUCT_ROUTES.labels },
   { key: "favorite", label: "Favoris", minWidth: STAR_COLUMN_MIN },
+  { key: "sku", label: "SKU" },
   { key: "name", label: "Nom" },
   // Its whole path, or the category alone.
   { key: "category", label: "Catégorie", formats: PATH_FORMATS },
@@ -253,16 +255,17 @@ export default function ProductsList({
   const board = useContext(CopyPasteContext)?.board;
   const boardId = board?.id;
   const { products: all, reload } = useProducts(boardId);
-  // The board's categories tree: each product reads with its category's path.
+  // The widget's categories tree: each product reads with its category's path.
   // Re-read when the products are — a change of the tree announces them too.
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const list = useListRef();
   useEffect(() => {
-    if (boardId === undefined) return;
+    if (!list) return;
     api
-      .getProductSettings(boardId)
+      .getProductSettings(list)
       .then((s) => setCategories(s.categories))
       .catch((e) => notifyError(errorMessage(e)));
-  }, [boardId, all]);
+  }, [list, all]);
   // Those of this widget only.
   const products = useMemo(() => {
     const paths = locationPaths(categories);
@@ -440,6 +443,7 @@ export default function ProductsList({
         {resize.handle(id)}
       </Table.Th>
     ),
+    sku: (id) => th(id, "SKU", "sku", undefined, { whiteSpace: "nowrap" }),
     name: (id) =>
       th(
         id,
@@ -490,9 +494,23 @@ export default function ProductsList({
         ) : null}
       </Table.Td>
     ),
+    sku: (product) => (
+      <Table.Td key="sku">
+        <TextCell value={product.sku} />
+      </Table.Td>
+    ),
     name: (product) => (
       <Table.Td key="name">
-        <TextCell value={product.name} />
+        {product.archived ? (
+          <Group gap={6} wrap="nowrap">
+            <TextCell value={product.name} />
+            <Badge size="sm" color="gray" variant="filled" radius="sm" tt="none" style={{ flexShrink: 0 }}>
+              Archivé
+            </Badge>
+          </Group>
+        ) : (
+          <TextCell value={product.name} />
+        )}
       </Table.Td>
     ),
     category: (product, _group, format) => (
@@ -531,7 +549,8 @@ export default function ProductsList({
           <Table.Tr
             key={product.id}
             onClick={() => setDrawer({ product })}
-            style={{ cursor: "pointer" }}
+            // Archived: faded, still opened — to be brought back.
+            style={{ cursor: "pointer", opacity: product.archived ? 0.55 : undefined }}
           >
             {columns.map((c) => (
               <Fragment key={c.id}>{cells[c.key](product, c.group, c.format)}</Fragment>
@@ -576,7 +595,8 @@ export default function ProductsList({
   if (boardId === undefined || !products || !all) return null;
 
   return (
-    <>
+    // "N" adds one, as "Ajouter" does (lib/newShortcut).
+    <NewShortcut action={"Nouveau produit"} run={canAdd ? () => setDrawer({ product: null }) : undefined}>
       {products.length === 0 ? (
         // With nothing to show, only the empty state, which offers to add.
         <EmptyPanel
@@ -584,7 +604,6 @@ export default function ProductsList({
           message="Aucun produit"
           actionLabel={canAdd ? "Ajouter un produit" : undefined}
           onAction={canAdd ? () => setDrawer({ product: null }) : undefined}
-          size="md"
         />
       ) : (
         // A section narrower than the list makes it scroll sideways.
@@ -598,9 +617,13 @@ export default function ProductsList({
         listKey={listKey(config)}
         product={drawer?.product ?? null}
         onSaved={() => void reload()}
+        onDuplicated={(copy) => {
+          void reload();
+          setDrawer({ product: copy });
+        }}
         canSave={accessIncludes(access, "update")}
         canDelete={accessIncludes(access, "delete")}
       />
-    </>
+    </NewShortcut>
   );
 }

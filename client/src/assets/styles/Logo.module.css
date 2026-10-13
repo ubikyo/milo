@@ -13,9 +13,10 @@
 }
 
 /* On the login screen it waves without waiting for the mouse. Anyone who
-   asked their system for less animation sees it still. */
+   asked their system for less animation sees it still. --wave-duration lets
+   a flag wave at its own pace. */
 .animatedLogo .flag {
-  animation: wave 3.6s ease-in-out infinite;
+  animation: wave var(--wave-duration, 3.6s) ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

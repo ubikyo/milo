@@ -28,6 +28,7 @@ import { creationNote } from "./comments.js";
 import { nextCardReference } from "./references.js";
 import { boardLabelGroups } from "./label-groups.js";
 import { keyInBoard } from "./lists.js";
+import type { ListScope } from "./lists.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
 // --- Reads from the source ------------------------------------------------
@@ -99,62 +100,96 @@ const carryAttachment = mutation(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
-// --- Labels from one board to another ---------------------------------------
-// A label belongs to its board. Copying to another board therefore cannot take
-// the link as is: we look there for the same label, by name and color, and
-// create it if it is missing. Without this, cards would arrive bare and we
+// --- Labels from one widget to another --------------------------------------
+// A label belongs to its "Tâches" widget (ListScope). Copying to another
+// therefore cannot take the link as is: we look there for the same label, by
+// name and color, and create it if it is missing. Without this, cards would arrive bare and we
 // would no longer know what they carried.
 
 const twinLabel = selection<LabelRow>(
   `SELECT * FROM labels
-   WHERE board_id = ? AND name = ? COLLATE NOCASE AND color = ?
+   WHERE board_id = ? AND list_key = ? AND name = ? COLLATE NOCASE AND color = ?
    ORDER BY position, id`,
 );
 const nextLabelRank = scalar<{ next: number }>(
-  "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM labels WHERE board_id = ?",
+  "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM labels WHERE board_id = ? AND list_key = ?",
 );
 const createLabel = mutation(
-  "INSERT INTO labels (board_id, group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  `INSERT INTO labels (board_id, list_key, group_id, name, color, position, created_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
 
 /** The twin, created in the group of the same name — itself created if needed. */
-const createTwin = (label: LabelRow, targetBoard: Id, timestamp: string): Id => {
+const createTwin = (label: LabelRow, target: ListScope, timestamp: string): Id => {
   const groupName = boardLabelGroups.byId(label.group_id)?.name ?? DEFAULT_LABEL_GROUP;
   const id = Number(
     createLabel.run(
-      targetBoard,
-      boardLabelGroups.named(targetBoard, groupName),
+      target.board,
+      target.list,
+      boardLabelGroups.named(target, groupName),
       label.name,
       label.color,
-      nextLabelRank(targetBoard).next,
+      nextLabelRank(target.board, target.list).next,
       timestamp,
     ).lastInsertRowid,
   );
-  boardLabelGroups.renumber(targetBoard);
+  boardLabelGroups.renumber(target);
   return id;
 };
 
 /**
- * The destination board's label that matches this one. In the source board,
- * it is itself; elsewhere, its twin, created if needed.
+ * The destination widget's label that matches this one. In the source
+ * widget, it is itself; elsewhere, its twin, created if needed.
  */
 const matchingLabel = (
   label: LabelRow,
-  targetBoard: Id,
+  target: ListScope,
   cache: Map<Id, Id>,
   timestamp: string,
 ): Id => {
-  if (label.board_id === targetBoard) return label.id;
+  if (label.board_id === target.board && label.list_key === target.list) return label.id;
 
   const already = cache.get(label.id);
   if (already !== undefined) return already;
 
-  const twin = twinLabel.get(targetBoard, label.name, label.color);
-  const id = twin?.id ?? createTwin(label, targetBoard, timestamp);
+  const twin = twinLabel.get(target.board, target.list, label.name, label.color);
+  const id = twin?.id ?? createTwin(label, target, timestamp);
 
   cache.set(label.id, id);
   return id;
 };
+
+const unlinkLabels = mutation("DELETE FROM card_labels WHERE card_id = ?");
+const cardsOfListIds = selection<{ id: Id }>("SELECT id FROM task_cards WHERE list_id = ?");
+
+/**
+ * Cards arrived in another "Tâches" widget — moved there, or with their list:
+ * their labels become their twins there, created if needed. Returns true when
+ * one had to be matched.
+ */
+export const relabelCards = transaction((cardIds: Id[], target: ListScope): boolean => {
+  const timestamp = now();
+  const cache = new Map<Id, Id>();
+  let matched = false;
+  for (const cardId of cardIds) {
+    const carried = cardLabels.all(cardId);
+    if (carried.every((l) => l.board_id === target.board && l.list_key === target.list)) continue;
+    unlinkLabels.run(cardId);
+    for (const label of carried) {
+      const before = cache.size;
+      linkLabel.run(cardId, matchingLabel(label, target, cache, timestamp));
+      if (cache.size > before) matched = true;
+    }
+  }
+  return matched;
+});
+
+/** The cards of a list, gone with it to another widget: their labels follow. */
+export const relabelList = (listId: Id, target: ListScope): boolean =>
+  relabelCards(
+    cardsOfListIds.all(listId).map((c) => c.id),
+    target,
+  );
 
 // --- A card -----------------------------------------------------------------
 
@@ -162,8 +197,8 @@ const matchingLabel = (
 interface CardCopy {
   listId: Id;
   rank: number;
-  /** The destination list's board: it holds the labels. */
-  boardId: Id;
+  /** The destination list's widget: it holds the labels. */
+  target: ListScope;
   text: string;
   userId: Id;
   timestamp: string;
@@ -173,7 +208,7 @@ interface CardCopy {
 
 /** Copies a card and everything it carries; returns the copy's identifier. */
 const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
-  const { listId, rank, boardId, text, userId, timestamp, labels } = copy;
+  const { listId, rank, target, text, userId, timestamp, labels } = copy;
   const separator = card.kind === "separator";
 
   // The reference is not the original's, but the next of the destination
@@ -211,7 +246,7 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
   }
 
   for (const label of cardLabels.all(card.id)) {
-    linkLabel.run(cardId, matchingLabel(label, boardId, labels, timestamp));
+    linkLabel.run(cardId, matchingLabel(label, target, labels, timestamp));
   }
 
   carryCovers.run(cardId, timestamp, card.id);
@@ -307,12 +342,20 @@ export const copyTaskList = transaction((copy: ListCopy): Id => {
     createList.run(boardId, name, next, color, key, timestamp).lastInsertRowid,
   );
 
-  // Labels already matched from one board to another, so as to look them up
+  // Labels already matched from one widget to another, so as to look them up
   // — and create them — only once per copied list.
   const labels = new Map<Id, Id>();
 
   for (const [rank, card] of cardsOfList.all(sourceId).entries()) {
-    copyCard(card, { listId, rank, boardId, text: card.text, userId, timestamp, labels });
+    copyCard(card, {
+      listId,
+      rank,
+      target: { board: boardId, list: key },
+      text: card.text,
+      userId,
+      timestamp,
+      labels,
+    });
   }
 
   return listId;
@@ -332,7 +375,7 @@ export const duplicateTaskCard = transaction((cardId: Id, userId: Id): Id => {
   const copyId = copyCard(card, {
     listId: list.id,
     rank: taskCards.nextPosition(list.id).next,
-    boardId: list.board_id,
+    target: { board: list.board_id, list: list.list_key },
     // A separator always splits in the same place: its label stays.
     text: separator ? card.text : `${card.text} (copie)`,
     userId,

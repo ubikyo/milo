@@ -10,6 +10,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import {
+  IconBuilding,
   IconSearch,
   IconStar,
   IconStarFilled,
@@ -43,6 +44,19 @@ import type {
 //   - a search, which filters all of it, without regard to accents.
 //
 // A retained actor who no longer has access stays listed, to be removed.
+//
+// A record may offer contacts too, under the groups ("contacts"): an order's
+// supplier and its people who have an e-mail address. Their chips follow the
+// people's; the list checks and unchecks them.
+
+/** A contact offered as an actor: a person, or their company. */
+export interface ContactActorOption {
+  /** Its contact's id, as a string. */
+  id: string;
+  name: string;
+  email: string;
+  company: boolean;
+}
 
 /** The workspace's people, by widget type: read once, again after a while. */
 const PEOPLE_TTL = 60_000;
@@ -104,6 +118,30 @@ interface ActorPickerProps {
   /** See ChipPicker: a compact trigger in place of the chips. */
   target?: ReactNode;
   position?: FloatingPosition;
+  /** Retained actors who cannot be removed: those a message was sent to. */
+  locked?: string[];
+  /** Contacts offered under the groups, with their own value: an order's supplier's. */
+  contacts?: {
+    /** Their heading in the list: the company's name. */
+    title: string;
+    options: ContactActorOption[];
+    value: string[];
+    onChange: (value: string[]) => void;
+    /** Retained contacts who cannot be removed, as "locked". */
+    locked?: string[];
+  };
+}
+
+/** A contact's bubble: a person's initials, a building for a company. */
+function ContactAvatar({ contact, size }: { contact: ContactActorOption; size: number }) {
+  if (contact.company) {
+    return (
+      <Avatar size={size} radius="xl" variant="light" color="gray" title={contact.name}>
+        <IconBuilding size={Math.round(size * 0.6)} />
+      </Avatar>
+    );
+  }
+  return <PersonAvatar person={{ id: 0, name: contact.name, email: contact.email, gravatar_url: "" }} size={size} />;
 }
 
 /** A group's bubble: the same as a person's, a pictogram in place of the initials. */
@@ -133,6 +171,8 @@ export default function ActorPicker({
   leadingChips,
   target,
   position,
+  locked = [],
+  contacts,
 }: ActorPickerProps) {
   const { favorites, toggle } = useFavorites();
   const [search, setSearch] = useState("");
@@ -192,6 +232,16 @@ export default function ActorPicker({
     (p) => !accountOf(p) && matches(`${p.name} ${p.email}`),
   );
   const listGroups = groups.filter((g) => matches(`${g.name} ${g.email}`));
+  // The contacts offered, and those retained — still listed while they are, to be unchecked.
+  const listContacts = (contacts?.options ?? []).filter((c) => matches(`${c.name} ${c.email}`));
+  const chosenContacts = (contacts?.options ?? []).filter((c) => contacts?.value.includes(c.id));
+  const toggleContact = (id: string) => {
+    if (!contacts) return;
+    if (contacts.value.includes(id) && contacts.locked?.includes(id)) return;
+    contacts.onChange(
+      contacts.value.includes(id) ? contacts.value.filter((v) => v !== id) : [...contacts.value, id],
+    );
+  };
 
   /** The accounts of these people: created for those who have none yet. */
   const accountsOf = async (persons: DirectoryUser[]): Promise<PublicUser[]> => {
@@ -231,7 +281,8 @@ export default function ActorPicker({
   const toggleGroup = async (group: WorkspacePeople["groups"][number]) => {
     const members = groupMembers(group);
     if (groupChosen(group)) {
-      const leaving = new Set(members.map((p) => String(accountOf(p)?.id)));
+      // Those a message was sent to stay.
+      const leaving = new Set(members.map((p) => String(accountOf(p)?.id)).filter((id) => !locked.includes(id)));
       onChange(value.filter((id) => !leaving.has(id)));
       return;
     }
@@ -256,18 +307,32 @@ export default function ActorPicker({
       listOptions={list}
       value={value}
       onChange={onChange}
+      locked={locked}
       fullWidthOptions
       separated
       dropdownWidth={LIST_WIDTH}
       listMaxHeight={LIST_MAX_HEIGHT}
       emptyText={
-        people === null || newItems.length || listGroups.length
+        people === null || newItems.length || listGroups.length || listContacts.length
           ? ""
           : search.trim()
             ? "Personne ne correspond dans ce workspace"
             : "Personne n'a accès à ce type de widget"
       }
-      leadingChips={leadingChips}
+      leadingChips={
+        chosenContacts.length ? (
+          <>
+            {leadingChips}
+            {chosenContacts.map((c) => (
+              <span key={c.id} style={{ display: "inline-flex" }} aria-label={c.name} title={c.name}>
+                <ContactAvatar contact={c} size={chipHeight} />
+              </span>
+            ))}
+          </>
+        ) : (
+          leadingChips
+        )
+      }
       target={target}
       position={position}
       onClose={() => setSearch("")}
@@ -444,6 +509,42 @@ export default function ActorPicker({
                   </UnstyledButton>
                 );
               })}
+            </Stack>
+          )}
+          {contacts && listContacts.length > 0 && (
+            // The contacts, last, under their company's name.
+            <Stack
+              gap={0}
+              style={list.length || newItems.length || listGroups.length ? { borderTop: RULE } : undefined}
+            >
+              <Text size="xs" c="dimmed" fw={600} px={10} pt={8} pb={4} truncate>
+                {contacts.title}
+              </Text>
+              {listContacts.map((c, rank) => (
+                <UnstyledButton
+                  key={c.id}
+                  onClick={() => toggleContact(c.id)}
+                  disabled={contacts.value.includes(c.id) && contacts.locked?.includes(c.id)}
+                  px={10}
+                  py={8}
+                  style={rank < listContacts.length - 1 ? { borderBottom: RULE } : undefined}
+                  data-row
+                >
+                  <Group gap={8} wrap="nowrap">
+                    <Checkbox
+                      checked={contacts.value.includes(c.id)}
+                      disabled={contacts.value.includes(c.id) && contacts.locked?.includes(c.id)}
+                      readOnly
+                      size="xs"
+                      tabIndex={-1}
+                      aria-hidden
+                      style={{ pointerEvents: "none" }}
+                    />
+                    <ContactAvatar contact={c} size={chipHeight} />
+                    <NameAndAddress name={c.name} email={c.email} />
+                  </Group>
+                </UnstyledButton>
+              ))}
             </Stack>
           )}
         </>

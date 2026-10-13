@@ -1,11 +1,14 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useListRef } from "../../lib/list-ref";
 import type { ComponentType } from "react";
 import { DECLARED_ASSET_EXTRA_LISTS, DECLARED_ASSET_NAME_MAX } from "@milo/shared";
 import type {
   DeclaredAssetEntry,
   DeclaredAssetKind,
+  DeclaredAssetLocation,
   DeclaredAssetNoun,
   DeclaredAssetSettings,
+  Label,
 } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -14,6 +17,7 @@ import { DrawerRegistrationsContext } from "../ui/IndicatorDrawer";
 import { pluralize } from "../ui/DrawerRows";
 import { ListRows } from "../ui/EditableRows";
 import EditableTree from "../ui/EditableTree";
+import type { TreeWords } from "../ui/EditableTree";
 import type { Column, Row } from "../ui/EditableRows";
 import {
   DECLARED_ASSET_LOOKS,
@@ -21,27 +25,28 @@ import {
   EXTRA_ENTRY_LISTS,
   LOCATIONS_LOOK,
   SUPPLIER_ICON,
-  agreement,
-  capitalized,
-  listDescription,
   usedBy,
 } from "./kinds";
 
 // The open board's lists of one declared asset kind, in the drawer of its
-// widget: categories, suppliers, makers, and products — each of a category
-// and a maker —, in the kind's words: device types, brands and models;
-// software types, publishers and applications. Like the managed device
-// asset tables (ManagedDeviceAssetTablesFields), they are not widget settings
-// but board data, shared by all the kind's widgets: they go with
-// "Sauvegarder".
+// widget: categories — a tree (EditableTree), as a "Projets" widget's —,
+// suppliers, makers, and products — each of a category and a maker —, in the
+// kind's words: device types, brands and models; software types, publishers
+// and applications. Like the managed device asset tables
+// (ManagedDeviceAssetTablesFields), they are not widget settings but board
+// data, shared by all the kind's widgets: they go with "Sauvegarder".
 //
-// A product names its category and its maker: renaming one renames it in its
-// products, and one still named by a product cannot be deleted. Some kinds
-// have more lists, after those: a device's identification types and its
-// locations — a tree (EditableTree) —, an application's license information
-// types.
+// A product names its category by its id, picked in the tree level after
+// level, and its maker by its name: renaming a maker renames it in its
+// products. A category or a maker still named by a product cannot be
+// deleted. Some kinds have more lists, after those: a device's identification
+// types and its locations — a tree too —, an application's license
+// information types.
 
-/** The width of the category and maker columns, in the products list. */
+/** The width of the category column — a path, "Écran > Moniteur" —, in the products list. */
+const CATEGORY_WIDTH = 150;
+
+/** The width of the maker column, in the products list. */
 const CHOICE_WIDTH = 140;
 
 const NAME_COLUMNS: Column[] = [{ label: "Nom", maxLength: DECLARED_ASSET_NAME_MAX }];
@@ -58,7 +63,7 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
   const { category, maker, product } = look.words;
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
   // A paste from the "Actions" menu may change the board: it is re-read.
   const pastes = board?.pastes ?? 0;
 
@@ -67,19 +72,32 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
   const [settings, setSettings] = useState<DeclaredAssetSettings>(NOTHING);
 
   const reload = useCallback(async () => {
-    if (boardId === null) return;
+    if (list === null) return;
     try {
-      const read = await api.getDeclaredAssetSettings(kind, boardId);
+      const read = await api.getDeclaredAssetSettings(kind, list);
       setOriginal(read);
       setSettings(read);
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [kind, boardId]);
+  }, [kind, list]);
 
   useEffect(() => {
     void reload();
   }, [reload, pastes]);
+
+  // The widget's labels, which a root of the locations tree may be tied to.
+  // Re-read after each save: those added in this drawer then come.
+  const [labels, setLabels] = useState<Label[]>([]);
+  const withLocations = DECLARED_ASSET_EXTRA_LISTS[kind].includes("locations");
+  const [saves, setSaves] = useState(0);
+  useEffect(() => {
+    if (list === null || !withLocations) return;
+    api
+      .getDeclaredAssetLabels(kind, list)
+      .then(setLabels)
+      .catch((e) => notifyError(errorMessage(e)));
+  }, [kind, list, withLocations, pastes, saves]);
 
   // "Sauvegarder": only the changed lists go, each whole. The server checks
   // them; an error stops the drawer's save, the draft kept.
@@ -88,7 +106,7 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
     state.current = { original, settings };
   }, [original, settings]);
   useEffect(() => {
-    if (!register || boardId === null) return;
+    if (!register || list === null) return;
     return register(async () => {
       const { original: before, settings: after } = state.current;
       const data: Partial<DeclaredAssetSettings> = {};
@@ -99,28 +117,23 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
       for (const list of DECLARED_ASSET_EXTRA_LISTS[kind]) {
         if (!same(before[list], after[list])) Object.assign(data, { [list]: after[list] });
       }
+      setSaves((n) => n + 1);
       if (Object.keys(data).length === 0) return;
-      const saved = await api.updateDeclaredAssetSettings(kind, boardId, data);
+      const saved = await api.updateDeclaredAssetSettings(kind, list, data);
       setOriginal(saved);
       setSettings(saved);
     });
-  }, [register, kind, boardId]);
+  }, [register, kind, list]);
 
-  if (boardId === null || !register) return null;
+  if (list === null || !register) return null;
 
   /**
-   * A list the products name changes — categories, makers —: a renamed entry
-   * — same place, another name — is renamed in its products; one still named
-   * by a product stays.
+   * The makers change: a renamed one — same place, another name — is renamed
+   * in its products; one still named by a product stays.
    */
-  const saveNamed = async (
-    key: "categories" | "makers",
-    field: "category" | "maker",
-    noun: DeclaredAssetNoun,
-    list: Row[],
-  ): Promise<boolean> => {
+  const saveMakers = async (list: Row[]): Promise<boolean> => {
     const next = entries(list);
-    const before = settings[key];
+    const before = settings.makers;
     const renamed = new Map<string, string>();
     if (next.length === before.length) {
       before.forEach((e, i) => {
@@ -129,32 +142,48 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
       });
     }
     const kept = new Set(next.map((e) => e.name));
-    const orphan = settings.products.find((p) => !kept.has(p[field]) && !renamed.has(p[field]));
+    const orphan = settings.products.find((p) => !kept.has(p.maker) && !renamed.has(p.maker));
     if (orphan) {
-      notifyError(`${usedBy(noun, orphan[field])} par ${product.the} « ${orphan.name} »`);
+      notifyError(`${usedBy(maker, orphan.maker)} par ${product.the} « ${orphan.name} »`);
       return false;
     }
     setSettings((s) => ({
       ...s,
-      [key]: next,
-      products: s.products.map((p) => ({ ...p, [field]: renamed.get(p[field]) ?? p[field] })),
+      makers: next,
+      products: s.products.map((p) => ({ ...p, maker: renamed.get(p.maker) ?? p.maker })),
     }));
     return true;
   };
 
+  /**
+   * The categories tree changes, unless it removes a category still named by
+   * a product: the tree stays as it was, and says so.
+   */
+  const changeCategories = (next: DeclaredAssetLocation[]) => {
+    const kept = new Set(next.map((c) => c.id));
+    const orphan = settings.products.find((p) => p.category && !kept.has(p.category));
+    if (orphan) {
+      const name = settings.categories.find((c) => c.id === orphan.category)?.name ?? "";
+      notifyError(`${usedBy(category, name)} par ${product.the} « ${orphan.name} »`);
+      return;
+    }
+    setSettings((s) => ({ ...s, categories: next }));
+  };
+
+  const categoryWords: TreeWords = {
+    icon: look.categoryIcon,
+    none: category.none,
+    the: category.the,
+    plural: category.titles.toLowerCase(),
+  };
+
   /** The lists made of names alone, in the order the drawer shows them. */
   const nameLists: {
-    key: "categories" | "suppliers" | "makers";
+    key: "suppliers" | "makers";
     noun: DeclaredAssetNoun;
     icon: ComponentType<{ size?: number }>;
     save: (list: Row[]) => Promise<boolean>;
   }[] = [
-    {
-      key: "categories",
-      noun: category,
-      icon: look.categoryIcon,
-      save: (list) => saveNamed("categories", "category", category, list),
-    },
     {
       key: "suppliers",
       noun: DECLARED_ASSET_SUPPLIER,
@@ -168,17 +197,18 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
       key: "makers",
       noun: maker,
       icon: look.makerIcon,
-      save: (list) => saveNamed("makers", "maker", maker, list),
+      save: saveMakers,
     },
   ];
 
-  // The category and the maker, chosen among the board's, then the product's name.
+  // The category, picked in the board's tree, the maker, chosen among the
+  // board's, then the product's name.
   const productColumns: Column[] = [
     {
       label: category.title,
       maxLength: DECLARED_ASSET_NAME_MAX,
-      width: CHOICE_WIDTH,
-      options: settings.categories.map((c) => c.name),
+      width: CATEGORY_WIDTH,
+      tree: settings.categories,
     },
     {
       label: maker.title,
@@ -191,11 +221,16 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
 
   return (
     <>
+      <EditableTree
+        title={category.titles}
+        nodes={settings.categories}
+        onChange={changeCategories}
+        words={categoryWords}
+      />
       {nameLists.map((l) => (
         <ListRows
           key={l.key}
           title={l.noun.titles}
-          description={listDescription(l.noun, look.scope)}
           columns={NAME_COLUMNS}
           rows={settings[l.key].map((e) => [e.name])}
           save={l.save}
@@ -208,9 +243,6 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
       ))}
       <ListRows
         title={product.titles}
-        description={`${listDescription(product, look.scope)} ${capitalized(
-          `chacun${agreement(product)}`,
-        )} a ${category.a} et appartient à ${maker.a}.`}
         columns={productColumns}
         rows={settings.products.map((p) => [p.category, p.maker, p.name])}
         save={async (list) => {
@@ -239,15 +271,16 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
           <EditableTree
             key={list}
             title={LOCATIONS_LOOK.title}
-            description={LOCATIONS_LOOK.description}
             nodes={settings.locations ?? []}
             onChange={(locations) => setSettings((s) => ({ ...s, locations }))}
+            // A root may be tied to a label: only the assets that carry it
+            // are offered what is under it (DeclaredAssetDrawer).
+            rootLabels={labels}
           />
         ) : (
           <ListRows
             key={list}
             title={EXTRA_ENTRY_LISTS[list].title}
-            description={EXTRA_ENTRY_LISTS[list].description}
             columns={NAME_COLUMNS}
             rows={(settings[list] ?? []).map((e) => [e.name])}
             save={async (rows) => {

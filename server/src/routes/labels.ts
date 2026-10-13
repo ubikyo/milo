@@ -24,6 +24,7 @@ import {
   DEFAULT_LABEL_COLOR,
   DEFAULT_LABEL_GROUP,
   accessIncludes,
+  declaredAssetListType,
   isLabelColor,
 } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -44,11 +45,19 @@ import {
   declaredAssetLabelGroups,
   contactLabelGroups,
   productLabelGroups,
+  orderLabelGroups,
+  warehouseLabelGroups,
+  locationLabelGroups,
 } from "../repositories/label-groups.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
+import { listInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 import { mountLabelGroups } from "./label-groups.js";
 
 const LABEL_NOT_FOUND = "Étiquette introuvable";
+
+/** The list that owns a label. */
+const scopeOfRow = (label: LabelRow): ListScope => ({ board: label.board_id, list: label.list_key });
 
 /** A declared asset kind's labels table (shared, declared-assets.ts). */
 type DeclaredAssetLabels = `${DeclaredAssetKind}_labels`;
@@ -60,6 +69,9 @@ const GROUP_TABLES: Record<LabelTable["table"], string> = {
   support_labels: "support_label_groups",
   contact_labels: "contact_label_groups",
   product_labels: "product_label_groups",
+  order_labels: "order_label_groups",
+  warehouse_labels: "warehouse_label_groups",
+  location_labels: "location_label_groups",
   ...(Object.fromEntries(
     DECLARED_ASSET_KINDS.map((kind) => [`${kind}_labels`, `${kind}_label_groups`]),
   ) as Record<DeclaredAssetLabels, string>),
@@ -74,6 +86,9 @@ interface LabelTable {
     | "support_labels"
     | "contact_labels"
     | "product_labels"
+    | "order_labels"
+    | "warehouse_labels"
+    | "location_labels"
     | DeclaredAssetLabels;
   /** What the event stream must signal when these labels change. */
   touched: Resource[];
@@ -83,6 +98,8 @@ interface LabelTable {
    * sides, and doesn't want an id received as is.
    */
   verifyBoard: (boardId: unknown, req: Request, right: Right) => Id;
+  /** The type of the list widgets that own these labels ("task.list"…). */
+  listType: string;
   /** The groups of these labels (repositories/label-groups.ts). */
   groups: LabelGroupStore;
   /** What follows a change of these labels, once written. */
@@ -98,6 +115,7 @@ const createRoutes = ({
   table,
   touched,
   verifyBoard,
+  listType,
   groups,
   changed = () => undefined,
   concernedBy,
@@ -119,14 +137,24 @@ const createRoutes = ({
      LEFT JOIN ${groupTable} g ON g.id = l.group_id
      WHERE l.board_id = ? ORDER BY l.position, l.id`,
   );
-  const nextRank = scalar<NextRow>(
-    `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE board_id = ?`,
+  const ofListStatement = selection<LabelRow>(
+    `SELECT l.*, g.name AS group_name FROM ${table} l
+     LEFT JOIN ${groupTable} g ON g.id = l.group_id
+     WHERE l.board_id = ? AND l.list_key = ? ORDER BY l.position, l.id`,
   );
-  // Put last on the board, the label then takes its place at the end of its
+  const ofList = (scope: ListScope) => ofListStatement.all(scope.board, scope.list);
+  const nextRankStatement = scalar<NextRow>(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE board_id = ? AND list_key = ?`,
+  );
+  const nextRank = (scope: ListScope) => nextRankStatement(scope.board, scope.list);
+  // Put last in the list, the label then takes its place at the end of its
   // group when positions are renumbered.
-  const create = mutation(
-    `INSERT INTO ${table} (board_id, group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+  const createStatement = mutation(
+    `INSERT INTO ${table} (board_id, list_key, group_id, name, color, position, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
+  const create = (scope: ListScope, group: Id, name: string, color: string, rank: number) =>
+    createStatement.run(scope.board, scope.list, group, name, color, rank, now());
   const updateStatement = mutation(`UPDATE ${table} SET name = ?, color = ? WHERE id = ?`);
   // The label rewritten, and moved to the end of its new group if it changes.
   const update = transaction(
@@ -135,11 +163,11 @@ const createRoutes = ({
       { name, color, group }: { name: string; color: string; group: Id },
     ) => {
       updateStatement.run(name, color, existing.id);
-      if (group !== existing.group_id) groups.moveTo(existing.id, group, existing.board_id);
+      if (group !== existing.group_id) groups.moveTo(existing.id, group, scopeOfRow(existing));
     },
   );
   const withSameName = selection<LabelRow>(
-    `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
+    `SELECT * FROM ${table} WHERE board_id = ? AND list_key = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
   const remove = mutation(`DELETE FROM ${table} WHERE id = ?`);
   // What carries the label: cards, projects, or requests. An asset label is
@@ -156,32 +184,31 @@ const createRoutes = ({
             : `SELECT COUNT(*) AS count FROM ${table.replace(/_labels$/, "_label_links")} WHERE label_id = ?`,
   );
 
-  const clearFromBoard = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
+  const clearFromList = mutation(`DELETE FROM ${table} WHERE board_id = ? AND list_key = ?`);
 
   /**
-   * The labels of one board set on another. Those already bearing the same
+   * The labels of one list set on another. Those already bearing the same
    * name there are not duplicated, whatever their color: two labels with the
    * same name could no longer be told apart in a list. The others are put
    * after those of the destination. "replace": the destination's go first —
    * and leave whatever carried them.
    */
-  const copy = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
-    const removed = replaceExisting ? clearFromBoard.run(target).changes : 0;
+  const copy = transaction((source: ListScope, target: ListScope, replaceExisting: boolean): CopyResult => {
+    const removed = replaceExisting ? clearFromList.run(target.board, target.list).changes : 0;
     if (replaceExisting) groups.clear(target);
-    const timestamp = now();
     let rank = nextRank(target).next;
     let copied = 0;
     let skipped = 0;
 
     // Each label goes into the group of the same name, created if needed: read
     // in group order, the groups arrive in the source's order.
-    for (const label of ofBoard.all(source)) {
-      if (withSameName.get(target, label.name)) {
+    for (const label of ofList(source)) {
+      if (withSameName.get(target.board, target.list, label.name)) {
         skipped += 1;
         continue;
       }
       const group = groups.named(target, label.group_name ?? DEFAULT_LABEL_GROUP);
-      create.run(target, group, label.name, label.color, rank, timestamp);
+      create(target, group, label.name, label.color, rank);
       rank += 1;
       copied += 1;
     }
@@ -190,20 +217,29 @@ const createRoutes = ({
     return { copied, skipped, removed };
   });
 
+  /** The list a request names, once its board's access is checked. */
+  const scopeOf = (req: Request, boardId: unknown, list: unknown, right: Right): ListScope =>
+    listInBoard(verifyBoard(boardId, req, right), listType, list);
+
   const routes = Router();
   routes.use(touch("boards", ...touched));
   mountLabelGroups(
     routes,
     groups,
+    scopeOf,
     (req, boardId, right) => verifyBoard(boardId, req, right),
     announce,
   );
 
+  // Without a list, every label of the board: each carries its list key.
   routes.get("/", (req, res) => {
-    const { board } = req.query;
+    const { board, list } = req.query;
     if (!board) badRequest("Le paramètre board est requis");
-    verifyBoard(board, req, "view");
-    res.json(ofBoard.all(board));
+    if (list) {
+      res.json(ofList(scopeOf(req, board, list, "view")));
+      return;
+    }
+    res.json(ofBoard.all(verifyBoard(board, req, "view")));
   });
 
   routes.post("/", (req, res) => {
@@ -212,41 +248,42 @@ const createRoutes = ({
     const color = req.body.color || DEFAULT_LABEL_COLOR;
     if (!boardId) badRequest("Le tableau est requis");
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
-    const board = verifyBoard(boardId, req, "create");
-    const group = groups.groupFor(board, req.body.group_id);
+    const scope = scopeOf(req, boardId, req.body.list_key, "create");
+    const group = groups.groupFor(scope, req.body.group_id);
 
-    const { next } = nextRank(board);
-    const { lastInsertRowid } = create.run(board, group, name, color, next, now());
-    groups.renumber(board);
+    const { lastInsertRowid } = create(scope, group, name, color, nextRank(scope).next);
+    groups.renumber(scope);
     changed();
-    announce(req, board, `a ajouté l'étiquette « ${name} »`);
+    announce(req, scope.board, `a ajouté l'étiquette « ${name} »`);
     res.status(201).json(byId.get(lastInsertRowid));
   });
 
   // Declared before "/:id" is not necessary — the verbs differ —, but the
   // copy reads better next to the creation than at the end of the file.
   routes.post("/copy", (req, res) => {
-    const { from_board, to_board } = req.body;
+    const { from_board, from_list, to_board, to_list } = req.body;
     if (!from_board || !to_board) {
       badRequest("Le tableau d'origine et celui de destination sont requis");
     }
 
     const replaceExisting = req.body.replace === true;
-    const source = verifyBoard(from_board, req, "view");
-    const target = verifyBoard(to_board, req, "create");
+    const source = scopeOf(req, from_board, from_list, "view");
+    const target = scopeOf(req, to_board, to_list, "create");
     // Erasing the destination's means deleting some.
     if (replaceExisting) verifyBoard(to_board, req, "delete");
-    if (source === target) badRequest("Choisissez un autre tableau que celui-ci");
+    if (source.board === target.board && source.list === target.list) {
+      badRequest("Choisissez un autre widget que celui-ci");
+    }
 
     const result = copy(source, target, replaceExisting);
     changed();
     if (result.copied || result.removed) {
       announce(
         req,
-        target,
+        target.board,
         replaceExisting
-          ? `a remplacé les étiquettes par celles d'un autre tableau`
-          : `a copié ${result.copied} étiquette${result.copied > 1 ? "s" : ""} d'un autre tableau`,
+          ? `a remplacé les étiquettes par celles d'un autre widget`
+          : `a copié ${result.copied} étiquette${result.copied > 1 ? "s" : ""} d'un autre widget`,
       );
     }
     res.json(result);
@@ -264,7 +301,7 @@ const createRoutes = ({
     const group =
       req.body.group_id === undefined
         ? existing.group_id
-        : groups.groupFor(existing.board_id, req.body.group_id);
+        : groups.groupFor(scopeOfRow(existing), req.body.group_id);
 
     update(existing, { name, color, group });
     changed();
@@ -300,6 +337,7 @@ export const labelRoutes = createRoutes({
   // Cards carry their labels: the board is re-read with them.
   touched: ["labels", "task-lists"],
   verifyBoard: (boardId, req, right) => openTaskBoard(boardId, req, right).id,
+  listType: "task.list",
   groups: boardLabelGroups,
   concernedBy: concerned.board,
 });
@@ -314,6 +352,7 @@ export const projectLabelRoutes = createRoutes({
     require(req, "projects", right);
     return openBoard(boardId, req.user).id;
   },
+  listType: "project.list",
   groups: projectLabelGroups,
   concernedBy: concerned.projectBoard,
 });
@@ -327,6 +366,7 @@ export const supportLabelRoutes = createRoutes({
     require(req, "support", right);
     return openBoard(boardId, req.user).id;
   },
+  listType: "support.list",
   groups: supportLabelGroups,
   concernedBy: concerned.supportBoard,
 });
@@ -358,6 +398,7 @@ export const managedDeviceAssetLabelRoutes = createRoutes({
     }
     return openBoard(boardId, req.user).id;
   },
+  listType: "managed_device_asset.list",
   groups: managedDeviceAssetLabelGroups,
   // Machines are followed by no one: only the author, if they asked to.
   concernedBy: () => [],
@@ -381,6 +422,7 @@ export const declaredAssetLabelRoutes = (kind: DeclaredAssetKind) =>
       }
       return openBoard(boardId, req.user).id;
     },
+    listType: declaredAssetListType(kind),
     groups: declaredAssetLabelGroups[kind],
     concernedBy: () => [],
   });
@@ -401,6 +443,7 @@ export const contactLabelRoutes = createRoutes({
     }
     return openBoard(boardId, req.user).id;
   },
+  listType: "contact.list",
   groups: contactLabelGroups,
   concernedBy: () => [],
 });
@@ -421,7 +464,40 @@ export const productLabelRoutes = createRoutes({
   // The products carry their labels: they are re-read with them.
   touched: ["products"],
   verifyBoard: logisticsBoard,
+  listType: "product.list",
   groups: productLabelGroups,
   concernedBy: () => [],
 });
 
+/** Labels of a board's orders: the board's own, like the products'. */
+export const orderLabelRoutes = createRoutes({
+  table: "order_labels",
+  // The orders carry their labels: they are re-read with them.
+  touched: ["orders"],
+  verifyBoard: logisticsBoard,
+  listType: "order.list",
+  groups: orderLabelGroups,
+  concernedBy: () => [],
+});
+
+/** Labels of a board's warehouses: the board's own, like the products'. */
+export const warehouseLabelRoutes = createRoutes({
+  table: "warehouse_labels",
+  // The warehouses carry their labels: they are re-read with them.
+  touched: ["warehouses"],
+  verifyBoard: logisticsBoard,
+  listType: "warehouse.list",
+  groups: warehouseLabelGroups,
+  concernedBy: () => [],
+});
+
+/** Labels of a board's locations: the board's own, like the warehouses'. */
+export const locationLabelRoutes = createRoutes({
+  table: "location_labels",
+  // The locations carry their labels: they are re-read with them.
+  touched: ["locations"],
+  verifyBoard: logisticsBoard,
+  listType: "location.list",
+  groups: locationLabelGroups,
+  concernedBy: () => [],
+});

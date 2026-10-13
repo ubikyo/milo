@@ -9,7 +9,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { randomBytes } from "node:crypto";
-import { passwordIssues } from "@milo/shared";
+import { isReplyEditorView, passwordIssues } from "@milo/shared";
 import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
@@ -272,6 +272,10 @@ authRoutes.put("/me", (req, res) => {
       }),
       req.user.id,
     );
+  }
+  if (body.reply_editor !== undefined) {
+    if (!isReplyEditorView(body.reply_editor)) badRequest("Éditeur inconnu");
+    users.setReplyEditor.run(body.reply_editor, req.user.id);
   }
   res.json(publicUser(users.byId.get(req.user.id)!));
 });

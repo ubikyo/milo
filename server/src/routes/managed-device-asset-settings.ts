@@ -1,8 +1,7 @@
-// The settings of a board's Asset widgets: the models table (see
+// The settings of an Asset widget: the models table (see
 // lib/asset-models.ts) and the VLAN table (lib/asset-vlans.ts). They are not
-// a widget's configuration but the board's: every Asset widget of the board
-// shares them, as its asset labels. Like those, they follow the permission
-// on the Asset widget type.
+// its configuration but its own data (ListScope), as its asset labels. Like
+// those, they follow the permission on the Asset widget type.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -17,31 +16,32 @@ import type {
   ManagedDeviceAssetModel,
   ManagedDeviceAssetSettings,
   ManagedDeviceAssetVlan,
-  Id,
 } from "@milo/shared";
 import { saveTemplates, templates } from "../lib/managed-device-asset-models.js";
 import { saveVlans, vlans } from "../lib/managed-device-asset-vlans.js";
 import { HttpError, badRequest } from "../lib/http.js";
 import { touchNow } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
+import { listInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 import { widgetRights } from "../repositories/users.js";
 
-const assetSettings = (boardId: Id): ManagedDeviceAssetSettings => ({
-  models: templates(boardId),
-  vlans: vlans(boardId),
+const assetSettings = (scope: ListScope): ManagedDeviceAssetSettings => ({
+  models: templates(scope),
+  vlans: vlans(scope),
 });
 
 /**
- * The board named by "?board=", if this person sees it — and, to change its
- * assets' settings, may modify them.
+ * The widget named by "?board=&list=", if this person sees its board — and,
+ * to change its settings, may modify them.
  */
-const verifyBoard = (req: Request, write: boolean): Id => {
+const verifyList = (req: Request, write: boolean): ListScope => {
   if (write && !accessIncludes(widgetRights(req.user).managed_device_asset, "update")) {
     throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
   }
   const board = openBoard(req.query.board, req.user);
   if (write) requireBoardControl(board, req.user);
-  return board.id;
+  return listInBoard(board.id, "managed_device_asset.list", req.query.list);
 };
 
 /** An IPv4 subnet in CIDR notation: "10.1.106.0/24". */
@@ -57,7 +57,7 @@ const isSubnet = (text: string): boolean => {
 export const managedDeviceAssetSettingsRoutes = Router();
 
 managedDeviceAssetSettingsRoutes.get("/", (req, res) => {
-  res.json(assetSettings(verifyBoard(req, false)));
+  res.json(assetSettings(verifyList(req, false)));
 });
 
 /**
@@ -131,7 +131,7 @@ const readVlans = (received: unknown): ManagedDeviceAssetVlan[] => {
  * sent stays as it is.
  */
 managedDeviceAssetSettingsRoutes.put("/", (req, res) => {
-  const boardId = verifyBoard(req, true);
+  const scope = verifyList(req, true);
   const body = req.body ?? {};
   if (body.models === undefined && body.vlans === undefined) {
     badRequest("Rien à enregistrer");
@@ -142,10 +142,10 @@ managedDeviceAssetSettingsRoutes.put("/", (req, res) => {
     body.models === undefined ? null : readTemplates(body.models);
   const newVlans =
     body.vlans === undefined ? null : readVlans(body.vlans);
-  if (newTemplates) saveTemplates(boardId, newTemplates);
-  if (newVlans) saveVlans(boardId, newVlans);
+  if (newTemplates) saveTemplates(scope, newTemplates);
+  if (newVlans) saveVlans(scope, newVlans);
 
   // Open detail views display the name: let them re-read.
   touchNow(res, "managed-device-assets");
-  res.json(assetSettings(boardId));
+  res.json(assetSettings(scope));
 });

@@ -18,6 +18,10 @@ export interface LabelWords {
   noLabelInGroup: string;
   /** A save refused for a missing name. */
   missingName: string;
+  /** "étiquette", counted in the deletion's confirmation. */
+  label: string;
+  /** "groupe", counted in the deletion's confirmation. */
+  group: string;
 }
 
 export const LABEL_WORDS: LabelWords = {
@@ -29,6 +33,8 @@ export const LABEL_WORDS: LabelWords = {
   noGroup: "Aucun groupe",
   noLabelInGroup: "Aucune étiquette dans ce groupe",
   missingName: "Étiquettes : chaque groupe et chaque étiquette demandent un nom.",
+  label: "étiquette",
+  group: "groupe",
 };
 
 /** A product's variants: values, gathered in their attributes. */
@@ -41,4 +47,6 @@ export const VARIANT_WORDS: LabelWords = {
   noGroup: "Aucun attribut",
   noLabelInGroup: "Aucune valeur dans cet attribut",
   missingName: "Variantes : chaque attribut et chaque valeur demandent un nom.",
+  label: "valeur",
+  group: "attribut",
 };

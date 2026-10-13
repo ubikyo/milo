@@ -8,6 +8,7 @@
 // value.
 
 import { renamedWidgetType } from "./widget-kinds.js";
+import { legacyIndicator } from "./indicators.js";
 
 export interface TitleStyle {
   /** Chosen by the client; what a title stores to designate its style. */
@@ -78,8 +79,11 @@ export const currentWidget = (
 ): { type: unknown; config: unknown } => {
   // A type named before the assets were named by kind takes its current name.
   if (typeof type === "string" && renamedWidgetType(type) !== type) {
-    return { type: renamedWidgetType(type), config };
+    return currentWidget(renamedWidgetType(type), config);
   }
+  // A figure of a kind, as the "Indicateurs" widget that replaces it.
+  const indicator = legacyIndicator(type, config);
+  if (indicator) return indicator;
   if (type !== "subcategory") return { type, config };
   const own = config && typeof config === "object" ? (config as Record<string, unknown>) : {};
   return {

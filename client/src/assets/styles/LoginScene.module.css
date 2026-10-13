@@ -1,0 +1,46 @@
+/* The login image, in three layers: the picture, the flag planted on the
+   dune, and the desert alone (background-mask.png) over the foot of its
+   pole. The three share a frame the size of the image (1000×1500) which
+   covers the zone like `background-size: cover`: it grows uniformly with the
+   window and the flag stays on the ridge. */
+.scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  /* Under the logo and the texts, which come before it in the flow. */
+  z-index: -1;
+  /* Lets the frame measure itself against the zone (cqw, cqh). */
+  container-type: size;
+}
+
+.frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100cqw, 100cqh * 1000 / 1500);
+  aspect-ratio: 1000 / 1500;
+  transform: translate(-50%, -50%);
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 36px wide in the 1000px image, the pole on the ridge at (644, 577); its
+   bottom is lost fifteen pixels further down, behind the mask. */
+.flag {
+  position: absolute;
+  left: 64.09%;
+  top: 35.92%;
+  width: 3.6%;
+  height: auto;
+  display: block;
+  overflow: visible;
+  /* Slower than the logo's 3.6 s: a large flag in the wind. */
+  --wave-duration: 6s;
+}

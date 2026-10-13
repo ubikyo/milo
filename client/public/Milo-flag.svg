@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 167 247" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g id="Plan-de-travail1" serif:id="Plan de travail1" transform="matrix(0.387515,0,0,0.503321,4.99064e-15,0)">
+        <rect x="-0" y="0" width="429.398" height="489.25" style="fill:none;"/>
+        <clipPath id="_clip1">
+            <rect x="-0" y="0" width="429.398" height="489.25"/>
+        </clipPath>
+        <g clip-path="url(#_clip1)">
+            <g transform="matrix(4.43118,0,0,3.04951,-5495.36,-4437.04)">
+                <path d="M1257,1526.84L1257,1617.88L1240.16,1617.88L1240.16,1460.79C1240.16,1459.25 1240.7,1457.78 1241.67,1456.7C1242.64,1455.61 1243.96,1455 1245.33,1455C1250.28,1455 1257,1455 1257,1455L1337.07,1459L1313.83,1492.92L1337.07,1526.84L1257,1526.84Z" style="fill:rgb(35,182,151);"/>
+            </g>
+        </g>
+    </g>
+</svg>

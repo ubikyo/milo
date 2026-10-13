@@ -13,7 +13,7 @@
 // their display size: sharp on every screen.
 //
 // To redo them from the source, with sharp (server dependency):
-//   sharp("client/src/assets/media/Milo-2.svg", { density: 600 })
+//   sharp("client/public/Milo-2.svg", { density: 600 })
 //     .resize({ width: 400 }).png({ palette: true, compressionLevel: 9 })
 
 /** The identifiers under which the HTML cites the attached images. */

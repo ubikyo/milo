@@ -19,14 +19,14 @@ export interface DeclaredAssetTables {
   assets: string;
   /** Their actors, as a project's. */
   actors: string;
-  /** Their labels — those of their board —, the links to them. */
+  /** Their labels — those of their widget —, the links to them. */
   labelLinks: string;
   labels: string;
   labelGroups: string;
   /** Their photos and documents: files of the media folder. */
   photos: string;
   attachments: string;
-  /** The board's lists, as JSON: categories, suppliers, makers, products. */
+  /** A widget's lists, as JSON: categories, suppliers, makers, products. */
   settings: string;
 }
 
@@ -43,8 +43,8 @@ export const EXTRA_COLUMNS: Record<DeclaredAssetExtraField, string> = {
 export const JSON_EXTRAS: readonly DeclaredAssetExtraField[] = ["identifications", "license_infos"];
 
 /**
- * How each extra list of the board is stored: JSON, its defaults until the
- * board records its own — they fill the rows of the boards that had none.
+ * How each extra list of a widget is stored: JSON, its defaults until the
+ * widget records its own — they fill the rows of the widgets that had none.
  */
 export const EXTRA_LIST_COLUMNS = Object.fromEntries(
   Object.entries(DECLARED_ASSET_EXTRA_LIST_DEFAULTS).map(([list, defaults]) => [
@@ -81,6 +81,7 @@ const schemaOf = (kind: DeclaredAssetKind): string => {
   CREATE TABLE IF NOT EXISTS ${t.labelGroups} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -89,6 +90,7 @@ const schemaOf = (kind: DeclaredAssetKind): string => {
   CREATE TABLE IF NOT EXISTS ${t.labels} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     group_id INTEGER REFERENCES ${t.labelGroups}(id),
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT 'blue.6',
@@ -107,6 +109,7 @@ const schemaOf = (kind: DeclaredAssetKind): string => {
     product TEXT NOT NULL DEFAULT '',
     quantity INTEGER NOT NULL DEFAULT 1,
     price REAL,
+    purchase_date TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
 ${DECLARED_ASSET_EXTRAS[kind].map((column) => `    ${column} ${EXTRA_COLUMNS[column]},\n`).join("")}    created_at TEXT NOT NULL,
@@ -148,13 +151,15 @@ ${DECLARED_ASSET_EXTRAS[kind].map((column) => `    ${column} ${EXTRA_COLUMNS[col
   );
 
   CREATE TABLE IF NOT EXISTS ${t.settings} (
-    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
     categories TEXT NOT NULL DEFAULT '[]',
     suppliers TEXT NOT NULL DEFAULT '[]',
     makers TEXT NOT NULL DEFAULT '[]',
     products TEXT NOT NULL DEFAULT '[]'${DECLARED_ASSET_EXTRA_LISTS[kind]
       .map((list) => `,\n    ${list} ${EXTRA_LIST_COLUMNS[list]}`)
-      .join("")}
+      .join("")},
+    PRIMARY KEY (board_id, list_key)
   );
 `;
 };
@@ -162,7 +167,9 @@ ${DECLARED_ASSET_EXTRAS[kind].map((column) => `    ${column} ${EXTRA_COLUMNS[col
 const indexesOf = (kind: DeclaredAssetKind): string => {
   const t = declaredAssetTables(kind);
   return `
-  CREATE INDEX IF NOT EXISTS idx_${t.labels}_board ON ${t.labels}(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_${t.labels}_list ON ${t.labels}(board_id, list_key, position, id);
+  CREATE INDEX IF NOT EXISTS idx_${t.labelGroups}_list
+    ON ${t.labelGroups}(board_id, list_key, position, id);
   CREATE INDEX IF NOT EXISTS idx_${t.labels}_group ON ${t.labels}(group_id);
   CREATE INDEX IF NOT EXISTS idx_${t.assets}_board ON ${t.assets}(board_id, list_key);
   CREATE INDEX IF NOT EXISTS idx_${t.actors}_user ON ${t.actors}(user_id);

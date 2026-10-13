@@ -613,7 +613,7 @@ export default function ManagedDeviceAssetSummaryPanel({ detail }: { detail: Man
               detail.board_id !== null && (
                 <PrintLabelButton
                   kind="managed_device_asset"
-                  boardId={detail.board_id}
+                  list={{ board: detail.board_id, list: detail.list_key }}
                   assetId={detail.id}
                   size={TAG_HEIGHT - 2 * PRINT_INSET}
                 />

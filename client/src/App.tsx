@@ -33,6 +33,7 @@ import {
 import { RED } from "./themes/colors";
 import {
   DEFAULT_SUPPORT_STATUS,
+  INDICATOR_DATA,
   RESOURCES,
   canUse,
   emptyFollows,
@@ -47,11 +48,17 @@ import { errorMessage, notifyError } from "./lib/errors";
 import { EditingContext } from "./lib/editing";
 import { addressTarget, noteInAddress } from "./lib/follow";
 import { requestOpening } from "./lib/searchSources";
+import { FollowsContext } from "./lib/follows-context";
+import { ReplyEditorContext } from "./lib/reply-editor";
 import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
+import { announceResource } from "./lib/sources";
 import { announceContacts } from "./lib/contacts";
 import { announceProducts } from "./lib/products";
+import { announceWarehouses } from "./lib/warehouses";
+import { announceLocations } from "./lib/locations";
+import { announceOrders } from "./lib/orders";
 import { announceProxies } from "./lib/proxies";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
@@ -71,6 +78,7 @@ import KonamiCode from "./components/ui/KonamiCode";
 import { placeInterface, clearPage } from "./lib/interfaceFall";
 import { loadTitleStyles } from "./lib/titleStyles";
 import { rememberDeletion, useUndoShortcut } from "./lib/undo";
+import { runNewShortcut } from "./lib/newShortcut";
 import SettingsModal from "./components/settings/SettingsModal";
 import EmptyPanel from "./components/ui/EmptyPanel";
 import type {
@@ -111,9 +119,16 @@ interface LoadedFor<T> {
   items: T[];
 }
 
-/** The widget types a board carries, by their prefix: what needs reading for them. */
+/**
+ * The widget types a board carries, by their prefix — and the "Indicateurs"
+ * that read that data (widgets/indicators): what needs reading for them.
+ */
 const withPrefix = (widgets: BoardWidget[], prefix: string) =>
-  widgets.some((w) => w.type.startsWith(`${prefix}.`));
+  widgets.some(
+    (w) =>
+      w.type.startsWith(`${prefix}.`) ||
+      (w.type.startsWith("indicator.") && w.config?.[INDICATOR_DATA] === prefix),
+  );
 
 /**
  * The items of a context, or all of them (null); "null" while they aren't
@@ -470,12 +485,7 @@ export default function App() {
   // --- Reads -------------------------------------------------------------------
 
   const loadLookups = useCallback(async () => {
-    const [nextUsers, nextMilestoneTypes] = await Promise.all([
-      api.getUsers(),
-      api.getMilestoneTypes(),
-    ]);
-    setUsers(nextUsers);
-    setMilestoneTypes(nextMilestoneTypes);
+    setUsers(await api.getUsers());
   }, []);
 
   const loadViews = useCallback(async () => {
@@ -527,10 +537,15 @@ export default function App() {
     setProjectActorIds(await api.getProjectActorIds({ board: boardId, context: selectedContext }));
   }, [boardId, projectsNeed, selectedContext]);
 
-  // Categories belong to the open board.
+  // The categories and milestone types of the open board's "Projets"
+  // widgets: each carries its list key, each widget shows its own.
   const loadCategories = useCallback(async () => {
     if (!boardId || !projectsNeed) return setCategories([]);
     setCategories(await api.getCategories(boardId));
+  }, [boardId, projectsNeed]);
+  const loadMilestoneTypes = useCallback(async () => {
+    if (!boardId || !projectsNeed) return setMilestoneTypes([]);
+    setMilestoneTypes(await api.getMilestoneTypes(boardId));
   }, [boardId, projectsNeed]);
 
   // The project labels and the card labels, specific to the board.
@@ -630,6 +645,9 @@ export default function App() {
   useEffect(() => {
     if (user) loadCategories().catch(() => {});
   }, [user, loadCategories]);
+  useEffect(() => {
+    if (user) loadMilestoneTypes().catch(() => {});
+  }, [user, loadMilestoneTypes]);
   useEffect(() => {
     if (user) loadProjectLabels().catch(() => {});
   }, [user, loadProjectLabels]);
@@ -738,6 +756,11 @@ export default function App() {
     [follows],
   );
 
+  const followsValue = useMemo(
+    () => ({ follows, toggle: (kind: FollowKind, id: Id) => void toggleFollow(kind, id) }),
+    [follows, toggleFollow],
+  );
+
   /**
    * Show a view and a board, in place of the opening ones if they are not
    * applied yet.
@@ -779,6 +802,11 @@ export default function App() {
           setDrawerOpened(true);
         } else if (target.kind === "access") {
           await goToBoard(target.id);
+        } else if (target.kind === "order") {
+          // An order opens in its widget, on its board, as the search opens it.
+          const where = await api.getOrderLocation(target.id);
+          if (where.widget_id !== null) requestOpening(where.widget_id, String(target.id));
+          await goToBoard(where.board_id);
         } else {
           // A card: the board will open it, once its lists are read.
           const or = await api.getCardLocation(target.id);
@@ -879,7 +907,10 @@ export default function App() {
     let controller: AbortController | undefined;
 
     const readers: Record<Resource, () => void | Promise<void>> = {
-      lookups: loadLookups,
+      // The milestone types come with them: a "Projets" widget's change them.
+      lookups: async () => {
+        await Promise.all([loadLookups(), loadMilestoneTypes()]);
+      },
       views: loadViews,
       boards: loadBoards,
       "board-widgets": loadWidgets,
@@ -900,6 +931,9 @@ export default function App() {
       "application-assets": () => announceDeclaredAssets("application_asset"),
       contacts: announceContacts,
       products: announceProducts,
+      orders: announceOrders,
+      warehouses: announceWarehouses,
+      locations: announceLocations,
       "title-styles": loadTitleStyles,
       // Read by the Settings only, which re-read on this.
       proxies: announceProxies,
@@ -922,6 +956,8 @@ export default function App() {
       knownVersions.current = versions;
       if (known === null) return;
       const moved = RESOURCES.filter((r) => versions[r] !== known[r]);
+      // What reads other boards — an indicator's sources — re-reads too.
+      for (const r of moved) announceResource(r);
       await Promise.all(moved.map((r) => readers[r]()));
     };
 
@@ -974,6 +1010,7 @@ export default function App() {
   }, [
     user,
     loadLookups,
+    loadMilestoneTypes,
     loadViews,
     loadBoards,
     loadWidgets,
@@ -1166,7 +1203,8 @@ export default function App() {
   }, []);
 
   // Keyboard shortcuts: Tab cycles through the views, Option/Alt + Tab the
-  // view's boards, N creates a project or a request, C cycles through the
+  // view's boards, N creates what the list widget under the mouse — or the
+  // first — holds (lib/newShortcut), C cycles through the
   // board's contexts, I enters or leaves interface
   // editing.
   useEffect(() => {
@@ -1200,13 +1238,10 @@ export default function App() {
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
       if (event.code === "KeyN") {
-        if (widgets.some((w) => w.type === "project.list") && can("projects", "create")) {
-          event.preventDefault();
-          handleOpenNewProject();
-        } else if (widgets.some((w) => w.type === "support.list") && can("support", "create")) {
-          event.preventDefault();
-          openNewSupportRequest();
-        }
+        // Declared by the list widgets shown (lib/newShortcut): not while a
+        // drawer or a window is open.
+        if (document.querySelector('[aria-modal="true"]')) return;
+        if (runNewShortcut()) event.preventDefault();
         return;
       }
 
@@ -1450,6 +1485,10 @@ export default function App() {
       canEditTemplates={user.administration.templates.includes("access")}
     >
       <EditingContext.Provider value={isEditing}>
+        {/* How an e-mail being written first shows, as the profile says. */}
+        <ReplyEditorContext.Provider value={user.reply_editor}>
+        {/* What the person follows, for the widgets that read it: an order's list. */}
+        <FollowsContext.Provider value={followsValue}>
           {/* The clipboard of labels and categories, which the "Actions"
             menu of a widget drawer fills and empties in another. */}
           <CopyPasteContext.Provider
@@ -1775,6 +1814,7 @@ export default function App() {
                 boards={boards ?? []}
                 currentUser={user}
                 onLabelsChanged={loadProjectLabels}
+                onCategoriesChanged={loadCategories}
                 onSaved={handleSaved}
                 onDeleted={handleSaved}
                 following={selectedProjectId !== null && follows.project.includes(selectedProjectId)}
@@ -1855,8 +1895,6 @@ export default function App() {
               />
               <ShareViewModal view={sharedView} onClose={() => setSharedView(null)} />
               <ShortcutsHelp
-                projects={widgets.some((w) => w.type === "project.list")}
-                requests={widgets.some((w) => w.type === "support.list")}
                 contexts={contexts.length > 0}
                 // Those the Tab shortcuts go through.
                 views={(shownViews?.length ?? 0) > 1}
@@ -1881,6 +1919,7 @@ export default function App() {
                 labels={[]}
                 users={users}
                 boardId={null}
+                list={null}
                 onLabelsChanged={() => {}}
                 onSaved={() => {}}
                 followed={false}
@@ -1934,6 +1973,8 @@ export default function App() {
             {/* Out of the interface: its transform would hold the panels in it. */}
             {themeEditor && <ThemeEditor canEdit />}
           </CopyPasteContext.Provider>
+        </FollowsContext.Provider>
+        </ReplyEditorContext.Provider>
       </EditingContext.Provider>
     </RightsProvider>
   );

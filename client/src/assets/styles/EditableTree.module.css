@@ -14,3 +14,15 @@
 .chevron:hover {
   background-color: var(--milo-menu-hover);
 }
+
+/* Where a dragged place goes: green, as the application's actions, where
+   Mantine's lines and highlight take the primary blue. Inside a place, the
+   highlight wins over the selected one's gray. */
+.root :global([data-drag-over='before'])::before,
+.root :global([data-drag-over='after'])::after {
+  background-color: var(--mantine-color-teal-6);
+}
+
+.root :global([data-drag-over='inside']) {
+  background-color: var(--mantine-color-teal-light) !important;
+}

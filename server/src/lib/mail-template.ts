@@ -17,8 +17,22 @@
 
 import mjml2html from "mjml";
 import Mustache from "mustache";
-import type { MailTemplate, MailTemplateKey, MailTemplatePreview, MailTemplateVariable } from "@milo/shared";
-import { MAIL_TEMPLATE_KEYS, PALETTE, systemTheme, themeColorHex } from "@milo/shared";
+import type {
+  MailTemplate,
+  MailTemplateKey,
+  MailTemplatePreview,
+  MailTemplateVariable,
+  ReplyTemplateKey,
+} from "@milo/shared";
+import {
+  MAIL_TEMPLATE_KEYS,
+  PALETTE,
+  orderLinesTable,
+  orderReferencesTable,
+  systemTheme,
+  themeColorHex,
+} from "@milo/shared";
+import type { OrderMailView } from "@milo/shared";
 import {
   LOGO_CID,
   LOGO_DARK_CID,
@@ -134,14 +148,15 @@ const defaultMjml = ({ rows, action }: { rows: boolean; action: boolean }): stri
 `;
 
 // The Tickets widget's templates, as set up in its drawer: the logo, a
-// title, the message, a rule.
+// title, the message.
 
 /**
  * A confirmation code's template: the logo, a heading, why the code comes,
- * then the code, large. That of the reception addresses, set up in the
- * Tickets widget, and of the Calendar's and Mail's people.
+ * then the code, large, and a rule. That of the reception addresses, set up
+ * in the Tickets widget — without the rule —, and of the Calendar's and
+ * Mail's people.
  */
-const confirmationMjml = (title: string, heading: string, text: string): string => `<mjml>
+const confirmationMjml = (title: string, heading: string, text: string, divider = true): string => `<mjml>
   <mj-head>
     <mj-title>${title}</mj-title>
 
@@ -172,8 +187,7 @@ const confirmationMjml = (title: string, heading: string, text: string): string 
           <p style="margin: 0;">{{code}}</p>
         </mj-text>
 
-        <mj-divider border-width="1px" border-style="solid" />
-      </mj-column>
+${divider ? '        <mj-divider border-width="1px" border-style="solid" />\n' : ""}      </mj-column>
     </mj-section>
   </mj-body>
 </mjml>`;
@@ -221,6 +235,7 @@ const CONFIRMATION_MJML = confirmationMjml(
   "Confirmation adresse e-mail",
   "Confirmation de votre adresse e-mail",
   "Vous recevez ce message car vous avez ajouté votre adresse e-mail dans Milo. Pour confirmer votre adresse, utilisez le code suivant.",
+  false,
 );
 
 /** A team reply: the request's subject as its title. */
@@ -251,7 +266,6 @@ const REPLY_MJML = `<mjml>
           <p style="margin: 0;">{{model.content}}</p>
         </mj-text>
 
-        <mj-divider border-width="1px" border-style="solid" />
       </mj-column>
     </mj-section>
   </mj-body>
@@ -280,6 +294,35 @@ const AUTO_REPLY_MJML = `<mjml>
         <mj-text padding="30px 25px 15px 25px" color="#333333">
           <h1 style="margin: 0;">{{model.name}}</h1>
         </mj-text>
+
+        <mj-text padding="0 25px 10px 25px" color="#333333">
+          <p style="margin: 0;">{{model.content}}</p>
+        </mj-text>
+
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/** A message written in an order's "Échanges": its order's number as its title, the message alone. */
+const ORDER_MESSAGE_MJML = `<mjml>
+  <mj-head>
+    <mj-title>{{order.number}}</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="#333333" line-height="1.5" />
+      <mj-text padding="10px 25px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" width="80px" align="left" />
 
         <mj-text padding="0 25px 10px 25px" color="#333333">
           <p style="margin: 0;">{{model.content}}</p>
@@ -850,6 +893,57 @@ export type ReplyView = {
   name?: string;
 };
 
+export type { OrderMailView } from "@milo/shared";
+
+/** An order's view, escaped: Mustache leaves it as it is (raw). */
+export const orderViewOf = (order: OrderMailView) => ({
+  order: {
+    number: Mustache.escape(order.number),
+    supplier: Mustache.escape(order.supplier),
+    due_date: Mustache.escape(order.due_date),
+    lines: orderLinesTable(order.lines),
+    total: Mustache.escape(order.total),
+  },
+  orders: { products: orderReferencesTable(order.references) },
+});
+
+const ORDER_SAMPLE: OrderMailView = {
+  number: "D202610/042",
+  supplier: "Fournitures Durand",
+  due_date: "15/11/2026",
+  lines: [
+    { kind: "section", name: "Textile", quantity: "", price: "", amount: "" },
+    { kind: "product", name: "T-shirt — Noir / M", quantity: "10", price: "8,50 €", amount: "85,00 €" },
+    { kind: "product", name: "Casquette", quantity: "5", price: "6,00 €", amount: "30,00 €" },
+    { kind: "note", name: "Livraison groupée si possible", quantity: "", price: "", amount: "" },
+  ],
+  references: [
+    { reference: "TSH-BLK-M", quantity: "10" },
+    { reference: "CAS", quantity: "5" },
+  ],
+  total: "115,00 €",
+};
+
+const ORDER: MailTemplateVariable[] = [
+  { group: "Modèle", label: "Message", name: "{{model.content}}" },
+  { group: "Commandes", label: "Numéro", name: "{{order.number}}" },
+  { group: "Commandes", label: "Fournisseur", name: "{{order.supplier}}" },
+  { group: "Commandes", label: "Échéance de livraison", name: "{{order.due_date}}" },
+  { group: "Commandes", label: "Produits", name: "{{order.lines}}" },
+  { group: "Commandes", label: "Références et quantités", name: "{{orders.products}}" },
+  { group: "Commandes", label: "Total", name: "{{order.total}}" },
+];
+
+/** An order's e-mail to its supplier: the message written, with the logo. */
+const orderMail = (label: string, description: string, content: string): Definition => ({
+  label,
+  description,
+  variables: ORDER,
+  mjml: ORDER_MESSAGE_MJML,
+  sample: { model: { content: asEdited(content), name: "" }, ...orderViewOf(ORDER_SAMPLE) },
+  raw: true,
+});
+
 /**
  * The message as the editor shows it: paragraphs without margins — Enter
  * starts a line, not a spaced paragraph —, and an empty one as a blank line.
@@ -1130,6 +1224,12 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     ),
     sample: SHARING_SAMPLE,
   },
+  // The key is the quote request's, its first use: a template saved under it stays.
+  order_quote_request: orderMail(
+    "Message lié à la commande",
+    "Les e-mails envoyés aux contacts fournisseur d'un devis ou d'une commande : la demande de devis, les messages des échanges.",
+    spaced("Bonjour,", "Pourriez-vous nous faire parvenir votre meilleure offre pour les produits suivants ?", "Paul Durand"),
+  ),
   new_admin: {
     label: "Nouvel accès à un élément",
     description:
@@ -1357,11 +1457,8 @@ const logoAttachments = (): MailAttachment[] => [
   { filename: "milo-sombre.png", content: attachedDarkLogo(), contentType: "image/png", cid: LOGO_DARK_CID },
 ];
 
-/** A support reply's template key. */
-export type ReplyTemplateKey = "support_reply" | "support_auto_reply";
-
-export const isReplyTemplateKey = (key: MailTemplateKey): key is ReplyTemplateKey =>
-  key === "support_reply" || key === "support_auto_reply";
+export { isReplyTemplateKey } from "@milo/shared";
+export type { ReplyTemplateKey } from "@milo/shared";
 
 /**
  * A support content — a default reply, a default content being edited —
@@ -1369,7 +1466,35 @@ export const isReplyTemplateKey = (key: MailTemplateKey): key is ReplyTemplateKe
  * preview, with the request it draws.
  */
 export const previewReply = async (key: ReplyTemplateKey, reply: ReplyView): Promise<string> =>
-  inPreview(await render(key, { ...replyViewOf(reply), ...commonView(true), logo: LOGO_SRC }));
+  inPreview(
+    await render(key, {
+      ...replyViewOf(reply),
+      // An order's e-mail: a sample order under the message.
+      ...(key.startsWith("order_") ? orderViewOf(ORDER_SAMPLE) : {}),
+      ...commonView(true),
+      logo: LOGO_SRC,
+    }),
+  );
+
+/** The view of an order's e-mail: the message written, the order under it. */
+const orderMailView = (content: string, order: OrderMailView) => ({
+  model: { content: asEdited(content), name: "" },
+  ...orderViewOf(order),
+  ...commonView(true),
+  logo: LOGO_SRC,
+});
+
+/** An order's e-mail to its supplier, laid out by its template — and its logos. */
+export const orderMailTemplate = async (
+  content: string,
+  order: OrderMailView,
+): Promise<{ html: string; attachments: MailAttachment[] }> =>
+  withLogos(render("order_quote_request", orderMailView(content, order)));
+
+
+/** The same, as the reply editor's preview shows it: before it is sent. */
+export const previewOrderMail = async (content: string, order: OrderMailView): Promise<string> =>
+  inPreview(await render("order_quote_request", orderMailView(content, order)));
 
 /**
  * A support reply, team or automatic, laid out by its template — and the

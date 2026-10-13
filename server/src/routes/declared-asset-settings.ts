@@ -1,9 +1,8 @@
-// The lists of a board's declared asset widgets, kind by kind (shared,
-// declared-assets.ts): categories, suppliers, makers, and products with their
-// category and maker — device types, brands and models; software types,
-// publishers and applications. They are not a widget's configuration but the
-// board's: every widget of the kind on the board shares them, as its labels.
-// Like those, they follow the permission on the widget type.
+// The lists of a declared asset widget (shared, declared-assets.ts):
+// categories, suppliers, makers, and products with their category and maker —
+// device types, brands and models; software types, publishers and
+// applications. They are not its configuration but its own data (ListScope),
+// as its labels. Like those, they follow the permission on the widget type.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -17,6 +16,7 @@ import {
   DECLARED_ASSET_WORDS,
   accessIncludes,
   capitalized,
+  declaredAssetListType,
 } from "@milo/shared";
 import type {
   DeclaredAssetEntry,
@@ -25,7 +25,6 @@ import type {
   DeclaredAssetLocation,
   DeclaredAssetProduct,
   DeclaredAssetSettings,
-  Id,
 } from "@milo/shared";
 import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { mutation, selection, transaction } from "../db/query.js";
@@ -33,6 +32,8 @@ import type { Mutation } from "../db/query.js";
 import { HttpError, badRequest } from "../lib/http.js";
 import { touch } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
+import { listInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 import { widgetRights } from "../repositories/users.js";
 
 type Lists = Record<(typeof DECLARED_ASSET_LISTS)[number] | DeclaredAssetExtraList, string>;
@@ -48,7 +49,7 @@ const parsed = <T>(saved: string | undefined): T[] => {
 };
 
 /** A name, trimmed and checked for length. */
-const nameOf = (entry: unknown, field: "name" | "category" | "maker" = "name"): string => {
+const nameOf = (entry: unknown, field: "name" | "maker" = "name"): string => {
   const name = String((entry as Record<string, unknown> | null)?.[field] ?? "").trim();
   if (name.length > DECLARED_ASSET_NAME_MAX) {
     badRequest(`Un nom tient en ${DECLARED_ASSET_NAME_MAX} caractères`);
@@ -81,42 +82,61 @@ const EXTRA_ENTRY_LISTS: Partial<Record<DeclaredAssetExtraList, { titles: string
   license_info_types: { titles: "Types d'informations de licence" },
 };
 
-/** A place's id, as the client draws it. */
-const LOCATION_ID_MAX = 64;
+/** A node's id, as the client draws it. */
+const NODE_ID_MAX = 64;
 
-/** How many places a board's locations tree holds at most. */
-const LOCATIONS_MAX = 1000;
+/** How many nodes a board's tree — its locations, its categories — holds at most. */
+const NODES_MAX = 1000;
+
+/** How a tree's messages name it, and its nodes; whether its roots may be tied to a label. */
+const LOCATIONS_TREE = {
+  titles: "Les emplacements",
+  one: "Un emplacement",
+  many: "emplacements",
+  withLabels: true,
+};
 
 /**
- * The locations tree, stored flat: each place has an id of its own and a
- * name, and its parent — when it has one — comes before it. Two places of the
- * same parent may share a name: their ids tell them apart. Empty rows are left
- * out, with the places under them.
+ * A tree — the locations, the categories —, stored flat: each node has an id
+ * of its own and a name, and its parent — when it has one — comes before it.
+ * Two nodes of the same parent may share a name: their ids tell them apart.
+ * Empty rows are left out, with the nodes under them. A tree that allows it
+ * keeps the label a root is tied to, by its id.
  */
-const readLocations = (received: unknown): DeclaredAssetLocation[] => {
-  if (!Array.isArray(received)) badRequest("Les emplacements sont une liste");
+const readTree = (
+  received: unknown,
+  words: { titles: string; one: string; many: string; withLabels?: boolean },
+): DeclaredAssetLocation[] => {
+  if (!Array.isArray(received)) badRequest(`${words.titles} sont une liste`);
   const kept = new Set<string>();
   const list: DeclaredAssetLocation[] = [];
   for (const entry of received as unknown[]) {
     const row = (entry ?? {}) as Record<string, unknown>;
     const id = String(row.id ?? "").trim();
-    if (!id || id.length > LOCATION_ID_MAX) badRequest("Emplacement illisible");
-    if (kept.has(id)) badRequest("Un emplacement figure deux fois");
+    if (!id || id.length > NODE_ID_MAX) badRequest(`${words.one} est illisible`);
+    if (kept.has(id)) badRequest(`${words.one} figure deux fois`);
     const parent = row.parent == null || row.parent === "" ? null : String(row.parent);
-    // Under a place left out, or not yet seen: it goes too.
+    // Under a node left out, or not yet seen: it goes too.
     if (parent !== null && !kept.has(parent)) continue;
     const name = nameOf(row);
     if (!name) continue;
     kept.add(id);
-    list.push({ id, parent, name });
+    const label = Number(row.label);
+    list.push(
+      words.withLabels && parent === null && Number.isInteger(label) && label > 0
+        ? { id, parent, name, label }
+        : { id, parent, name },
+    );
   }
-  if (list.length > LOCATIONS_MAX) badRequest(`Un tableau tient en ${LOCATIONS_MAX} emplacements`);
+  if (list.length > NODES_MAX) badRequest(`Un tableau tient en ${NODES_MAX} ${words.many}`);
   return list;
 };
 
 /** Reads a received extra list. */
 const readExtraList = (list: DeclaredAssetExtraList, received: unknown) =>
-  list === "locations" ? readLocations(received) : readEntries(received, EXTRA_ENTRY_LISTS[list]!);
+  list === "locations"
+    ? readTree(received, LOCATIONS_TREE)
+    : readEntries(received, EXTRA_ENTRY_LISTS[list]!);
 
 /** The names of a list, by their lowercase: a product's are found case aside. */
 const byName = (entries: DeclaredAssetEntry[]) =>
@@ -126,34 +146,39 @@ const byName = (entries: DeclaredAssetEntry[]) =>
 export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => {
   const { settings } = declaredAssetTables(kind);
   const { category, maker, product } = DECLARED_ASSET_WORDS[kind];
+  const categoriesTree = {
+    titles: capitalized(`les ${category.titles.toLowerCase()}`),
+    one: capitalized(category.a),
+    many: category.titles.toLowerCase(),
+  };
 
   // The kind's extra lists, after the others: their column names come from
   // DECLARED_ASSET_EXTRA_LISTS, never from a request.
   const extraLists = DECLARED_ASSET_EXTRA_LISTS[kind];
   const read = selection<Partial<Lists>>(
     `SELECT categories, suppliers, makers, products${extraLists.map((l) => `, ${l}`).join("")}
-     FROM ${settings} WHERE board_id = ?`,
+     FROM ${settings} WHERE board_id = ? AND list_key = ?`,
   );
-  const ensure = mutation(`INSERT OR IGNORE INTO ${settings} (board_id) VALUES (?)`);
+  const ensure = mutation(`INSERT OR IGNORE INTO ${settings} (board_id, list_key) VALUES (?, ?)`);
   // The column names come from DECLARED_ASSET_LISTS, never from a request.
   const writers = Object.fromEntries(
     [...DECLARED_ASSET_LISTS, ...extraLists].map((list) => [
       list,
-      mutation(`UPDATE ${settings} SET ${list} = ? WHERE board_id = ?`),
+      mutation(`UPDATE ${settings} SET ${list} = ? WHERE board_id = ? AND list_key = ?`),
     ]),
   ) as Record<keyof Lists, Mutation>;
 
-  const settingsOf = (boardId: Id): DeclaredAssetSettings => {
-    const row = read.get(boardId);
+  const settingsOf = (scope: ListScope): DeclaredAssetSettings => {
+    const row = read.get(scope.board, scope.list);
     return {
-      categories: parsed<DeclaredAssetEntry>(row?.categories),
+      categories: parsed<DeclaredAssetLocation>(row?.categories),
       suppliers: parsed<DeclaredAssetEntry>(row?.suppliers),
       makers: parsed<DeclaredAssetEntry>(row?.makers),
       products: parsed<DeclaredAssetProduct>(row?.products).map((p) => ({
         ...p,
         category: p.category ?? "",
       })),
-      // A board without a row has its extra lists' defaults.
+      // A widget without a row has its extra lists' defaults.
       ...Object.fromEntries(
         extraLists.map((list) => [
           list,
@@ -164,44 +189,45 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
   };
 
   /**
-   * The board named by "?board=", if this person sees it — and, to change
-   * its lists, may modify them.
+   * The widget named by "?board=&list=", if this person sees its board — and,
+   * to change its lists, may modify them.
    */
-  const verifyBoard = (req: Request, write: boolean): Id => {
+  const verifyList = (req: Request, write: boolean): ListScope => {
     if (write && !accessIncludes(widgetRights(req.user)[kind], "update")) {
       throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
     }
     const board = openBoard(req.query.board, req.user);
     if (write) requireBoardControl(board, req.user);
-    return board.id;
+    return listInBoard(board.id, declaredAssetListType(kind), req.query.list);
   };
 
   /**
-   * The products: each names one of the categories and one of the makers,
-   * and appears once per maker. Empty rows are left out.
+   * The products: each names a node of the categories tree, by its id, and
+   * one of the makers, and appears once per maker. Empty rows are left out.
    */
   const readProducts = (
     received: unknown,
-    categories: DeclaredAssetEntry[],
+    categories: DeclaredAssetLocation[],
     makers: DeclaredAssetEntry[],
   ): DeclaredAssetProduct[] => {
     if (!Array.isArray(received)) {
       badRequest(`La liste des ${product.titles.toLowerCase()} est une liste`);
     }
-    const knownCategories = byName(categories);
+    const knownCategories = new Set(categories.map((c) => c.id));
     const knownMakers = byName(makers);
     const seen = new Set<string>();
     const list: DeclaredAssetProduct[] = [];
     for (const entry of received as unknown[]) {
       const name = nameOf(entry);
-      const categoryName = nameOf(entry, "category");
+      const categoryId = String((entry as Record<string, unknown> | null)?.category ?? "").trim();
       const makerName = nameOf(entry, "maker");
-      if (!name && !categoryName && !makerName) continue;
-      if (!categoryName) badRequest(`${capitalized(product.the)} « ${name} » n'a pas ${category.of}`);
+      if (!name && !categoryId && !makerName) continue;
+      if (!categoryId) badRequest(`${capitalized(product.the)} « ${name} » n'a pas ${category.of}`);
       if (!makerName) badRequest(`${capitalized(product.the)} « ${name} » n'a pas ${maker.of}`);
       if (!name) badRequest(`${capitalized(product.a)} ${maker.ofThe} « ${makerName} » n'a pas de nom`);
-      const knownCategory = knownCategories.get(categoryName.toLowerCase());
-      if (!knownCategory) badRequest(`${capitalized(category.the)} « ${categoryName} » n'existe pas`);
+      if (!knownCategories.has(categoryId)) {
+        badRequest(`${capitalized(category.the)} ${product.ofThe} « ${name} » n'existe plus`);
+      }
       const knownMaker = knownMakers.get(makerName.toLowerCase());
       if (!knownMaker) badRequest(`${capitalized(maker.the)} « ${makerName} » n'existe pas`);
       const key = `${makerName.toLowerCase()}\n${name.toLowerCase()}`;
@@ -209,16 +235,16 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
         badRequest(`${capitalized(product.the)} « ${knownMaker} ${name} » figure deux fois`);
       }
       seen.add(key);
-      list.push({ category: knownCategory!, maker: knownMaker!, name });
+      list.push({ category: categoryId, maker: knownMaker!, name });
     }
     return list;
   };
 
-  const save = transaction((boardId: Id, lists: Partial<DeclaredAssetSettings>) => {
-    ensure.run(boardId);
+  const save = transaction((scope: ListScope, lists: Partial<DeclaredAssetSettings>) => {
+    ensure.run(scope.board, scope.list);
     for (const list of [...DECLARED_ASSET_LISTS, ...extraLists]) {
       const value = lists[list];
-      if (value) writers[list].run(JSON.stringify(value), boardId);
+      if (value) writers[list].run(JSON.stringify(value), scope.board, scope.list);
     }
   });
 
@@ -229,7 +255,7 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
   routes.use(touch(DECLARED_ASSET_RESOURCES[kind]));
 
   routes.get("/", (req, res) => {
-    res.json(settingsOf(verifyBoard(req, false)));
+    res.json(settingsOf(verifyList(req, false)));
   });
 
   /**
@@ -238,16 +264,16 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
    * and makers as they will be once saved.
    */
   routes.put("/", (req, res) => {
-    const boardId = verifyBoard(req, true);
+    const scope = verifyList(req, true);
     const body = (req.body ?? {}) as Record<string, unknown>;
     if ([...DECLARED_ASSET_LISTS, ...extraLists].every((list) => body[list] === undefined)) {
       badRequest("Rien à enregistrer");
     }
-    const current = settingsOf(boardId);
+    const current = settingsOf(scope);
     // Everything is checked before writing: a rejected list does not leave
     // the others half saved.
     const categories =
-      body.categories === undefined ? undefined : readEntries(body.categories, category);
+      body.categories === undefined ? undefined : readTree(body.categories, categoriesTree);
     const suppliers =
       body.suppliers === undefined ? undefined : readEntries(body.suppliers, DECLARED_ASSET_SUPPLIER);
     const makers = body.makers === undefined ? undefined : readEntries(body.makers, maker);
@@ -266,8 +292,8 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
         .filter((list) => body[list] !== undefined)
         .map((list) => [list, readExtraList(list, body[list])]),
     );
-    save(boardId, { categories, suppliers, makers, products, ...extras });
-    res.json(settingsOf(boardId));
+    save(scope, { categories, suppliers, makers, products, ...extras });
+    res.json(settingsOf(scope));
   });
 
   return routes;

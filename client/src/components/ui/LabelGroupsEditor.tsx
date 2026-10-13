@@ -9,6 +9,7 @@ import { LABEL_WORDS } from "../../lib/label-words";
 import type { LabelWords } from "../../lib/label-words";
 import type { Registration } from "./IndicatorDrawer";
 import AddButton from "./AddButton";
+import DeleteConfirmModal from "./DeleteConfirmModal";
 import LabelColorPicker from "./LabelColorPicker";
 import {
   EmptyList,
@@ -19,11 +20,17 @@ import {
   RowCheckbox,
   move,
   nameFieldStyle,
+  pluralize,
   rowStyle,
   useRowSelection,
   editKeys,
 } from "./DrawerRows";
-import { DECLARED_ASSET_KINDS, DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR } from "@milo/shared";
+import {
+  DECLARED_ASSET_KINDS,
+  DECLARED_ASSET_ROUTES,
+  DEFAULT_LABEL_COLOR,
+  PRODUCT_SKU_MAX,
+} from "@milo/shared";
 import type {
   DeclaredAssetKind,
   Id,
@@ -31,6 +38,7 @@ import type {
   LabelGroup,
   LabelGroupLayout,
   LabelsBase,
+  ListRef,
   ProjectLabel,
   SupportLabel,
 } from "@milo/shared";
@@ -55,6 +63,8 @@ export interface LabelDraft {
   id?: Id;
   name: string;
   color: string;
+  /** A product variant's value's reference (LabelGroupsDraft "withSku"). */
+  sku?: string;
 }
 
 /** A group of the draft, with its labels in order. */
@@ -72,61 +82,87 @@ type Held = { kind: "group"; key: string } | { kind: "label"; key: string } | nu
 
 /** What changes from one kind of labels to another: the label routes. */
 interface LabelRoutes {
-  create: (boardId: Id | undefined, label: LabelDraft, groupId: Id) => Promise<{ id: Id }>;
+  create: (list: ListRef, label: LabelDraft, groupId: Id) => Promise<{ id: Id }>;
   update: (
     id: Id,
     data: { name: string; color: string; group_id?: Id },
   ) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
-  read: (boardId: Id | undefined) => Promise<AnyLabel[]>;
+  read: (list: ListRef) => Promise<AnyLabel[]>;
 }
 
 /** A declared asset kind's label routes (shared, declared-assets.ts). */
 const declaredAssetRoutes = (kind: DeclaredAssetKind): LabelRoutes => ({
-  create: (boardId, l, groupId) =>
-    api.createDeclaredAssetLabel(kind, boardId!, l.name, l.color, groupId),
+  create: (list, l, groupId) =>
+      api.createDeclaredAssetLabel(kind, list, l.name, l.color, groupId),
   update: (id, data) => api.updateDeclaredAssetLabel(kind, id, data),
   remove: (id) => api.deleteDeclaredAssetLabel(kind, id),
-  read: (boardId) => api.getDeclaredAssetLabels(kind, boardId!),
+  read: (list) => api.getDeclaredAssetLabels(kind, list),
 });
 
 const ROUTES: Record<LabelsBase, LabelRoutes> = {
   "/labels": {
-    create: (boardId, l, groupId) => api.createLabel(boardId!, l.name, l.color, groupId),
+    create: (list, l, groupId) =>
+      api.createLabel(list, l.name, l.color, groupId),
     update: (id, data) => api.updateLabel(id, data),
     remove: (id) => api.deleteLabel(id),
-    read: (boardId) => api.getLabels(boardId!),
+    read: (list) => api.getLabels(list),
   },
   "/project-labels": {
-    create: (boardId, l, groupId) =>
-      api.createProjectLabel(boardId!, l.name, l.color, groupId),
+    create: (list, l, groupId) =>
+      api.createProjectLabel(list, l.name, l.color, groupId),
     update: (id, data) => api.updateProjectLabel(id, data),
     remove: (id) => api.deleteProjectLabel(id),
-    read: (boardId) => api.getProjectLabels(boardId!),
+    read: (list) => api.getProjectLabels(list),
   },
   "/support-labels": {
-    create: (boardId, l, groupId) => api.createSupportLabel(boardId!, l.name, l.color, groupId),
+    create: (list, l, groupId) =>
+      api.createSupportLabel(list, l.name, l.color, groupId),
     update: (id, data) => api.updateSupportLabel(id, data),
     remove: (id) => api.deleteSupportLabel(id),
-    read: (boardId) => api.getSupportLabels(boardId!),
+    read: (list) => api.getSupportLabels(list),
   },
   "/managed-device-asset-labels": {
-    create: (boardId, l, groupId) => api.createManagedDeviceAssetLabel(boardId!, l.name, l.color, groupId),
+    create: (list, l, groupId) =>
+      api.createManagedDeviceAssetLabel(list, l.name, l.color, groupId),
     update: (id, data) => api.updateManagedDeviceAssetLabel(id, data),
     remove: (id) => api.deleteManagedDeviceAssetLabel(id),
-    read: (boardId) => api.getManagedDeviceAssetLabels(boardId!),
+    read: (list) => api.getManagedDeviceAssetLabels(list),
   },
   "/contact-labels": {
-    create: (boardId, l, groupId) => api.createContactLabel(boardId!, l.name, l.color, groupId),
+    create: (list, l, groupId) =>
+      api.createContactLabel(list, l.name, l.color, groupId),
     update: (id, data) => api.updateContactLabel(id, data),
     remove: (id) => api.deleteContactLabel(id),
-    read: (boardId) => api.getContactLabels(boardId!),
+    read: (list) => api.getContactLabels(list),
   },
   "/product-labels": {
-    create: (boardId, l, groupId) => api.createProductLabel(boardId!, l.name, l.color, groupId),
+    create: (list, l, groupId) =>
+      api.createProductLabel(list, l.name, l.color, groupId),
     update: (id, data) => api.updateProductLabel(id, data),
     remove: (id) => api.deleteProductLabel(id),
-    read: (boardId) => api.getProductLabels(boardId!),
+    read: (list) => api.getProductLabels(list),
+  },
+  "/order-labels": {
+    create: (list, l, groupId) =>
+      api.createOrderLabel(list, l.name, l.color, groupId),
+    update: (id, data) => api.updateOrderLabel(id, data),
+    remove: (id) => api.deleteOrderLabel(id),
+    read: (list) => api.getOrderLabels(list),
+  },
+  "/warehouse-labels": {
+    create: (list, l, groupId) =>
+      api.createWarehouseLabel(list, l.name, l.color, groupId),
+    update: (id, data) => api.updateWarehouseLabel(id, data),
+    remove: (id) => api.deleteWarehouseLabel(id),
+    read: (list) => api.getWarehouseLabels(list),
+  },
+  "/location-labels": {
+    create: (list, l, groupId) =>
+      api.createLocationLabel(list, l.name, l.color, groupId),
+    update: (id, data) => api.updateLocationLabel(id, data),
+    remove: (id) => api.deleteLocationLabel(id),
+    read: (list) => api.getLocationLabels(list),
   },
   ...(Object.fromEntries(
     DECLARED_ASSET_KINDS.map((kind) => [DECLARED_ASSET_ROUTES[kind].labels, declaredAssetRoutes(kind)]),
@@ -174,8 +210,8 @@ const layoutOf = (groups: LabelGroup[], labels: AnyLabel[]): LabelGroupLayout[] 
 interface LabelGroupsEditorProps {
   /** The kind of labels: those of cards, of projects, of Support. */
   base: LabelsBase;
-  /** The board whose labels these are; none for Support. */
-  boardId?: Id;
+  /** The list widget whose labels these are. */
+  list: ListRef;
   /** Registers the save; returns how to unregister it. */
   register: (save: Registration) => () => void;
   /** Changing it re-reads the lists: a paste from the "Actions" menu. */
@@ -186,7 +222,7 @@ interface LabelGroupsEditorProps {
 
 export default function LabelGroupsEditor({
   base,
-  boardId,
+  list,
   register,
   version = 0,
   words = LABEL_WORDS,
@@ -203,15 +239,15 @@ export default function LabelGroupsEditor({
   const reload = useCallback(async () => {
     try {
       const [readGroups, readLabels] = await Promise.all([
-        api.getLabelGroups(base, boardId),
-        routes.read(boardId),
+        api.getLabelGroups(base, list),
+        routes.read(list),
       ]);
       setOriginals({ groups: readGroups, labels: readLabels });
       setGroups(toDraft(readGroups, readLabels));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [base, boardId, routes]);
+  }, [base, list, routes]);
 
   useEffect(() => {
     void reload();
@@ -227,12 +263,13 @@ export default function LabelGroupsEditor({
         .filter((g) => g.name.trim())
         .map((g, position) => ({
           id: g.id ?? g.temp!,
+          list_key: list.list,
           name: g.name.trim(),
           position,
           created_at: "",
         })),
     );
-  }, [publish, base, groups]);
+  }, [publish, base, groups, list]);
   useEffect(() => () => publish?.(base, null), [publish, base]);
 
   // The save: what was removed, the groups, then the labels, then the order.
@@ -263,7 +300,7 @@ export default function LabelGroupsEditor({
             const name = g.name.trim();
             let groupId = g.id;
             if (groupId === undefined) {
-              groupId = (await api.createLabelGroup(base, name, boardId)).id;
+              groupId = (await api.createLabelGroup(base, name, list)).id;
               if (g.temp !== undefined) created.set(g.temp, groupId);
             } else if (before.groups.find((o) => o.id === groupId)?.name !== name) {
               await api.renameLabelGroup(base, groupId, name);
@@ -273,7 +310,7 @@ export default function LabelGroupsEditor({
             for (const l of g.labels) {
               const row = { ...l, name: l.name.trim() };
               if (l.id === undefined) {
-                ids.push((await routes.create(boardId, row, groupId)).id);
+                ids.push((await routes.create(list, row, groupId)).id);
                 continue;
               }
               const o = before.labels.find((x) => x.id === l.id);
@@ -302,7 +339,7 @@ export default function LabelGroupsEditor({
 
           const same =
             JSON.stringify(layout) === JSON.stringify(layoutOf(before.groups, before.labels));
-          if (!same) await api.arrangeLabels(base, layout, boardId);
+          if (!same) await api.arrangeLabels(base, layout, list);
           // The groups chosen before they existed take their real ids.
           return (config: Record<string, unknown>) => remapGroups(config, created);
         } finally {
@@ -311,7 +348,7 @@ export default function LabelGroupsEditor({
           await reload();
         }
       }),
-    [register, base, boardId, routes, reload, words.missingName],
+    [register, base, list, routes, reload, words.missingName],
   );
 
   return <LabelGroupsDraft groups={groups} onChange={setGroups} words={words} />;
@@ -323,14 +360,24 @@ interface LabelGroupsDraftProps {
   onChange: Dispatch<SetStateAction<GroupDraft[]>>;
   /** What the labels and their groups are called: labels and groups by default. */
   words?: LabelWords;
+  /** A SKU after each label's name: a product variant's values (ProductDrawer). */
+  withSku?: boolean;
 }
+
+/** The width of a value's SKU, between its name and its color. */
+const SKU_WIDTH = 120;
 
 /**
  * The list itself, on a draft held by its owner: the board's labels above,
  * which saves it with the drawer; a product's variants (ProductDrawer), which
  * saves them with the product.
  */
-export function LabelGroupsDraft({ groups, onChange: setGroups, words = LABEL_WORDS }: LabelGroupsDraftProps) {
+export function LabelGroupsDraft({
+  groups,
+  onChange: setGroups,
+  words = LABEL_WORDS,
+  withSku = false,
+}: LabelGroupsDraftProps) {
   const [held, setHeld] = useState<Held>(null);
   /** The field with focus: it takes the drawer's background. */
   const [input, setInput] = useState<string | null>(null);
@@ -434,8 +481,37 @@ export function LabelGroupsDraft({ groups, onChange: setGroups, words = LABEL_WO
     for (const l of g.labels) selection.toggle(l.key, on);
   };
 
+  // What the checked boxes remove, confirmed first: the fully checked groups,
+  // their labels with them, and the labels checked in the others.
+  const [confirming, setConfirming] = useState(false);
+  const removedGroups = groups.filter(groupChecked);
+  const removedLabels = groups
+    .filter((g) => !groupChecked(g))
+    .flatMap((g) => g.labels)
+    .filter((l) => selection.isChecked(l.key));
+
+  /** "« Couleur » et ses valeurs", "« Rouge »", or "2 attributs et 1 valeur". */
+  const removedText = () => {
+    const [group] = removedGroups;
+    const [label] = removedLabels;
+    if (group && removedGroups.length === 1 && removedLabels.length === 0) {
+      const named = group.name.trim() ? `${words.theGroup}« ${group.name.trim()} »` : words.theGroup.trim();
+      return group.labels.length > 0 ? `${named} et ses ${words.label}s` : named;
+    }
+    if (label && removedLabels.length === 1 && removedGroups.length === 0) {
+      return label.name.trim() ? `« ${label.name.trim()} »` : words.theLabel;
+    }
+    return [
+      removedGroups.length > 0 && pluralize(removedGroups.length, words.group),
+      removedLabels.length > 0 && pluralize(removedLabels.length, words.label),
+    ]
+      .filter(Boolean)
+      .join(" et ");
+  };
+
   /** Removes the checked labels, and the fully checked groups with them. */
   const removeChecked = () => {
+    setConfirming(false);
     const checked = new Set(selection.checked);
     setGroups((before) =>
       before
@@ -582,6 +658,23 @@ export function LabelGroupsDraft({ groups, onChange: setGroups, words = LABEL_WO
                       },
                       `Nom de ${label.name || words.theLabel}`,
                     )}
+                    {withSku && (
+                      <TextInput
+                        size="sm"
+                        radius={ROUNDING}
+                        w={SKU_WIDTH}
+                        style={{ flexShrink: 0 }}
+                        styles={{ input: nameFieldStyle(input === `${label.key}:sku`) }}
+                        placeholder="SKU"
+                        value={label.sku ?? ""}
+                        onChange={(e) => changeLabel(label.key, { sku: e.currentTarget.value })}
+                        {...editKeys((sku) => changeLabel(label.key, { sku }))}
+                        maxLength={PRODUCT_SKU_MAX}
+                        onFocus={() => setInput(`${label.key}:sku`)}
+                        onBlur={() => setInput(null)}
+                        aria-label={`SKU de ${label.name || words.theLabel}`}
+                      />
+                    )}
                     <LabelColorPicker
                       color={label.color}
                       onChange={(color) => changeLabel(label.key, { color })}
@@ -613,9 +706,17 @@ export function LabelGroupsDraft({ groups, onChange: setGroups, words = LABEL_WO
           groups.filter(groupChecked).length +
           groups.flatMap((g) => g.labels).filter((l) => selection.isChecked(l.key)).length
         }
-        onDeleteChecked={removeChecked}
+        onDeleteChecked={() => setConfirming(true)}
         mt={groups.length === 0 ? 4 : 0}
         h={ADD_HEIGHT}
+      />
+
+      <DeleteConfirmModal
+        opened={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={removeChecked}
+        title="Supprimer"
+        message={<>Voulez-vous vraiment supprimer {removedText()} ? Cette action est irréversible.</>}
       />
     </div>
   );

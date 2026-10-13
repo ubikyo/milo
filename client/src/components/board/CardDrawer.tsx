@@ -22,7 +22,7 @@ import {
   IconPhoto,
   IconSettings,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
 import { shrinkImage } from "../../lib/shrinkImage";
 import CardCovers from "./CardCovers";
@@ -63,6 +63,7 @@ import type {
   Checklist,
   Id,
   Label,
+  ListRef,
   PublicUser,
   TaskCard,
 } from "@milo/shared";
@@ -99,6 +100,8 @@ interface CardDrawerProps {
   labels: Label[];
   users: PublicUser[];
   boardId: string | null;
+  /** The card's "Tâches" widget: its labels are the ones offered. */
+  list: ListRef | null;
   onLabelsChanged: (patch?: {
     id: number;
     data: Partial<Label>;
@@ -127,6 +130,7 @@ export default function CardDrawer({
   labels,
   users,
   boardId,
+  list,
   onLabelsChanged,
   onSaved,
   followed,
@@ -141,8 +145,17 @@ export default function CardDrawer({
   const [destination, setDestination] = useState<Destination>({
     boardId: null,
     listId: null,
+    listKey: null,
   });
-  /** The chosen board's labels: they belong only to it. */
+  /** The chosen list's widget, whose labels the created card takes. */
+  const destinationList = useMemo(
+    () =>
+      destination.boardId && destination.listKey
+        ? { board: Number(destination.boardId), list: destination.listKey }
+        : null,
+    [destination.boardId, destination.listKey],
+  );
+  /** The chosen widget's labels: they belong only to it. */
   const [labelsDestination, setDestinationLabels] = useState<Label[]>([]);
   const [text, setText] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
@@ -283,11 +296,11 @@ export default function CardDrawer({
   }, [opened, source, card, editor, currentUserId]);
 
   const readTargetLabels = async () => {
-    if (!destination.boardId) return setDestinationLabels([]);
-    setDestinationLabels(await api.getLabels(destination.boardId));
+    if (!destinationList) return setDestinationLabels([]);
+    setDestinationLabels(await api.getLabels(destinationList));
   };
 
-  // Changing board removes the chosen labels: they belonged to the
+  // Changing widget removes the chosen labels: they belonged to the
   // other one.
   useEffect(() => {
     if (!creation) return;
@@ -295,7 +308,7 @@ export default function CardDrawer({
     setDestinationLabels([]);
     readTargetLabels().catch((e) => notifyError(errorMessage(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [creation, destination.boardId]);
+  }, [creation, destinationList]);
 
   // A checklist has just changed: the form is reread to show only what
   // the server kept. The board will reread on close.
@@ -702,9 +715,7 @@ export default function CardDrawer({
                         labels={creation ? labelsDestination : labels}
                         value={labelIds}
                         onChange={setLabelIds}
-                        boardId={
-                          (creation ? destination.boardId : boardId) ?? ""
-                        }
+                        list={creation ? destinationList : list}
                         onLabelsChanged={
                           creation
                             ? () =>

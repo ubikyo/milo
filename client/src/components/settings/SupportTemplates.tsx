@@ -1,12 +1,14 @@
 import { Box, Group, Input, Select, Stack } from "@mantine/core";
 import { IconTemplate } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
-import type { Id, SupportVariableGroup } from "@milo/shared";
+import type { Id, ReplyTemplateKey, SupportVariableGroup } from "@milo/shared";
 import { errorMessage } from "../../lib/errors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
+  Handle,
   ROUNDING,
   RowButton,
+  move,
   RowField,
   RowCheckbox,
   RowCheckboxSpace,
@@ -19,7 +21,8 @@ import {
   rowStyle,
 } from "../ui/DrawerRows";
 import SupportReplyModal from "./SupportReplyModal";
-import type { ComponentType, ReactNode } from "react";
+import type { ExtraVariable } from "./SupportReplyModal";
+import type { ComponentType, DragEvent, ReactNode } from "react";
 
 // A list of Support templates, in Settings ("Paramétrage"): the automatic
 // notifications, the default contents. It looks like the drawer lists
@@ -29,6 +32,9 @@ import type { ComponentType, ReactNode } from "react";
 // templates are deleted together; "Ajouter" adds an empty row, created as
 // soon as it has a title.
 
+
+/** The choice of no event: the template is placed by none. */
+const NO_EVENT = "";
 
 /** Wide enough to read "Demande prise en charge". */
 const EVENT_WIDTH = 190;
@@ -60,12 +66,17 @@ function EventChoice<E extends string>({
   const [entered, setEntered] = useState(false);
   return (
     <Select
-      data={events.map((e) => ({
-        value: e.value,
-        label: e.label,
-        disabled: taken.includes(e.value),
-      }))}
-      value={value}
+      // "Aucun évènement" first: a template may be placed by none — only
+      // chosen by hand, as a predefined reply.
+      data={[
+        { value: NO_EVENT, label: "Aucun évènement" },
+        ...events.map((e) => ({
+          value: e.value,
+          label: e.label,
+          disabled: taken.includes(e.value),
+        })),
+      ]}
+      value={value ?? NO_EVENT}
       onChange={(v) => onChange(events.find((e) => e.value === v)?.value ?? null)}
       placeholder="Aucun évènement"
       allowDeselect
@@ -103,7 +114,16 @@ interface SupportTemplatesProps<E extends string> {
   /** The variable sources its templates may cite. */
   variableGroups?: readonly SupportVariableGroup[];
   /** The e-mail template its templates are previewed in. */
-  previewTemplate: "support_reply" | "support_auto_reply";
+  previewTemplate: ReplyTemplateKey;
+  /** Variables of its own, after the groups: an order's supplier's (ExtraVariable). */
+  extraVariables?: readonly ExtraVariable[];
+  /** False: several templates may carry the same event — an order's contents. */
+  uniqueEvents?: boolean;
+  /**
+   * With it, the templates keep an order of their own: a handle drags them —
+   * an order's contents, placed in that order. The list goes once dropped.
+   */
+  reorder?: (ids: Id[]) => Promise<unknown>;
 }
 
 export default function SupportTemplates<E extends string>({
@@ -121,6 +141,9 @@ export default function SupportTemplates<E extends string>({
   onError,
   variableGroups,
   previewTemplate,
+  extraVariables,
+  uniqueEvents = true,
+  reorder,
 }: SupportTemplatesProps<E>) {
   // The templates, and the one whose modal is open.
   const [templates, setTemplates] = useState<Template<E>[]>([]);
@@ -153,9 +176,33 @@ export default function SupportTemplates<E extends string>({
     await reload();
   };
 
+  // While a row is dragged: the order under the pointer, and the rank of the row held.
+  const [dragged, setDragged] = useState<Template<E>[] | null>(null);
+  const [held, setHeld] = useState<number | null>(null);
+  const shown = dragged ?? templates;
+  const draggable = Boolean(reorder) && canEdit;
+
+  const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
+    if (held === null) return;
+    e.preventDefault();
+    const next = move(shown, held, rank);
+    if (!next) return;
+    setHeld(rank);
+    setDragged(next);
+  };
+
+  const drop = () => {
+    const order = dragged;
+    setHeld(null);
+    setDragged(null);
+    if (!reorder || !order || order.every((m, i) => m.id === templates[i]?.id)) return;
+    setTemplates(order);
+    void write(() => reorder(order.map((m) => m.id)));
+  };
+
   /** The events already taken, except the given template's. */
   const takenEvents = (except?: Id): E[] =>
-    templates.flatMap((m) => (m.id !== except && m.event ? [m.event] : []));
+    !uniqueEvents ? [] : templates.flatMap((m) => (m.id !== except && m.event ? [m.event] : []));
 
   const total = templates.length + (adding ? 1 : 0);
 
@@ -174,7 +221,8 @@ export default function SupportTemplates<E extends string>({
     );
 
   /** A row's style: without its checkbox, read only, a simple list's. */
-  const templateRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
+  const templateRowStyle = (rank: number) =>
+    rowStyle(rank, total, held === rank, canEdit ? "checkbox" : "simple");
 
   return (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -183,18 +231,28 @@ export default function SupportTemplates<E extends string>({
           <EmptyList icon={emptyIcon} message={emptyText} />
         ) : (
           <Stack gap={1}>
-            {templates.map((m, rank) => (
+            {shown.map((m, rank) => (
               <Group
                 key={m.id}
                 gap="sm"
                 wrap="nowrap"
                 style={templateRowStyle(rank)}
+                onDragOver={draggable ? (e) => dragHover(e, rank) : undefined}
+                onDrop={draggable ? (e) => e.preventDefault() : undefined}
               >
+                {draggable && (
+                  <Handle
+                    label={`Déplacer ${m.name}`}
+                    onDragStart={() => setHeld(rank)}
+                    onDragEnd={drop}
+                  />
+                )}
                 {canEdit && (
                   <RowCheckbox
                     label={`Sélectionner ${m.name}`}
                     checked={selection.isChecked(m.id)}
                     onChange={(on) => selection.toggle(m.id, on)}
+                    afterHandle={draggable}
                   />
                 )}
                 {nameSlot(
@@ -232,7 +290,16 @@ export default function SupportTemplates<E extends string>({
               >
                 {/* Not created yet: nothing to delete, an empty space in place
                     of the checkbox. */}
-                {canEdit && <RowCheckboxSpace />}
+                {/* Not created yet: its handle in place, inactive. */}
+                {draggable && (
+                  <Handle
+                    label={`Déplacer ${entityLabel}`}
+                    active={false}
+                    onDragStart={() => {}}
+                    onDragEnd={() => {}}
+                  />
+                )}
+                {canEdit && <RowCheckboxSpace afterHandle={draggable} />}
                 {nameSlot(
                   <RowField
                     name=""
@@ -302,6 +369,7 @@ export default function SupportTemplates<E extends string>({
         canEdit={canEdit}
         groups={variableGroups}
         previewTemplate={previewTemplate}
+        extraVariables={extraVariables}
       />
     </fieldset>
   );

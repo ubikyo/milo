@@ -38,6 +38,7 @@ import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { listKey, locationPaths, projectReference } from "@milo/shared";
 import { categoryNodes } from "../../lib/categories";
+import { useListRef } from "../../lib/list-ref";
 import { inList } from "../../lib/lists";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import type { ReactNode } from "react";
@@ -45,6 +46,7 @@ import type { Category, Id, Project, PublicUser } from "@milo/shared";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { useRights } from "../../lib/rights";
 import { useIsEditing } from "../../lib/editing";
+import { NewShortcut } from "../../lib/newShortcut";
 
 /** A funnel option: "all" means "no filter". */
 interface FilterOption {
@@ -717,9 +719,10 @@ export default function ProjectTable({
     ...users.map((u) => ({ value: String(u.id), label: u.name })),
   ];
 
-  // Each category by its path, in the tree's order: one takes in those under
-  // it (server, routes/projects.ts).
-  const categoryNodesList = categoryNodes(categories);
+  // Each category of the widget by its path, in the tree's order: one takes
+  // in those under it (server, routes/projects.ts).
+  const list = useListRef();
+  const categoryNodesList = categoryNodes(categories.filter((c) => c.list_key === list?.list));
   const categoryPaths = locationPaths(categoryNodesList);
   const categoryNames = new Map(categoryNodesList.map((c) => [c.id, c.name]));
   const categoryOptions: FilterOption[] = [
@@ -807,7 +810,6 @@ export default function ProjectTable({
         message="Aucun projet"
         actionLabel="Nouveau projet"
         onAction={onAddProject}
-        size="md"
       />
     );
   }
@@ -918,12 +920,11 @@ export function ProjectsListWidget({ config }: { config: unknown }) {
   const projects = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   if (!list || !projects) return null;
   const { onAddProject } = list;
+  const add = onAddProject && (() => onAddProject(listKey(config)));
   return (
-    <ProjectTable
-      {...list}
-      projects={projects}
-      config={config}
-      onAddProject={onAddProject && (() => onAddProject(listKey(config)))}
-    />
+    // "N" adds one, as "Ajouter un projet" does (lib/newShortcut).
+    <NewShortcut action="Nouveau projet" run={add}>
+      <ProjectTable {...list} projects={projects} config={config} onAddProject={add} />
+    </NewShortcut>
   );
 }

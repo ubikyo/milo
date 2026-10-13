@@ -21,9 +21,14 @@ import SupportTemplates from "../settings/SupportTemplates";
 // dropped into the editor of a team reply: a signature…
 interface SupportOptionsProps {
   canEdit: boolean;
+  /**
+   * What it shows: the due date ("settings"), or the replies — automatic and
+   * predefined ("replies") —, which the drawer places after the templates.
+   */
+  part: "settings" | "replies";
 }
 
-export default function SupportOptions({ canEdit }: SupportOptionsProps) {
+export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
   const [days, setDays] = useState<number | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
   useEffect(() => {
@@ -48,6 +53,47 @@ export default function SupportOptions({ canEdit }: SupportOptionsProps) {
       setDays(saved);
     }
   };
+
+  if (part === "replies") {
+    return (
+      <Stack gap="xl">
+        <SupportTemplates
+          label="Réponses automatiques"
+          events={SUPPORT_REPLY_EVENTS}
+          load={api.getSupportReplies}
+          create={api.createSupportReply}
+          updateStatement={api.updateSupportReply}
+          remove={api.deleteSupportReply}
+          addTitle="Ajouter une réponse"
+          entityLabel="la réponse"
+          emptyIcon={IconMessageReply}
+          emptyText="Aucune réponse pour le moment"
+          canEdit={canEdit}
+          onError={notifyError}
+          // Sent automatically, a notification has no one who writes it.
+          variableGroups={["Expéditeur", "Demande"]}
+          // Sent as the request's automatic reply.
+          previewTemplate="support_auto_reply"
+        />
+        <SupportTemplates
+          label="Réponses pré-définies"
+          events={SUPPORT_CONTENT_EVENTS}
+          load={api.getSupportContents}
+          create={api.createSupportContent}
+          updateStatement={api.updateSupportContent}
+          remove={api.deleteSupportContent}
+          addTitle="Ajouter une réponse pré-définie"
+          entityLabel="la réponse"
+          emptyIcon={IconSignature}
+          emptyText="Aucune réponse pré-définie pour le moment"
+          canEdit={canEdit}
+          onError={notifyError}
+          // Dropped into a team reply.
+          previewTemplate="support_reply"
+        />
+      </Stack>
+    );
+  }
 
   return (
     <Stack gap="xl">
@@ -76,40 +122,6 @@ export default function SupportOptions({ canEdit }: SupportOptionsProps) {
           disabled={!canEdit || days === null}
         />
       </Group>
-      <SupportTemplates
-        label="Réponses automatiques"
-        events={SUPPORT_REPLY_EVENTS}
-        load={api.getSupportReplies}
-        create={api.createSupportReply}
-        updateStatement={api.updateSupportReply}
-        remove={api.deleteSupportReply}
-        addTitle="Ajouter une réponse"
-        entityLabel="la réponse"
-        emptyIcon={IconMessageReply}
-        emptyText="Aucune réponse pour le moment"
-        canEdit={canEdit}
-        onError={notifyError}
-        // Sent automatically, a notification has no one who writes it.
-        variableGroups={["Expéditeur", "Demande"]}
-        // Sent as the request's automatic reply.
-        previewTemplate="support_auto_reply"
-      />
-      <SupportTemplates
-        label="Contenus par défaut"
-        events={SUPPORT_CONTENT_EVENTS}
-        load={api.getSupportContents}
-        create={api.createSupportContent}
-        updateStatement={api.updateSupportContent}
-        remove={api.deleteSupportContent}
-        addTitle="Ajouter un contenu"
-        entityLabel="le contenu"
-        emptyIcon={IconSignature}
-        emptyText="Aucun contenu pour le moment"
-        canEdit={canEdit}
-        onError={notifyError}
-        // Dropped into a team reply.
-        previewTemplate="support_reply"
-      />
     </Stack>
   );
 }

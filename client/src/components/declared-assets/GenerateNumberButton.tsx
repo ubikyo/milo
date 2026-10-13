@@ -1,12 +1,12 @@
 import { ActionIcon, Menu } from "@mantine/core";
 import { IconWand } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import type { AssetNumberTemplate, DeclaredAssetKind, Id, Label } from "@milo/shared";
+import type { AssetNumberTemplate, DeclaredAssetKind, Label, ListRef } from "@milo/shared";
 import { api } from "../../api";
 import { runAssetNumberCode } from "../../lib/assetNumber";
 import { errorMessage, notifyError } from "../../lib/errors";
 
-// An asset's number, drawn from its board's asset number templates of the
+// An asset's number, drawn from its widget's asset number templates of the
 // kind (the list widget's drawer, "Formats de numéro d'asset"): with a single
 // template, the click runs it; with several, it opens their list. Without
 // any, there is nothing to show. Each "{{label.Groupe}}" takes the labels
@@ -15,7 +15,8 @@ import { errorMessage, notifyError } from "../../lib/errors";
 
 interface GenerateNumberButtonProps {
   kind: DeclaredAssetKind;
-  boardId: Id;
+  /** The list widget whose templates are offered. */
+  list: ListRef;
   /** The labels chosen in the form, with their group's name. */
   labels: Label[];
   onGenerated: (number: string) => void;
@@ -34,7 +35,7 @@ const valuesOf = (labels: Label[]): Map<string, string> => {
 
 export default function GenerateNumberButton({
   kind,
-  boardId,
+  list,
   labels,
   onGenerated,
   disabled,
@@ -45,13 +46,13 @@ export default function GenerateNumberButton({
   useEffect(() => {
     let current = true;
     api
-      .getAssetNumberTemplates(kind, boardId)
+      .getAssetNumberTemplates(kind, list)
       .then((list) => current && setTemplates(list.templates))
       .catch((e) => current && notifyError(errorMessage(e)));
     return () => {
       current = false;
     };
-  }, [kind, boardId]);
+  }, [kind, list]);
 
   const generate = async (template: AssetNumberTemplate) => {
     setRunning(true);

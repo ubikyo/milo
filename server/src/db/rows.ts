@@ -43,6 +43,8 @@ export interface UserRow {
   default_board: string;
   /** JSON: their notification settings; empty for the defaults (lib/notification-settings.ts). */
   notification_settings: string;
+  /** How an e-mail being written first shows: "content" or "layout". */
+  reply_editor: string;
 }
 
 export interface ApiTokenRow {
@@ -118,6 +120,8 @@ export interface PaperFormatRow {
 
 export interface MilestoneTypeRow {
   id: Id;
+  board_id: Id;
+  list_key: string;
   name: string;
   /** JSON: an array of { value, label, color }. */
   milestones: string;
@@ -141,9 +145,13 @@ export interface SupportContentRow {
   event: string;
 }
 
+/** An order's default content, as a Support one: its event an OrderContentEvent, or empty. */
+export type OrderContentRow = SupportContentRow;
+
 export interface CategoryRow {
   id: Id;
   board_id: Id;
+  list_key: string;
   name: string;
   /** JSON: an array of { value, label }. */
   milestones: string;
@@ -262,6 +270,7 @@ export interface TaskCardRow {
 export interface LabelRow {
   id: Id;
   board_id: Id;
+  list_key: string;
   group_id: Id;
   /** Its group's name, on the queries that read it along. */
   group_name?: string;
@@ -355,6 +364,7 @@ export interface SupportRequestRow {
 export interface SupportLabelRow {
   id: Id;
   board_id: Id;
+  list_key: string;
   group_id: Id;
   group_name?: string;
   name: string;

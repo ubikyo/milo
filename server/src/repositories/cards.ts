@@ -76,23 +76,27 @@ const cardLabels = selection<LabelRow>(
 export const labelsOf = (cardId: Id): Label[] => cardLabels.all(cardId);
 
 const deleteLabels = mutation("DELETE FROM card_labels WHERE card_id = ?");
+// Only a label of the card's widget: its list's board and list key.
 const addLabel = mutation(
   `INSERT OR IGNORE INTO card_labels (card_id, label_id)
-   SELECT ?, id FROM labels WHERE id = ? AND board_id = ?`,
+   SELECT c.id, l.id FROM task_cards c
+   JOIN task_lists tl ON tl.id = c.list_id
+   JOIN labels l ON l.board_id = tl.board_id AND l.list_key = tl.list_key
+   WHERE c.id = ? AND l.id = ?`,
 );
 
 /**
- * A card carries only its own board's labels: those of another are ignored
+ * A card carries only its own widget's labels: those of another are ignored
  * rather than refused, as for members.
  */
-export const replaceCardLabels = transaction((cardId: Id, labelIds: Id[], boardId: Id) => {
+export const replaceCardLabels = transaction((cardId: Id, labelIds: Id[]) => {
   deleteLabels.run(cardId);
-  for (const labelId of labelIds) addLabel.run(cardId, labelId, boardId);
+  for (const labelId of labelIds) addLabel.run(cardId, labelId);
 });
 
 /** One more label on a card: the context it was created in. */
-export const addCardLabel = (cardId: Id, labelId: Id, boardId: Id): void => {
-  addLabel.run(cardId, labelId, boardId);
+export const addCardLabel = (cardId: Id, labelId: Id): void => {
+  addLabel.run(cardId, labelId);
 };
 
 // --- Checklists ------------------------------------------------------------

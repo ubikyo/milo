@@ -1,15 +1,18 @@
-// Projects: the filtered list, the detail view, and the writes.
+// Projects: the filtered list, the detail view, and the writes — its
+// documents among them, which go out on upload, without waiting for
+// "Sauvegarder", as a product's.
 
 import { Router } from "express";
 import type { Request } from "express";
 import { inContext } from "@milo/shared";
-import type { Id, Project } from "@milo/shared";
-import { selection, transaction } from "../db/query.js";
+import type { Id, Project, ProjectAttachment } from "@milo/shared";
+import { mutation, selection, transaction } from "../db/query.js";
 import type { ProjectJoinedRow, ProjectRow } from "../db/rows.js";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
+import { deleteMedia, isImage, mediaUrl, writeMedia } from "../lib/media.js";
 import { require, requestCan } from "../lib/rights.js";
 import { cleanDescription, sameDescription } from "../lib/html.js";
-import { quote, logAction, changes, list, editMessage } from "../lib/history.js";
+import { quote, logAction, changes, list, editMessage, eventLine } from "../lib/history.js";
 import type { Field } from "../lib/history.js";
 import { concerned, notify, notifyLinked, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
@@ -17,6 +20,7 @@ import { touch } from "../middleware/events.js";
 import { categories } from "../repositories/project-boards.js";
 import { contextGroups, contextLabel } from "../repositories/contexts.js";
 import { keyInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 import {
   VISIBLE_BOARDS_CLAUSE as visibleBoardsClause,
   boards,
@@ -30,6 +34,7 @@ import {
   actorsOf,
   copyProjectLabels,
   labelsOf,
+  moveProjectLabels,
   oneWithRelations,
   projects,
   replaceActors,
@@ -38,10 +43,60 @@ import {
 } from "../repositories/projects.js";
 import { comments } from "../repositories/project-comments.js";
 import { nextReference } from "../repositories/references.js";
-import { milestoneTypes } from "./milestone-types.js";
+import { milestoneTypeOfList, milestoneTypes, twinMilestoneType } from "./milestone-types.js";
 import { creationNote, withAuthor } from "../repositories/comments.js";
+import { attachments as cardAttachments } from "../repositories/attachments.js";
+import { fileBody, receivedFile } from "./products.js";
 
 const PROJECT_NOT_FOUND = "Projet introuvable";
+
+// --- Documents -------------------------------------------------------------
+
+interface FileRow {
+  id: Id;
+  project_id: Id;
+  file: string;
+  name: string;
+  mime: string;
+  size: number;
+  position: number;
+  created_at: string;
+}
+
+const files = {
+  byId: selection<FileRow>("SELECT * FROM project_attachments WHERE id = ?"),
+  ofProject: selection<FileRow>(
+    "SELECT * FROM project_attachments WHERE project_id = ? ORDER BY position, id DESC",
+  ),
+  // A dropped document is placed first, as on a card. The project is named
+  // twice: better-sqlite3 refuses a numbered parameter used twice.
+  create: mutation(
+    `INSERT INTO project_attachments (project_id, file, name, mime, size, user_id, created_at, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?,
+       (SELECT COALESCE(MIN(position), 1) - 1 FROM project_attachments WHERE project_id = ?))`,
+  ),
+  // A copy cites the same files: they go with the last row citing them.
+  copy: mutation(
+    `INSERT INTO project_attachments (project_id, file, name, mime, size, user_id, created_at, position)
+     SELECT ?, file, name, mime, size, user_id, ?, position FROM project_attachments WHERE project_id = ?`,
+  ),
+  remove: mutation("DELETE FROM project_attachments WHERE id = ?"),
+  place: mutation("UPDATE project_attachments SET position = ? WHERE id = ? AND project_id = ?"),
+};
+
+const attachmentOf = (row: FileRow): ProjectAttachment => ({
+  ...row,
+  url: mediaUrl(row.file),
+  is_image: isImage(row.file),
+});
+
+const attachmentsOf = (projectId: Id): ProjectAttachment[] =>
+  files.ofProject.all(projectId).map(attachmentOf);
+
+/** The file goes when the last row citing it does. */
+const dropFile = (file: string): void => {
+  if (cardAttachments.countOfFile({ file }).count === 0) deleteMedia(file);
+};
 
 /** What the thread notes about a project when it changes (lib/history.ts). */
 const photo = (p: Project): Field[] => [
@@ -200,27 +255,28 @@ projectRoutes.get("/:id", (req, res) => {
   res.json({
     ...oneWithRelations(project),
     comments: comments.ofProject.all(project.id).map(withAuthor),
+    attachments: attachmentsOf(project.id),
   });
 });
 
 /**
- * The chosen category must belong to the project's board: otherwise the
- * project would carry a category absent from its tab.
+ * The chosen category must belong to the project's widget: otherwise the
+ * project would carry a category absent from its list.
  */
-const verifyCategory = (categoryId: unknown, boardId: unknown): void => {
+const verifyCategory = (categoryId: unknown, scope: ListScope): void => {
   const category = categories.byId.get(categoryId);
-  if (!category || String(category.board_id) !== String(boardId)) {
-    badRequest("Cette catégorie n'appartient pas au tableau");
+  if (!category || category.board_id !== scope.board || category.list_key !== scope.list) {
+    badRequest("Cette catégorie n'appartient pas au widget");
   }
 };
 
 /**
- * The chosen milestone type: an id that exists, or none. An unknown type is
+ * The chosen milestone type: one of the widget's, or none. An unknown type is
  * rejected rather than stored as is.
  */
-const milestoneTypeFrom = (received: unknown): number | null => {
+const milestoneTypeFrom = (received: unknown, scope: ListScope): number | null => {
   if (received === null || received === undefined || received === "") return null;
-  return orNotFound(milestoneTypes.byId.get(received), "Type de jalons introuvable").id;
+  return milestoneTypeOfList(scope, received).id;
 };
 
 projectRoutes.post("/", (req, res) => {
@@ -241,12 +297,13 @@ projectRoutes.post("/", (req, res) => {
   }
   const board = projectBoardOpen(board_id, req.user);
   require(req, "projects", "create");
-  verifyCategory(category_id, board_id);
-  const milestoneType = milestoneTypeFrom(milestone_type_id);
   // The "Projets" widget it is created from, failing that the first.
   const list = keyInBoard(board.id, "project.list", req.body.list_key);
+  const scope = { board: board.id, list };
+  verifyCategory(category_id, scope);
+  const milestoneType = milestoneTypeFrom(milestone_type_id, scope);
   // Created in a context, it receives its label: it stays in sight.
-  const label = contextLabel("project.list", board.id, context);
+  const label = contextLabel("project.list", board.id, list, context);
 
   const timestamp = now();
 
@@ -271,7 +328,7 @@ projectRoutes.post("/", (req, res) => {
     replaceActors(projectId, toIds(actor_ids));
     const labelIds = toIds(label_ids);
     if (label !== null && !labelIds.includes(label)) labelIds.push(label);
-    replaceProjectLabels(projectId, labelIds, Number(board_id));
+    replaceProjectLabels(projectId, labelIds, scope);
 
     // The thread opens on the creation, dated and signed Milo. Comments
     // written afterwards follow.
@@ -290,8 +347,10 @@ projectRoutes.post("/", (req, res) => {
 });
 
 /**
- * Copy of a project: its record, actors, labels. Without a destination
- * board, the copy stays in the original project's.
+ * Copy of a project: its record, actors, labels, documents — the same
+ * files, cited twice. Without a destination
+ * board, the copy stays in the original project's; without a destination
+ * widget, in the original's within its board, the first elsewhere.
  *
  * What is not copied: the thread. A comment carries an author and a date;
  * copying it would fabricate a conversation that did not take place. The
@@ -304,20 +363,21 @@ projectRoutes.post("/:id/copy", (req, res) => {
   const board = projectBoardOpen(req.body.board_id ?? source.board_id, req.user);
   const name = requireText(req.body.name ?? source.name, "Le nom de la copie est requis");
 
-  // Categories belong to the board: the copy keeps its own at home, and gets
-  // another elsewhere.
-  const categoryId =
-    req.body.category_id ?? (board.id === source.board_id ? source.category_id : null);
-  if (!categoryId) badRequest("La catégorie est requise");
-  verifyCategory(categoryId, board.id);
-
-  const timestamp = now();
-
   const list = keyInBoard(
     board.id,
     "project.list",
-    board.id === source.board_id ? source.list_key : undefined,
+    req.body.list_key ?? (board.id === source.board_id ? source.list_key : undefined),
   );
+  const scope = { board: board.id, list };
+  const home = scope.board === source.board_id && scope.list === source.list_key;
+
+  // Categories belong to the widget: the copy keeps its own at home, and gets
+  // another elsewhere.
+  const categoryId = req.body.category_id ?? (home ? source.category_id : null);
+  if (!categoryId) badRequest("La catégorie est requise");
+  verifyCategory(categoryId, scope);
+
+  const timestamp = now();
 
   const id = transaction((): Id => {
     const { lastInsertRowid } = projects.create.run({
@@ -327,7 +387,8 @@ projectRoutes.post("/:id/copy", (req, res) => {
       board_id: board.id,
       category_id: Number(categoryId),
       list_key: list,
-      milestone_type_id: source.milestone_type_id,
+      // Its type, or its twin of the same name in the destination widget.
+      milestone_type_id: twinMilestoneType(source.milestone_type_id, scope),
       status: source.status,
       created_at: timestamp,
       updated_at: timestamp,
@@ -335,7 +396,8 @@ projectRoutes.post("/:id/copy", (req, res) => {
     const copyId = Number(lastInsertRowid);
 
     replaceActors(copyId, actorsOf(source.id));
-    copyProjectLabels(source.id, copyId, board.id, timestamp);
+    copyProjectLabels(source.id, copyId, scope, timestamp);
+    files.copy.run(copyId, timestamp, source.id);
 
     comments.createSystem.run(
       copyId,
@@ -389,8 +451,20 @@ projectRoutes.put("/:id", (req, res) => {
 
   // A project does not leave a board one does not see, nor enter one.
   const board = projectBoardOpen(board_id, req.user);
-  verifyCategory(category_id, board_id);
-  const milestoneType = milestoneTypeFrom(milestone_type_id);
+  // Moved to another widget — named, or the new board's first —, it takes
+  // its next number there.
+  const list =
+    board.id === existing.board_id && req.body.list_key === undefined
+      ? existing.list_key
+      : keyInBoard(board.id, "project.list", req.body.list_key);
+  const scope = { board: board.id, list };
+  const moved = board.id !== existing.board_id || list !== existing.list_key;
+  verifyCategory(category_id, scope);
+  // Moved, it keeps its type through its twin there, unless it names one.
+  const milestoneType =
+    moved && req.body.milestone_type_id === undefined
+      ? twinMilestoneType(existing.milestone_type_id, scope)
+      : milestoneTypeFrom(milestone_type_id, scope);
 
   const clean = cleanDescription(description);
   const before = photo(oneWithRelations(projects.joined.get(existing.id)!));
@@ -402,17 +476,12 @@ projectRoutes.put("/:id", (req, res) => {
   const unchanged =
     name === existing.name &&
     sameDescription(clean, existing.description) &&
-    sameValue(board_id, existing.board_id) &&
+    !moved &&
     sameValue(category_id, existing.category_id) &&
     sameValue(milestoneType, existing.milestone_type_id) &&
     sameValue(status, existing.status) &&
     sameIds(actor_ids, actorsOf(existing.id)) &&
     sameIds(label_ids, labelsOf(existing.id));
-
-  // Moved to another board, it goes to the new board's first "Projets"
-  // widget, and takes its next number.
-  const moved = board.id !== existing.board_id;
-  const list = moved ? keyInBoard(board.id, "project.list", undefined) : existing.list_key;
 
   transaction(() => {
     projects.update.run({
@@ -430,7 +499,10 @@ projectRoutes.put("/:id", (req, res) => {
 
     if (Array.isArray(actor_ids)) replaceActors(existing.id, toIds(actor_ids));
     if (Array.isArray(label_ids)) {
-      replaceProjectLabels(existing.id, toIds(label_ids), Number(board_id));
+      replaceProjectLabels(existing.id, toIds(label_ids), scope);
+    } else if (moved) {
+      // Moved without its labels named, it keeps their twins.
+      moveProjectLabels(existing.id, scope, now());
     }
   })();
 
@@ -458,7 +530,9 @@ projectRoutes.put("/:id", (req, res) => {
 projectRoutes.delete("/:id", (req, res) => {
   const existing = projectFor(req, req.params.id, "delete");
   const recipients = concerned.project(existing.id);
+  const cited = files.ofProject.all(existing.id);
   projects.remove.run(existing.id);
+  for (const { file } of cited) dropFile(file);
   notifyDeletion({
     kind: "project",
     targetId: existing.id,
@@ -469,5 +543,42 @@ projectRoutes.delete("/:id", (req, res) => {
     recipients,
     vanished: true,
   });
+  res.status(204).end();
+});
+
+// A document: sent at once, noted in the thread. Adding one means editing the
+// project.
+projectRoutes.post("/:id/attachments", fileBody, (req, res) => {
+  const project = projectFor(req, req.params.id, "update");
+  const { content, name, mime } = receivedFile(req);
+  const { lastInsertRowid } = files.create.run(
+    project.id,
+    writeMedia(content, name),
+    name,
+    mime,
+    content.length,
+    req.user.id,
+    now(),
+    project.id,
+  );
+  logAction("project", project.id, req.user, [eventLine("Documents", `${quote(name)} ajouté`)]);
+  res.status(201).json(attachmentOf(files.byId.get(lastInsertRowid)!));
+});
+
+// The documents' order, as the detail view shows it.
+projectRoutes.put("/:id/attachments/order", (req, res) => {
+  const project = projectFor(req, req.params.id, "update");
+  transaction(() => toIds(req.body.ids).forEach((id, rank) => files.place.run(rank, id, project.id)))();
+  res.json(attachmentsOf(project.id));
+});
+
+projectRoutes.delete("/attachments/:attachment", (req, res) => {
+  const attachment = orNotFound(files.byId.get(req.params.attachment), "Document introuvable");
+  projectFor(req, attachment.project_id, "update");
+  files.remove.run(attachment.id);
+  dropFile(attachment.file);
+  logAction("project", attachment.project_id, req.user, [
+    eventLine("Documents", `${quote(attachment.name)} supprimé`),
+  ]);
   res.status(204).end();
 });

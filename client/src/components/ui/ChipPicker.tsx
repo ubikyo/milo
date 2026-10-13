@@ -106,6 +106,8 @@ interface ChipPickerProps<T extends ChipOption> {
    * in their groups. The chips are still read from `options`.
    */
   list?: ReactNode;
+  /** Retained options that cannot be removed: their checkbox stays checked, disabled. */
+  locked?: string[];
 }
 
 export default function ChipPicker<T extends ChipOption>({
@@ -153,6 +155,7 @@ export default function ChipPicker<T extends ChipOption>({
   position = "bottom-start",
   listMaxHeight,
   list,
+  locked = [],
 }: ChipPickerProps<T>) {
   // When separated, the options run from edge to edge of the list, and their
   // border too; the last one has none — there is nothing to separate below.
@@ -206,10 +209,13 @@ export default function ChipPicker<T extends ChipOption>({
 
   const toggle = (id: number | string) => {
     const key = String(id);
+    if (locked.includes(key) && value.includes(key)) return;
     onChange(
       value.includes(key) ? value.filter((v) => v !== key) : [...value, key],
     );
   };
+
+  const isLocked = (id: number | string) => locked.includes(String(id)) && value.includes(String(id));
 
   return (
     <Popover
@@ -350,6 +356,7 @@ export default function ChipPicker<T extends ChipOption>({
                       <Checkbox
                         checked={value.includes(String(option.id))}
                         onChange={() => toggle(option.id)}
+                        disabled={isLocked(option.id)}
                         size="xs"
                         styles={{ input: { cursor: "pointer" } }}
                         aria-label={option.name}
@@ -382,6 +389,7 @@ export default function ChipPicker<T extends ChipOption>({
                       key={option.id}
                       checked={value.includes(String(option.id))}
                       onChange={() => toggle(option.id)}
+                      disabled={isLocked(option.id)}
                       label={render(option)}
                       size="xs"
                       styles={{

@@ -32,6 +32,7 @@ import type {
 import { withAuthor } from "./comments.js";
 import { nextReference } from "./references.js";
 import { supportLabelGroups } from "./label-groups.js";
+import type { ListScope } from "./lists.js";
 import { actorOf } from "./users.js";
 
 export const REQUEST_NOT_FOUND = "Demande introuvable";
@@ -141,33 +142,34 @@ export const supportLabels = {
      LEFT JOIN support_label_groups g ON g.id = l.group_id WHERE l.id = ?`,
   ),
   create: mutation(
-    `INSERT INTO support_labels (board_id, group_id, name, color, position, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO support_labels (board_id, list_key, group_id, name, color, position, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ),
 };
 
 const boardHasLabels = scalar<{ count: number }>(
-  `SELECT (SELECT COUNT(*) FROM support_labels WHERE board_id = @board)
-        + (SELECT COUNT(*) FROM support_label_groups WHERE board_id = @board) AS count`,
+  `SELECT (SELECT COUNT(*) FROM support_labels WHERE board_id = @board AND list_key = @list)
+        + (SELECT COUNT(*) FROM support_label_groups WHERE board_id = @board AND list_key = @list)
+          AS count`,
 );
 
 /**
- * A board's first Support widget brings the default labels: the priorities,
- * then the channels, each in its group — and no other. The board's Support
- * widgets share them: as soon as one label or group exists there, nothing is
- * added. True when they were created.
+ * A Support widget brings its default labels: the priorities, then the
+ * channels, each in its group — and no other. Each widget has its own: as
+ * soon as one label or group exists there, nothing is added. True when they
+ * were created.
  */
-export const ensureSupportLabels = transaction((boardId: Id): boolean => {
-  if (boardHasLabels({ board: boardId }).count > 0) return false;
+export const ensureSupportLabels = transaction((scope: ListScope): boolean => {
+  if (!scope.list || boardHasLabels(scope).count > 0) return false;
   const instant = new Date().toISOString();
   let position = 0;
   for (const [name, labels] of [
     [SUPPORT_URGENCY_GROUP, SUPPORT_URGENCY_LABELS],
     [SUPPORT_CHANNEL_GROUP, SUPPORT_CHANNEL_LABELS],
   ] as const) {
-    const group = supportLabelGroups.named(boardId, name);
+    const group = supportLabelGroups.named(scope, name);
     for (const label of labels) {
-      supportLabels.create.run(boardId, group, label.name, label.color, position++, instant);
+      supportLabels.create.run(scope.board, scope.list, group, label.name, label.color, position++, instant);
     }
   }
   return true;
@@ -199,17 +201,17 @@ export const addActors = transaction((requestId: Id, userIds: Id[]) => {
 // --- Labels set on a request -----------------------------------------------
 
 const deleteLabels = mutation("DELETE FROM support_request_labels WHERE request_id = ?");
-// Only a label of the request's board.
+// Only a label of the request's list.
 const addLabel = mutation(
   `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
    SELECT r.id, l.id FROM support_requests r
-   JOIN support_labels l ON l.board_id = r.board_id
+   JOIN support_labels l ON l.board_id = r.board_id AND l.list_key = r.list_key
    WHERE r.id = ? AND l.id = ?`,
 );
 
 /**
  * The labels of a request, replaced as a whole. An id that designates no
- * label of its board is ignored rather than rejected, like a card's members.
+ * label of its list is ignored rather than rejected, like a card's members.
  */
 export const replaceSupportLabels = transaction((requestId: Id, labelIds: Id[]) => {
   deleteLabels.run(requestId);
@@ -389,10 +391,20 @@ const carryActors = mutation(
    SELECT ?, user_id FROM support_request_actors WHERE request_id = ?`,
 );
 
-const carryLabels = mutation(
+// Each label of the same name in the kept request's widget: a request carries
+// only its own widget's labels.
+const carryLabelsStatement = mutation(
   `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
-   SELECT ?, label_id FROM support_request_labels WHERE request_id = ?`,
+   SELECT k.id, t.id FROM support_requests k
+   JOIN support_request_labels sl ON sl.request_id = @absorbed
+   JOIN support_labels s ON s.id = sl.label_id
+   JOIN support_labels t ON t.board_id = k.board_id AND t.list_key = k.list_key
+     AND t.name = s.name COLLATE NOCASE
+   WHERE k.id = @kept`,
 );
+const carryLabels = {
+  run: (kept: Id, absorbed: Id) => carryLabelsStatement.run({ kept, absorbed }),
+};
 
 // What the kept request lacks, it takes from those it absorbs: a subject, a
 // sender.

@@ -203,6 +203,14 @@ const REFERENCE = new RegExp(
   "i",
 );
 
+/** The hidden line of Milo's replies (lib/mail-reference.ts): "[milo-ticket-HLP-12]". */
+const HIDDEN_REFERENCE = new RegExp(
+  `\\[milo-ticket-(?:${[SUPPORT_TICKET_PREFIX, LEGACY_REFERENCE_PREFIX]
+    .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})(\\d+)\\]`,
+  "i",
+);
+
 /**
  * The subject reduced to its topic: without "RE:", "TR:", "Fwd:" or ticket
  * number, without case or extra spaces.
@@ -233,6 +241,12 @@ const targetedRequest = (
   const reference = REFERENCE.exec(mail.subject);
   if (reference) {
     const foundItem = supportRequests.byNumber.get(inbox.board_id, list, Number(reference[1]), mailbox);
+    if (foundItem) return foundItem;
+  }
+  // The hidden line a reply quotes ("[milo-ticket-HLP-12]"): its subject may have changed.
+  const hidden = HIDDEN_REFERENCE.exec(mail.body);
+  if (hidden) {
+    const foundItem = supportRequests.byNumber.get(inbox.board_id, list, Number(hidden[1]), mailbox);
     if (foundItem) return foundItem;
   }
 

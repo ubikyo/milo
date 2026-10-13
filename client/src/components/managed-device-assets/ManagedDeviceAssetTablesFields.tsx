@@ -1,4 +1,5 @@
 import { IconDeviceLaptop, IconNetwork } from "@tabler/icons-react";
+import { useListRef } from "../../lib/list-ref";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { MANAGED_DEVICE_ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { ManagedDeviceAssetSettings } from "@milo/shared";
@@ -132,7 +133,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export default function ManagedDeviceAssetTablesFields() {
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
   // A paste from the "Actions" menu may change the board: it is re-read.
   const pastes = board?.pastes ?? 0;
 
@@ -141,15 +142,15 @@ export default function ManagedDeviceAssetTablesFields() {
   const [settings, setSettings] = useState<ManagedDeviceAssetSettings>(NOTHING);
 
   const reload = useCallback(async () => {
-    if (boardId === null) return;
+    if (list === null) return;
     try {
-      const read = await api.getManagedDeviceAssetSettings(boardId);
+      const read = await api.getManagedDeviceAssetSettings(list);
       setOriginal(read);
       setSettings(read);
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [boardId]);
+  }, [list]);
 
   useEffect(() => {
     void reload();
@@ -162,20 +163,20 @@ export default function ManagedDeviceAssetTablesFields() {
     state.current = { original, settings };
   }, [original, settings]);
   useEffect(() => {
-    if (!register || boardId === null) return;
+    if (!register || list === null) return;
     return register(async () => {
       const { original: before, settings: after } = state.current;
       const data: Partial<ManagedDeviceAssetSettings> = {};
       if (!same(before.models, after.models)) data.models = after.models;
       if (!same(before.vlans, after.vlans)) data.vlans = after.vlans;
       if (data.models === undefined && data.vlans === undefined) return;
-      const saved = await api.updateManagedDeviceAssetSettings(boardId, data);
+      const saved = await api.updateManagedDeviceAssetSettings(list, data);
       setOriginal(saved);
       setSettings(saved);
     });
-  }, [register, boardId]);
+  }, [register, list]);
 
-  if (boardId === null || !register) return null;
+  if (list === null || !register) return null;
 
   /** A table changes in the draft only: "Sauvegarder" sends it. */
   const save = async (data: Partial<ManagedDeviceAssetSettings>): Promise<boolean> => {
@@ -187,7 +188,7 @@ export default function ManagedDeviceAssetTablesFields() {
     <>
       <ListRows
         title="Modèles"
-        description="Les modèles configurés ci-dessous sont communs à l'ensemble des widgets, de type asset, du tableau actuel et uniquement pour ce tableau. Ils donnent le nom commercial de l'identifiant que déclare un poste."
+        description="Ils donnent le nom commercial de l'identifiant que déclare un poste."
         columns={MODEL_COLUMNS}
         rows={settings.models.map((m) => [m.identifier, m.name])}
         save={(list) =>
@@ -206,7 +207,7 @@ export default function ManagedDeviceAssetTablesFields() {
       />
       <ListRows
         title="VLAN"
-        description="Les VLAN configurés ci-dessous sont communs à l'ensemble des widgets, de type asset, du tableau actuel et uniquement pour ce tableau. Chacun nomme le VLAN qui porte un sous-réseau."
+        description="Chacun nomme le VLAN qui porte un sous-réseau."
         columns={VLAN_COLUMNS}
         rows={settings.vlans.map((v) => [String(v.vlan), v.name, v.subnet])}
         save={(list) =>

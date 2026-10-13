@@ -6,8 +6,9 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import MilestonesModal from "../project/MilestonesModal";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
-import type { Id, Milestone, MilestoneType } from "@milo/shared";
+import type { Id, ListRef, Milestone, MilestoneType } from "@milo/shared";
 import { CopyPasteContext } from "./CopyPasteActions";
+import { useListRef } from "../../lib/list-ref";
 import { DrawerRegistrationsContext } from "./IndicatorDrawer";
 import LabelColorPicker from "./LabelColorPicker";
 import {
@@ -33,10 +34,11 @@ import {
 // labels, gathered in groups, have their own list (LabelGroupFields), the
 // board's categories their tree (ProjectCategoriesFields).
 //
-// These are not widget settings: nothing is sent before "Sauvegarder"
+// They are not the widget's configuration but its own data
+// (lib/list-ref.tsx): nothing is sent before "Sauvegarder"
 // (DrawerRegistrationsContext), and "Fermer" leaves everything as before.
-// Shared by all boards, the types are sorted by name: they have no handle,
-// and their milestones open from their row's menu.
+// The types are sorted by name: they have no handle, and their milestones
+// open from their row's menu.
 
 /**
  * What the list manages: a milestone type. Labels have their groups
@@ -62,8 +64,6 @@ interface Row {
 interface ListKindInfo {
   title: string;
   add: string;
-  /** What the list shares, stated under it. */
-  scope: string;
   /** "la catégorie", for the messages. */
   nounPhrase: string;
   /** The icon and message of the empty list (EmptyList). */
@@ -72,11 +72,11 @@ interface ListKindInfo {
   withColor: boolean;
   /** False when the server orders the list itself: no handle. */
   orderable: boolean;
-  read: (boardId: Id) => Promise<Element[]>;
-  create: (boardId: Id, row: Row) => Promise<{ id: Id }>;
+  read: (list: ListRef) => Promise<Element[]>;
+  create: (list: ListRef, row: Row) => Promise<{ id: Id }>;
   updateStatement: (id: Id, row: Row) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
-  store: (boardId: Id, ids: Id[]) => Promise<unknown>;
+  store: (list: ListRef, ids: Id[]) => Promise<unknown>;
 }
 
 const NO_REORDER = async () => undefined;
@@ -85,14 +85,13 @@ const KINDS: Record<ListKind, ListKindInfo> = {
   "milestone-types": {
     title: "Types de jalons",
     add: "Ajouter un type de jalons",
-    scope: "Les types de jalons configurés ci-dessous sont communs à l'ensemble des tableaux de projets.",
     nounPhrase: "le type de jalons",
     icon: IconFlag,
     empty: "Aucun type de jalons",
     withColor: false,
     orderable: false,
-    read: () => api.getMilestoneTypes(),
-    create: (_boardId, l) => api.createMilestoneType(l.name),
+    read: (list) => api.getMilestoneTypes(list),
+    create: (list, l) => api.createMilestoneType(list, l.name),
     updateStatement: (id, l) => api.updateMilestoneType(id, { name: l.name }),
     remove: (id) => api.deleteMilestoneType(id),
     store: NO_REORDER,
@@ -120,7 +119,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   const s = KINDS[kind];
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
   // A paste from the "Actions" menu changes the list: it is re-read.
   const pastes = board?.pastes ?? 0;
 
@@ -136,15 +135,15 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   const [milestonesOf, setMilestonesOf] = useState<Id | null>(null);
 
   const reload = useCallback(async () => {
-    if (boardId === null) return;
+    if (list === null) return;
     try {
-      const readItems = await s.read(boardId);
+      const readItems = await s.read(list);
       setOriginals(readItems);
       setRows(readItems.map(inline));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [boardId, s]);
+  }, [list, s]);
 
   useEffect(() => {
     void reload();
@@ -155,7 +154,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   const state = useRef({ originals, rows });
   state.current = { originals, rows };
   useEffect(() => {
-    if (!register || boardId === null) return;
+    if (!register || list === null) return;
     return register(async () => {
       const { originals: before, rows: after } = state.current;
       const keptKeys = after.filter((l) => l.id !== undefined || l.name.trim());
@@ -170,7 +169,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
         for (const l of keptKeys) {
           const row = { ...l, name: l.name.trim() };
           if (l.id === undefined) {
-            ids.push((await s.create(boardId, row)).id);
+            ids.push((await s.create(list, row)).id);
             continue;
           }
           const o = before.find((x) => x.id === l.id);
@@ -184,14 +183,14 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
         const orderBefore = before.filter((o) => ids.includes(o.id)).map((o) => o.id);
         const sameOrder =
           ids.length === orderBefore.length && ids.every((id, i) => id === orderBefore[i]);
-        if (!sameOrder && s.orderable) await s.store(boardId, ids);
+        if (!sameOrder && s.orderable) await s.store(list, ids);
       } finally {
         // What was removed is gone: the list restarts from the server, even after an
         // error.
         await reload();
       }
     });
-  }, [register, boardId, s, reload]);
+  }, [register, list, s, reload]);
 
   const change = (rank: number, change: Partial<Row>) =>
     setRows((before) => before.map((l, i) => (i === rank ? { ...l, ...change } : l)));
@@ -223,19 +222,21 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   // on each new object, and would lose what is entered in it.
   const openType = useMemo<MilestoneType | null>(() => {
     const original = originals.find((o) => o.id === milestonesOf);
-    return original ? { id: original.id, name: original.name, milestones: original.milestones ?? [] } : null;
-  }, [originals, milestonesOf]);
+    return original && list
+      ? {
+          id: original.id,
+          board_id: list.board,
+          list_key: list.list,
+          name: original.name,
+          milestones: original.milestones ?? [],
+        }
+      : null;
+  }, [originals, milestonesOf, list]);
 
-  if (boardId === null) return null;
+  if (list === null) return null;
 
   return (
-    // These are not widget settings: say so under the label, at
-    // 20 px from the list.
-    <Input.Wrapper
-      label={s.title}
-      description={s.scope}
-      styles={{ description: { paddingBottom: 20 } }}
-    >
+    <Input.Wrapper label={s.title}>
       {rows.length === 0 && <EmptyList icon={s.icon} message={s.empty} />}
       {rows.length > 0 && (
         <Stack gap={1}>

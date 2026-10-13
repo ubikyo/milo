@@ -1,15 +1,10 @@
-import { Group, Input, Loader, Select, Stack, Switch, Text } from "@mantine/core";
-import { IconChevronDown, IconFolders, IconMailFilled } from "@tabler/icons-react";
-import dayjs from "dayjs";
-import { useContext, useEffect, useState } from "react";
-import type { ComponentType } from "react";
+import { Group, Input, Select, Stack, Text } from "@mantine/core";
+import { IconChevronDown, IconFolders } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { notifyError } from "../../lib/errors";
-import { BoardWidgetsContext } from "../../components/ui/IndicatorsPanel";
-import type { Indicator, IndicatorWidgetBase, WidgetRender } from "../../components/ui/IndicatorsPanel";
-import { NameField, NAME, Nothing, IndicatorTitle, IndicatorValue } from "../support/common";
-import { LabelBars } from "../support/labels";
-import { text, withField } from "../types";
+import { useSources } from "../../lib/sources";
+import { withField } from "../types";
 import { CHART_COLORS } from "../chart-colors";
 import {
   EmptyList,
@@ -28,33 +23,24 @@ import { OPTION_HEIGHT, VISIBLE_OPTIONS } from "../../components/ui/ColumnFields
 import optionClasses from "../../assets/styles/ColumnFields.module.css";
 import {
   COUNTED_FOLDERS,
-  MAIL_SOURCE,
   m365Event,
   mailKey,
-  mailSourceOf,
   shownFoldersOf,
-  widgetReference,
 } from "@milo/shared";
 import type {
   AccessMailFolder,
-  AccessMailFolderCounts,
   Id,
   MailFolderKind,
-  MailMetric,
+  SourceWidget,
 } from "@milo/shared";
 import type { IndicatorConfigProps } from "../support/types";
 
-// The mail widgets that count rather than list: an "Indicateur" — the unread
-// ones, the total, those received today, those flagged — and "Messages par
-// dossier". Each follows the Mail widgets of its board — all of them, unless
-// its drawer names one (MAIL_SOURCE) —, and counts what they read, under
-// their consent. They only ask Graph for what it keeps or counts itself
-// (server, routes/board-widgets.ts): no e-mail is read.
-
-/** The mail widgets that count, as the board's registry takes them (widgets/index.tsx). */
-export interface MailCountWidget extends IndicatorWidgetBase<string> {
-  Display: ComponentType<{ config: unknown } & WidgetRender>;
-}
+// What the "Indicateurs" widgets read of the mailboxes (widgets/indicators,
+// sources/mail.tsx): they follow the Mail widgets their drawer names
+// (SOURCES), on any board one sees, and count what they read, under their
+// consent — the folders' counts, the e-mails received today, those flagged.
+// They only ask Graph for what it keeps or counts itself (server,
+// routes/board-widgets.ts): no e-mail is read.
 
 /** Like the Mail widget, the counts are reread at this rate, and when Graph notifies. */
 const RELOAD_INTERVAL = 2 * 60_000;
@@ -63,7 +49,7 @@ const RELOAD_INTERVAL = 2 * 60_000;
 const NOTIFICATION_DELAY = 1_000;
 
 /** A mailbox's name: the start of its address. */
-const ownerName = (owner: string) => owner.split("@")[0]!;
+export const ownerName = (owner: string) => owner.split("@")[0]!;
 
 /** The mailboxes that could not be read say why, without hiding the others. */
 const report = (errors: { owner: string; message: string }[]) => {
@@ -74,54 +60,8 @@ const report = (errors: { owner: string; message: string }[]) => {
 const sourcesKeyOf = (config: unknown) =>
   [...shownFoldersOf(config)].map(([email, ids]) => `${email}:${ids.join("+")}`).join(",");
 
-/** The board's Mail widgets, in column order. */
-const useMailWidgets = (): Indicator<string>[] =>
-  useContext(BoardWidgetsContext).filter((w) => w.type === "mail");
-
-/**
- * The Mail widget a count names; undefined for all the board's — none named,
- * or one since removed.
- */
-const useMailSource = (config: unknown): Indicator<string> | undefined => {
-  const mails = useMailWidgets();
-  const chosen = mailSourceOf(config);
-  return mails.find((w) => w.id === chosen);
-};
-
-/** The Mail widgets a count follows: the one it names, otherwise all the board's. */
-const useMailSources = (config: unknown): Indicator<string>[] => {
-  const mails = useMailWidgets();
-  const source = useMailSource(config);
-  return source ? [source] : mails;
-};
-
-/** The value of the "all the board's Mail widgets" option. */
-const ALL = "all";
-
-/** A Mail widget, as the drawer offers it: by its reference alone. */
-const mailLabel = (w: Indicator<string>, rank: number) =>
-  widgetReference(w.type, w.config) || String(rank + 1);
-
-/** The drawer's "Widget associé" field: all the board's Mail widgets, or one of them. */
-function SourceField({ config, onChange }: IndicatorConfigProps) {
-  const mails = useMailWidgets();
-  const source = useMailSource(config);
-  return (
-    <Select
-      label="Widget associé"
-      data={[
-        { value: ALL, label: "Tous les widgets" },
-        ...mails.map((w, rank) => ({ value: String(w.id), label: mailLabel(w, rank) })),
-      ]}
-      value={source ? String(source.id) : ALL}
-      onChange={(value) =>
-        value && onChange(withField(config, MAIL_SOURCE, value === ALL ? null : Number(value)))
-      }
-      allowDeselect={false}
-      w={180}
-    />
-  );
-}
+/** The Mail widgets a count follows (SOURCES), on any board one sees. */
+const useMailSources = (config: unknown): SourceWidget[] => useSources("mail", config);
 
 type Read<T> = { phase: "loading" } | { phase: "ready"; data: T } | { phase: "error"; message: string };
 
@@ -129,7 +69,7 @@ type Read<T> = { phase: "loading" } | { phase: "ready"; data: T } | { phase: "er
  * What a widget reads of the mailboxes: at once, then at an interval and on
  * each arrival Graph notifies. A reread that fails keeps what was shown.
  */
-function useMailRead<T>(
+export function useMailRead<T>(
   blockId: Id,
   config: unknown,
   read: () => Promise<T & { errors: { owner: string; message: string }[] }>,
@@ -176,103 +116,21 @@ function useMailRead<T>(
   return { ...state, empty, orphan };
 }
 
-/** What a mail widget shows while it has nothing to count, or cannot. */
-function Pending({ state }: { state: Read<unknown> & { empty: boolean; orphan: boolean } }) {
-  if (state.orphan) return <Nothing>Aucun widget Messages sur le tableau</Nothing>;
-  if (state.empty) return <Nothing>Aucune boîte aux lettres</Nothing>;
-  if (state.phase === "error") {
-    return (
-      <Text size="sm" c="red" lineClamp={2}>
-        {state.message}
-      </Text>
-    );
-  }
-  return <Loader size="xs" color="gray" />;
-}
-
-// --- Indicateur --------------------------------------------------------------
-
-const METRIC = "metric";
-
-const METRICS: { value: MailMetric; label: string }[] = [
-  { value: "unread", label: "E-mails non lus" },
-  { value: "total", label: "E-mails au total" },
-  { value: "today", label: "E-mails reçus aujourd'hui" },
-  { value: "flagged", label: "E-mails avec indicateur" },
-];
-
-/** The stored metric, or the first: an unknown value does not bring anything down. */
-const metricOf = (config: unknown) =>
-  METRICS.find((m) => m.value === text(config, METRIC)) ?? METRICS[0]!;
-
-function MailCount({ config, id }: { config: unknown } & WidgetRender) {
-  const metric = metricOf(config);
-  const state = useMailRead(
-    id,
-    config,
-    // The start of the viewer's day: "today" is theirs, not the server's.
-    () => api.getMailCount(id, metric.value, dayjs().startOf("day").toISOString()),
-    metric.value,
-  );
-  return (
-    // The name at the top, the quantity at bottom left: the card gives the height.
-    <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-      <IndicatorTitle config={config} defaultValue={metric.label} />
-      {state.phase === "ready" ? (
-        <IndicatorValue config={config}>{state.data.value}</IndicatorValue>
-      ) : (
-        <Pending state={state} />
-      )}
-    </Stack>
-  );
-}
-
-export const mailCountWidget: MailCountWidget = {
-  type: "mail_count",
-  kind: "m365",
-  label: "Indicateur e-mail",
-  icon: IconMailFilled,
-  withValue: true,
-  defaultConfig: { [NAME]: "", [METRIC]: "unread" },
-
-  Display: MailCount,
-
-  Config: ({ config, onChange }: IndicatorConfigProps) => (
-    <Stack gap="xl">
-      <SourceField config={config} onChange={onChange} />
-      <NameField config={config} onChange={onChange} defaultValue={metricOf(config).label} />
-      <Select
-        label="Données"
-        data={METRICS}
-        value={metricOf(config).value}
-        onChange={(value) => value && onChange(withField(config, METRIC, value))}
-        allowDeselect={false}
-      />
-    </Stack>
-  ),
+/** Why a count has nothing to show: no Mail widget, no mailbox, a failure; null otherwise. */
+export const pendingOf = (state: Read<unknown> & { empty: boolean; orphan: boolean }): string | null => {
+  if (state.orphan) return "Aucun widget Messages associé";
+  if (state.empty) return "Aucune boîte aux lettres";
+  if (state.phase === "error") return state.message;
+  return null;
 };
 
-// --- Messages par dossier ----------------------------------------------------
-
-const FOLDERS_LABEL = "Messages par dossier";
-/** "unread": the bars count the unread ones rather than all. */
-const COUNTED = "counted";
-const WITH_EMPTY = "withEmpty";
-
-const COUNTS = [
-  { value: "total", label: "Tous les messages" },
-  { value: "unread", label: "Non lus" },
-];
-
-const unreadOnly = (config: unknown) => text(config, COUNTED) === "unread";
-const withEmpty = (config: unknown) =>
-  Boolean((config as Record<string, unknown> | null)?.[WITH_EMPTY]);
+// --- The folders counted ----------------------------------------------------
 
 /**
  * A folder's color, from the charts' palette: the bin and the junk e-mail in
  * red, the inbox, sent items and drafts in green, the person's own in blue.
  */
-const colorOfFolder = (kind: MailFolderKind | ""): string => {
+export const colorOfFolder = (kind: MailFolderKind | ""): string => {
   if (kind === "deleteditems" || kind === "junkemail") return CHART_COLORS.red;
   if (kind === "inbox" || kind === "sentitems" || kind === "drafts") return CHART_COLORS.green;
   return CHART_COLORS.blue;
@@ -336,7 +194,7 @@ const CHECKBOX_GAP_TRIM = 5;
  * the Mail widget's mailboxes, those already there left out. None: the widget
  * counts the folders the Mail widget reads.
  */
-function FoldersField({ config, onChange }: IndicatorConfigProps) {
+export function FoldersField({ config, onChange }: IndicatorConfigProps) {
   const sources = useMailSources(config);
   // Each mailbox, with the key of the first Mail widget that reads it: its
   // folders are read under that one's consent.
@@ -505,71 +363,3 @@ function FoldersField({ config, onChange }: IndicatorConfigProps) {
     </Input.Wrapper>
   );
 }
-
-function MailFolders({ config, id }: { config: unknown } & WidgetRender) {
-  const state = useMailRead<AccessMailFolderCounts>(
-    id,
-    config,
-    () => api.getMailFolderCounts(id),
-    "",
-  );
-  const unread = unreadOnly(config);
-
-  const content = (() => {
-    if (state.phase !== "ready") return <Pending state={state} />;
-    const { folders } = state.data;
-    // Several mailboxes: each folder says whose it is. The fullest first.
-    const several = new Set(folders.map((f) => f.owner)).size > 1;
-    const data = folders
-      .map((f) => ({
-        name: several ? `${ownerName(f.owner)} · ${f.name}` : f.name,
-        value: unread ? f.unread : f.total,
-        color: colorOfFolder(f.kind),
-      }))
-      .filter((b) => withEmpty(config) || b.value > 0)
-      .sort((a, b) => b.value - a.value);
-    if (data.length === 0) return <Nothing>{unread ? "Aucun e-mail non lu" : "Aucun e-mail"}</Nothing>;
-    return <LabelBars data={data} ownColors />;
-  })();
-
-  return (
-    <Stack gap="xs" style={{ flex: 1 }}>
-      <IndicatorTitle config={config} defaultValue={FOLDERS_LABEL} />
-      {content}
-    </Stack>
-  );
-}
-
-export const mailFoldersWidget: MailCountWidget = {
-  type: "mail_folders",
-  kind: "m365",
-  label: FOLDERS_LABEL,
-  icon: IconFolders,
-  defaultConfig: { [NAME]: "", [COUNTED]: "total", [WITH_EMPTY]: false },
-
-  Display: MailFolders,
-
-  Config: ({ config, onChange }: IndicatorConfigProps) => (
-    <Stack gap="xl">
-      <SourceField config={config} onChange={onChange} />
-      <FoldersField config={config} onChange={onChange} />
-      <NameField config={config} onChange={onChange} defaultValue={FOLDERS_LABEL} />
-      <Select
-        label="Compter"
-        data={COUNTS}
-        value={unreadOnly(config) ? "unread" : "total"}
-        onChange={(value) => value && onChange(withField(config, COUNTED, value))}
-        allowDeselect={false}
-      />
-      <Switch
-        label="Afficher les dossiers vides"
-        checked={withEmpty(config)}
-        onChange={(e) => onChange(withField(config, WITH_EMPTY, e.currentTarget.checked))}
-        color="teal"
-      />
-    </Stack>
-  ),
-};
-
-/** In the order the widgets drawer presents them, after the Mail widget. */
-export const MAIL_COUNT_WIDGETS: MailCountWidget[] = [mailCountWidget, mailFoldersWidget];

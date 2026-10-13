@@ -1,6 +1,6 @@
 import { Drawer, Group, Input, MultiSelect, Select, Stack, Tabs, TextInput } from "@mantine/core";
 import { IconMail, IconMessage, IconPhone, IconSettings, IconWorld } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import type { CSSProperties } from "react";
 import {
   CONTACT_EMAIL_MAX,
@@ -24,6 +24,7 @@ import type {
   Label,
 } from "@milo/shared";
 import { api } from "../../api";
+import { listOf } from "../../lib/list-ref";
 import { useIsEditing } from "../../lib/editing";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { BARE_FIELDSET } from "../../lib/rights";
@@ -88,7 +89,8 @@ interface Form {
   name: string;
   type: ContactType;
   job_title: string;
-  emails: Row[];
+  /** Its address: a contact has one. */
+  email: string;
   phones: Row[];
   addresses: ContactAddress[];
   websites: Row[];
@@ -103,7 +105,7 @@ const EMPTY: Form = {
   name: "",
   type: "person",
   job_title: "",
-  emails: [],
+  email: "",
   phones: [],
   addresses: [],
   websites: [],
@@ -118,7 +120,7 @@ const formOf = (c: Contact): Form => ({
   name: c.name,
   type: c.type,
   job_title: c.job_title,
-  emails: c.emails.map((e) => [e]),
+  email: c.emails[0] ?? "",
   phones: c.phones.map((p) => [p.label, p.number]),
   addresses: c.addresses,
   websites: c.websites.map((w) => [w.label, w.url]),
@@ -135,7 +137,7 @@ const inputOf = (f: Form): ContactInput => {
     name: f.name.trim(),
     type: f.type,
     job_title: company ? "" : f.job_title.trim(),
-    emails: f.emails.map(([email = ""]) => email),
+    emails: f.email.trim() ? [f.email.trim()] : [],
     phones: f.phones.map(([label = "", number = ""]) => ({ label, number })),
     // An address left without a line, a postal code or a town is dropped.
     addresses: f.addresses.filter((a) => [a.line1, a.line2, a.postal_code, a.city].some((v) => v.trim())),
@@ -155,24 +157,6 @@ const NO_LISTS: ContactSettings = { payment_terms: [], currencies: [], countries
 
 /** A list of the drawer: its words, its columns. */
 const LISTS = [
-  {
-    field: "emails",
-    title: "E-mails",
-    columns: [
-      {
-        label: "E-mail",
-        maxLength: CONTACT_EMAIL_MAX,
-        pattern: CONTACT_EMAIL_PATTERN,
-        invalid: (v: string) => `« ${v} » n'est pas une adresse e-mail`,
-      },
-    ],
-    icon: IconMail,
-    none: "Aucun e-mail",
-    add: "Ajouter un e-mail",
-    remove: "Supprimer l'e-mail",
-    word: "e-mail",
-    nameOf: ([email = ""]: Row) => email,
-  },
   {
     field: "phones",
     title: "Numéros de téléphone",
@@ -262,13 +246,20 @@ export default function ContactDrawer({
   const withComments = Boolean(contact) && !isEditing;
   const tabs = TABS.filter((t) => t.value === "settings" || withComments);
 
+  // Its labels and lists are its widget's: the contact's own, or the one it is
+  // added from.
+  const list = useMemo(
+    () => (contact ? listOf(contact) : { board: boardId, list: listKey }),
+    [contact, boardId, listKey],
+  );
+
   const readLabels = useCallback(async () => {
     try {
-      setLabels(await api.getContactLabels(boardId));
+      setLabels(await api.getContactLabels(list));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [boardId]);
+  }, [list]);
 
   const readComments = useCallback(async () => {
     if (!contact) return;
@@ -288,12 +279,12 @@ export default function ContactDrawer({
     setActiveTab("settings");
     setComments([]);
     api
-      .getContactSettings(boardId)
+      .getContactSettings(list)
       .then(setLists)
       .catch((e) => notifyError(errorMessage(e)));
     void readLabels();
     if (withComments) void readComments();
-  }, [opened, contact, boardId, initialType, withComments, readLabels, readComments]);
+  }, [opened, contact, list, initialType, withComments, readLabels, readComments]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -346,9 +337,19 @@ export default function ContactDrawer({
 
   // --- Save and delete -----------------------------------------------------
 
+  // An address typed that is not one: shown under its field, and the save waits.
+  const emailError =
+    form.email.trim() && !CONTACT_EMAIL_PATTERN.test(form.email.trim())
+      ? `« ${form.email.trim()} » n'est pas une adresse e-mail`
+      : undefined;
+
   const persist = async () => {
     if (!form.name.trim()) {
       notifyError("Le champ « Nom » est requis");
+      return;
+    }
+    if (emailError) {
+      notifyError(emailError);
       return;
     }
     setSaving(true);
@@ -420,7 +421,7 @@ export default function ContactDrawer({
                     labels={labels}
                     value={form.label_ids}
                     onChange={(ids) => set("label_ids", ids)}
-                    boardId={boardId}
+                    list={list}
                     onLabelsChanged={readLabels}
                     labelsApi={CONTACT_LABELS_API}
                   />
@@ -469,6 +470,17 @@ export default function ContactDrawer({
                       maxLength={CONTACT_FIELD_MAX}
                     />
                   )}
+
+                  {/* Its e-mail address: one per contact. */}
+                  <TextInput
+                    label="E-mail"
+                    placeholder="E-mail"
+                    leftSection={<IconMail size={16} />}
+                    value={form.email}
+                    onChange={(e) => set("email", e.currentTarget.value)}
+                    maxLength={CONTACT_EMAIL_MAX}
+                    error={emailError}
+                  />
 
                   {/* A company's people: the board's contacts, or one created here. */}
                   {company && (
@@ -609,8 +621,8 @@ export default function ContactDrawer({
         <ContactDrawer
           opened={creating}
           onClose={() => setCreating(false)}
-          boardId={boardId}
-          listKey={listKey}
+          boardId={list.board}
+          listKey={list.list}
           contact={null}
           contacts={contacts}
           onSaved={onSaved}

@@ -1,16 +1,7 @@
-import { Box, Group, Stack, Switch, Text, useMantineTheme } from "@mantine/core";
-import { IconTags } from "@tabler/icons-react";
-import { withField } from "../types";
-import { NameField, ongoing, NAME, Nothing, IndicatorTitle } from "./common";
-import { LabelGroupSelect, groupOf, labelBars } from "../label-groups";
-import type { SupportIndicatorWidget } from "./types";
+import { Box, Group, Stack, Text, useMantineTheme } from "@mantine/core";
 
-// The most carried labels, each in its color: what occupies
-// support — all of them, or those of one group. Settled requests only count
-// if asked.
-
-const LABEL = "Étiquettes";
-const ALL = "include_all";
+// The bars the "Indicateurs" breakdowns draw (widgets/indicators): a label's,
+// a category's, a list's…
 
 /** The height of a bar. */
 const BAR_HEIGHT = 24;
@@ -170,42 +161,3 @@ export function LabelBars({
     </Stack>
   );
 }
-
-const allRequests = (config: unknown) =>
-  Boolean((config as Record<string, unknown> | null)?.[ALL]);
-
-export const labelsIndicator: SupportIndicatorWidget = {
-  type: "labels",
-  kind: "helpdesk",
-  label: LABEL,
-  icon: IconTags,
-  defaultConfig: { [NAME]: "", [ALL]: false },
-
-  Display: ({ config, requests }) => {
-    const counted = allRequests(config) ? requests : requests.filter(ongoing);
-    const data = labelBars(
-      counted.map((r) => r.labels),
-      groupOf(config),
-    );
-
-    return (
-      <Stack gap="xs" style={{ flex: 1 }}>
-        <IndicatorTitle config={config} defaultValue={LABEL} />
-        {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
-      </Stack>
-    );
-  },
-
-  Config: ({ config, onChange }) => (
-    <Stack gap="xl">
-      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
-      <LabelGroupSelect base="/support-labels" config={config} onChange={onChange} />
-      <Switch
-        label="Compter aussi les tickets résolus et fermés"
-        checked={allRequests(config)}
-        onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}
-        color="teal"
-      />
-    </Stack>
-  ),
-};

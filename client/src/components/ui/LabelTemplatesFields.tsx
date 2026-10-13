@@ -1,6 +1,7 @@
 import { IconTag, IconTemplate } from "@tabler/icons-react";
+import { useListRef } from "../../lib/list-ref";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { DEFAULT_LABEL_ZPL, LABEL_TEMPLATE_NAME_MAX, isCustomLabelZpl } from "@milo/shared";
+import { LABEL_TEMPLATE_NAME_MAX, defaultLabelZpl, isCustomLabelZpl } from "@milo/shared";
 import type { LabelTemplate, LabelTemplateKind, LabelTemplates, PaperFormat } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -32,7 +33,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind }) {
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
   // A paste from the "Actions" menu may change the board: it is re-read.
   const pastes = board?.pastes ?? 0;
 
@@ -46,10 +47,10 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
   const [toReset, setToReset] = useState<number | null>(null);
 
   const reload = useCallback(async () => {
-    if (boardId === null) return;
+    if (list === null) return;
     try {
       const [read, paper] = await Promise.all([
-        api.getLabelTemplates(kind, boardId),
+        api.getLabelTemplates(kind, list),
         api.getPaperFormats(),
       ]);
       setOriginal(read);
@@ -58,7 +59,7 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [kind, boardId]);
+  }, [kind, list]);
 
   useEffect(() => {
     void reload();
@@ -71,17 +72,17 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
     state.current = { original, draft };
   }, [original, draft]);
   useEffect(() => {
-    if (!register || boardId === null) return;
+    if (!register || list === null) return;
     return register(async () => {
       const { original: before, draft: after } = state.current;
       if (same(before.templates, after.templates)) return;
-      const saved = await api.updateLabelTemplates(kind, boardId, after.templates);
+      const saved = await api.updateLabelTemplates(kind, list, after.templates);
       setOriginal(saved);
       setDraft(saved);
     });
-  }, [register, kind, boardId]);
+  }, [register, kind, list]);
 
-  if (boardId === null || !register) return null;
+  if (list === null || !register) return null;
 
   const formatName = (id: number | null) => formats.find((f) => f.id === id)?.name ?? "";
 
@@ -108,7 +109,7 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
         name,
         paper_format_id: formats.find((f) => f.name === format)?.id ?? null,
         zpl:
-          (kept ? before.templates[rank]?.zpl : byName.get(name.toLowerCase())) ?? DEFAULT_LABEL_ZPL,
+          (kept ? before.templates[rank]?.zpl : byName.get(name.toLowerCase())) ?? defaultLabelZpl(kind),
       }));
       return { ...before, templates };
     });
@@ -121,7 +122,7 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
    */
   const writeZpl = async (rank: number, zpl: string) => {
     const templates = draft.templates.map((t, i) => (i === rank ? { ...t, zpl } : t));
-    const saved = await api.updateLabelTemplates(kind, boardId, templates);
+    const saved = await api.updateLabelTemplates(kind, list, templates);
     setOriginal(saved);
     setDraft(saved);
   };
@@ -129,7 +130,7 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
   const reset = async (rank: number) => {
     setToReset(null);
     try {
-      await writeZpl(rank, DEFAULT_LABEL_ZPL);
+      await writeZpl(rank, defaultLabelZpl(kind));
     } catch (e) {
       notifyError(errorMessage(e));
     }
@@ -141,7 +142,6 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
     <>
       <ListRows
         title="Modèles d'étiquette"
-        description="Les modèles d'étiquette configurés ci-dessous sont communs à l'ensemble des widgets, de ce type, du tableau actuel et uniquement pour ce tableau. Chacun s'imprime sur l'imprimante de son format d'étiquette."
         columns={columns}
         rows={draft.templates.map((t) => [t.name, formatName(t.paper_format_id)])}
         save={save}
@@ -155,7 +155,7 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
         // starts from it.
         leading={(row, rank) => (
           <Reset
-            active={row !== null && isCustomLabelZpl(draft.templates[rank]?.zpl ?? "")}
+            active={row !== null && isCustomLabelZpl(draft.templates[rank]?.zpl ?? "", kind)}
             what="du modèle"
             onClick={() => setToReset(rank)}
           />
@@ -169,7 +169,7 @@ export default function LabelTemplatesFields({ kind }: { kind: LabelTemplateKind
       <LabelTemplateModal
         template={template}
         kind={kind}
-        boardId={boardId}
+        list={list}
         variables={draft.variables}
         format={formats.find((f) => f.id === template?.paper_format_id) ?? null}
         onClose={() => setEdited(null)}

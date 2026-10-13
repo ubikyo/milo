@@ -19,32 +19,37 @@ import {
   ROW_MENU_OFFSET,
   TAB_MENU_STYLES,
 } from "../../themes/menus";
-import type { CopyResult, Id } from "@milo/shared";
+import { LIST_KEY, widgetReference } from "@milo/shared";
+import type { CopyResult, Id, ListRef } from "@milo/shared";
+import { useListRef } from "../../lib/list-ref";
 import CloseButton from "./CloseButton";
 import Footer from "./Footer";
 import { report } from "./copyReport";
 import { DrawerActionsContext } from "./IndicatorDrawer";
 import { themeWindow } from "../../lib/themeWindow";
 
-// The "Actions" menu of a "Projets" or "Tâches" widget drawer: copy the labels
-// or categories of the open board, then paste them into another board, from the
-// drawer of its own widget.
+// The "Actions" menu of a "Projets" or "Tâches" widget drawer: copy its labels
+// or categories, then paste them into another widget — of this board or
+// another —, from its own drawer.
 //
-// Copying only remembers the source board: the clipboard is held by the
+// Copying only remembers the source widget: the clipboard is held by the
 // application (CopyPasteContext), and it survives tab and view changes. Pasting
-// is confirmed — you choose to replace what the board already has, or to add to
-// it —, and the notification then says what the paste produced. Pasted, the
+// is confirmed — you choose to replace what the widget already has, or to add
+// to it —, and the notification then says what the paste produced. Pasted, the
 // copy leaves the clipboard: "Coller" leaves the menu, and the same labels are
 // not pasted again.
 
 /** Card labels and project labels are not the same. */
 export type Scope = "tasks" | "projects";
+
+/** The list widget type of each scope. */
+const LIST_TYPES: Record<Scope, string> = { tasks: "task.list", projects: "project.list" };
 export type CopiedItem = "labels" | "categories";
 
-/** A copied board, waiting to be pasted. */
+/** A copied widget, waiting to be pasted: its list, its reference and its board's name. */
 export interface Copy {
-  boardId: Id;
-  boardName: string;
+  list: ListRef;
+  name: string;
 }
 
 /** What is copied, each kind on its own: "projects.labels", … */
@@ -99,12 +104,12 @@ const WORDS: Record<
   },
 };
 
-/** The paste itself, from the copied board to this one. */
+/** The paste itself, from the copied widget to this one. */
 const paste = (
   scope: Scope,
   item: CopiedItem,
-  source: Id,
-  target: Id,
+  source: ListRef,
+  target: ListRef,
   replaceExisting: boolean,
 ): Promise<CopyResult> =>
   item === "categories"
@@ -131,28 +136,28 @@ export default function CopyPasteActions({
   const [saving, setSaving] = useState(false);
 
   const board = context?.board ?? null;
+  const list = useListRef();
   // Copying and pasting both require the right to create; replacing, the right
   // to delete.
-  if (!context || !board || !can(scope, "create")) return null;
+  if (!context || !board || !list || !can(scope, "create")) return null;
   const canReplace = can(scope, "delete");
+  // "#A1B2 (Projets 2026)": the widget, as its drawer names it.
+  const name = `${widgetReference(LIST_TYPES[scope], { [LIST_KEY]: list.list })} (${board.name})`;
 
-  // Pasting only makes sense from another board.
+  // Pasting only makes sense from another widget.
   const copyOf = (item: CopiedItem) => {
     const copy = context.clipboard[`${scope}.${item}`];
-    return copy && copy.boardId !== board.id ? copy : null;
+    return copy && !(copy.list.board === list.board && copy.list.list === list.list) ? copy : null;
   };
   const pastable = items.filter((item) => copyOf(item));
   const source = toPaste ? copyOf(toPaste) : null;
 
   const copy = (item: CopiedItem) => {
-    context.onCopy(`${scope}.${item}`, {
-      boardId: board.id,
-      boardName: board.name,
-    });
+    context.onCopy(`${scope}.${item}`, { list, name });
     notifications.show({
       color: "teal",
       title: WORDS[item].copied,
-      message: `Ouvrez le widget d'un autre tableau pour coller celles de « ${board.name} ».`,
+      message: `Ouvrez un autre widget pour coller celles de « ${name} ».`,
     });
   };
 
@@ -163,8 +168,8 @@ export default function CopyPasteActions({
       const done = await paste(
         scope,
         toPaste,
-        source.boardId,
-        board.id,
+        source.list,
+        list,
         replaceExisting && canReplace,
       );
       context.onPasted(`${scope}.${toPaste}`);
@@ -213,7 +218,7 @@ export default function CopyPasteActions({
                   {WORDS[item].copy}
                 </Menu.Item>
               ))}
-              {/* Paste only appears once a copy has been made, from another board. */}
+              {/* Paste only appears once a copy has been made, from another widget. */}
               {pastable.length > 0 && <Menu.Divider />}
               {pastable.map((item) => (
                 <Menu.Item
@@ -246,9 +251,9 @@ export default function CopyPasteActions({
           <>
             <Stack gap="md">
               <Text size="sm">
-                {WORDS[toPaste].definite} de « {source.boardName} » seront ajoutées à
-                « {board.name} ». Celles qui y portent déjà le même nom ne sont
-                pas redoublées.
+                {WORDS[toPaste].definite} de « {source.name} » seront ajoutées à
+                « {name} ». Celles qui y portent déjà le même nom ne sont pas
+                redoublées.
               </Text>
               <Checkbox
                 label={WORDS[toPaste].replaceExisting}

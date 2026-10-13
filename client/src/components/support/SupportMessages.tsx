@@ -1,13 +1,16 @@
 import {
   ActionIcon,
   Anchor,
+  Box,
   Button,
   Group,
   Menu,
   Paper,
+  SegmentedControl,
   Stack,
   Text,
   Typography,
+  useComputedColorScheme,
 } from "@mantine/core";
 import { RichTextEditor } from "@mantine/tiptap";
 import {
@@ -15,8 +18,11 @@ import {
   IconChevronDown,
   IconMailCheck,
   IconMailOff,
+  IconMessagePlus,
+  IconMoon,
   IconPaperclip,
   IconSend2,
+  IconSun,
   IconTrash,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
@@ -26,6 +32,11 @@ import { RED } from "../../themes/colors";
 import { PersonAvatar, SenderAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import RichTextField, { useRichEditor } from "../ui/RichText";
+import { createBlockStore, withVariableBlocks } from "../ui/VariableBlock";
+import FileDropzone from "../ui/FileDropzone";
+import MailPreview from "../settings/MailPreview";
+import { MAIL_SLOT_MARKER } from "../ui/MailFrame";
+import { useReplyEditor } from "../../lib/reply-editor";
 import type { ThreadItem } from "../project/CommentThread";
 import { MILO_ACTOR_ID } from "@milo/shared";
 import type {
@@ -329,6 +340,8 @@ interface SupportMessagesProps {
   senderEmail: string;
   /** Without it — without the right to edit the request —, nothing can be deleted. */
   onDelete?: (id: number | string) => Promise<void>;
+  /** Paragraphs as the editor wrote them, without margins: an order's exchanges. */
+  tight?: boolean;
 }
 
 /** A reply's footer: sent, simulated, or refused — and who was in copy. */
@@ -384,6 +397,7 @@ export default function SupportMessages({
   messages,
   senderEmail,
   onDelete,
+  tight = false,
 }: SupportMessagesProps) {
   const [toDelete, setToDelete] = useState<SupportMessage | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
@@ -539,7 +553,7 @@ export default function SupportMessages({
                   style={{ fontSize: "var(--mantine-font-size-sm)" }}
                 >
                   <div
-                    className={classes.body}
+                    className={tight ? `${classes.body} ${classes.tight}` : classes.body}
                     dangerouslySetInnerHTML={{ __html: asHtml(m.text) }}
                   />
                 </Typography>
@@ -595,6 +609,7 @@ export interface ReplySending {
  */
 const SEND_SIZE_MAX = 3 * 1024 * 1024;
 
+
 /** The three ways to send, the first being the default. */
 const SENDINGS: { status: SupportStatus; label: string }[] = [
   { status: "pending", label: "Envoyer et définir en attente" },
@@ -618,6 +633,10 @@ export function SupportReply({
   byEmail = false,
   withFiles = false,
   blockedReason,
+  withStatuses = true,
+  snippets = [],
+  blocks,
+  preview,
 }: {
   /**
    * What the editor carries by default — the default contents from Settings:
@@ -631,22 +650,114 @@ export function SupportReply({
   withFiles?: boolean;
   /** When sending is not yet possible: the reason, as a tooltip. */
   blockedReason?: string;
+  /**
+   * False: "Envoyer" alone, without the arrow that sets the request's status
+   * — an order's exchanges.
+   */
+  withStatuses?: boolean;
+  /**
+   * The predefined replies, at the toolbar's end: the one chosen goes where the
+   * cursor is, its variables already filled by the caller.
+   */
+  snippets?: { value: string; label: string; html: string }[];
+  /**
+   * Variables that stand for tables, and the table each shows in the text —
+   * an order's "{{order.lines}}": the variable goes, filled on sending.
+   */
+  blocks?: Record<string, string>;
+  /**
+   * The e-mail the text makes, laid out as it will go — its HTML: with it,
+   * at the toolbar's end, "Contenu" — the text alone —, "Mise en page" —
+   * in its template — or "Aperçu", and the sun or the moon
+   * that shows it light or dark.
+   */
+  preview?: (html: string) => Promise<string>;
 }) {
-  const editor = useRichEditor({ placeholder: "Écrire une réponse…" });
+  // Its tables' variables, shown as tables: the store is the editor's, built once.
+  const [store] = useState(() => (blocks ? createBlockStore() : undefined));
+  useEffect(() => {
+    if (blocks) store?.set(blocks);
+  }, [store, blocks]);
+  /** A text as the editor reads it: its tables' variables alone in their paragraph, blocks. */
+  const asBlocks = useCallback(
+    (html: string) => (store && blocks ? withVariableBlocks(html, Object.keys(blocks)) : html),
+    [store, blocks],
+  );
+  const editor = useRichEditor({ placeholder: "Écrire une réponse…", blocks: store });
   const [sending, setSending] = useState(false);
   const [cc, setCc] = useState<string[] | null>(null);
   const [bcc, setBcc] = useState<string[] | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const filePicker = useRef<HTMLInputElement | null>(null);
   // What the editor received from the template, as the editor renders it.
   const appliedTemplate = useRef("");
 
   /** Sets the template, cursor at the start: you write before the signature. */
+  // Touched since the template was set: "Envoyer" turns green.
+  const [touched, setTouched] = useState(false);
+  // Under "Envoyer": the editor, or the e-mail it makes, previewed — the
+  // text then only shown, its toolbar disabled. Both in a dark or light mail
+  // client: the interface's theme at first, then the sun's or the moon's.
+  const scheme = useComputedColorScheme("light", { getInitialValueInEffect: false });
+  // "Contenu": the text alone; "Mise en page": in the template around it;
+  // "Aperçu": the e-mail. It opens on the profile's choice.
+  const opening = useReplyEditor();
+  const [view, setView] = useState<"content" | "layout" | "preview">(opening);
+  const [dark, setDark] = useState(scheme === "dark");
+  const [previewHtml, setPreviewHtml] = useState("");
+  // The e-mail's template around the text (MailFrame): laid out with a marker
+  // in the text's place, again each time the editor comes back — what fills
+  // it, the order's number, may have changed.
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const [frame, setFrame] = useState("");
+  useEffect(() => {
+    if (view !== "layout" || !previewRef.current) return;
+    let current = true;
+    previewRef.current(`<p>${MAIL_SLOT_MARKER}</p>`).then(
+      (html) => current && setFrame(html),
+      () => current && setFrame(""),
+    );
+    return () => {
+      current = false;
+    };
+  }, [view]);
+  useEffect(() => {
+    if (view !== "preview" || !preview || !editor) return;
+    let current = true;
+    setPreviewHtml("");
+    preview(editor.getHTML()).then(
+      (html) => current && setPreviewHtml(html),
+      () => current && setPreviewHtml(""),
+    );
+    return () => {
+      current = false;
+    };
+    // The text does not change under a preview: it is read on entering it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, editor]);
+  // The panel of the attachments, the paperclip's: its drop zone.
+  const [filesOpen, setFilesOpen] = useState(false);
+
   const applyTemplate = useCallback(() => {
     if (!editor) return;
-    editor.chain().setContent(template).setTextSelection(1).run();
+    editor.chain().setContent(asBlocks(template)).setTextSelection(1).run();
     appliedTemplate.current = editor.getHTML();
+    setTouched(false);
+    // The tables follow the order without the template being set again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, template]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const follow = () => {
+      const html = editor.getHTML();
+      setTouched(!isEmpty(html) && html !== appliedTemplate.current);
+    };
+    editor.on("update", follow);
+    return () => {
+      editor.off("update", follow);
+    };
+  }, [editor]);
 
   // A template that changes — the thread advances, another request opens —
   // replaces the old one as long as it has not been touched; never written text.
@@ -693,12 +804,22 @@ export function SupportReply({
   // Dark gray, a notch lighter in the dark theme to stand out from the
   // field; hover darkens by the same amount.
   const corner = "calc(var(--mantine-radius-default) - 1px)";
-  const gray = {
-    "--button-bg": "var(--milo-dark-button)",
-    "--button-hover": "var(--milo-dark-button-hover)",
-    "--ai-bg": "var(--milo-dark-button)",
-    "--ai-hover": "var(--milo-dark-button-hover)",
-  } as CSSProperties;
+  // Once the text is touched, in the send button's green: something to send.
+  const gray = (
+    touched
+      ? {
+          "--button-bg": "var(--mantine-color-teal-filled)",
+          "--button-hover": "var(--mantine-color-teal-filled-hover)",
+          "--ai-bg": "var(--mantine-color-teal-filled)",
+          "--ai-hover": "var(--mantine-color-teal-filled-hover)",
+        }
+      : {
+          "--button-bg": "var(--milo-dark-button)",
+          "--button-hover": "var(--milo-dark-button-hover)",
+          "--ai-bg": "var(--milo-dark-button)",
+          "--ai-hover": "var(--milo-dark-button-hover)",
+        }
+  ) as CSSProperties;
   const buttons = (
     <Group gap={1} wrap="nowrap" style={{ flex: 1 }}>
       <Button
@@ -710,54 +831,94 @@ export function SupportReply({
         onClick={() => void send("pending")}
         loading={sending}
         disabled={Boolean(blockedReason)}
-        title={blockedReason ?? SENDINGS[0]!.label}
+        title={blockedReason ?? (withStatuses ? SENDINGS[0]!.label : "Envoyer")}
         style={{
           ...gray,
           flex: 1,
-          borderRadius: `0 0 0 ${corner}`,
+          borderRadius: withStatuses ? `0 0 0 ${corner}` : `0 0 ${corner} ${corner}`,
         }}
       >
         Envoyer
       </Button>
-      <Menu position="top-end" withinPortal shadow="md">
-        <Menu.Target>
-          <ActionIcon
-            color="dark"
-            variant="filled"
-            size={36}
-            disabled={sending || Boolean(blockedReason)}
-            aria-label="Autres façons d'envoyer"
-            style={{
-              ...gray,
-              borderRadius: `0 0 ${corner} 0`,
-            }}
-          >
-            <IconChevronDown size={14} />
-          </ActionIcon>
-        </Menu.Target>
-        <Menu.Dropdown>
-          {SENDINGS.map(({ status, label }) => (
-            <Menu.Item key={status} onClick={() => void send(status)}>
-              {label}
-            </Menu.Item>
-          ))}
-        </Menu.Dropdown>
-      </Menu>
+      {withStatuses && (
+        <Menu position="top-end" withinPortal shadow="md">
+          <Menu.Target>
+            <ActionIcon
+              color="dark"
+              variant="filled"
+              size={36}
+              disabled={sending || Boolean(blockedReason)}
+              aria-label="Autres façons d'envoyer"
+              style={{
+                ...gray,
+                borderRadius: `0 0 ${corner} 0`,
+              }}
+            >
+              <IconChevronDown size={14} />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {SENDINGS.map(({ status, label }) => (
+              <Menu.Item key={status} onClick={() => void send(status)}>
+                {label}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+      )}
     </Group>
   );
 
   return (
     <RichTextField
       editor={editor}
+      noBlocks
       // A reply is written at greater length than a comment: fifteen lines
       // before scrolling.
       maxLines={15}
+      frame={view === "layout" ? frame : ""}
+      frameDark={dark}
+      // At the toolbar's end, still active under a preview: the editor, or
+      // the e-mail it makes; then the sun or the moon, light or dark.
+      toolbarLast={
+        preview && (
+          <>
+            <SegmentedControl
+              size="xs"
+              aria-label="Affichage"
+              data={[
+                { value: "content", label: "Contenu" },
+                { value: "layout", label: "Mise en page" },
+                { value: "preview", label: "Aperçu" },
+              ]}
+              value={view}
+              onChange={(v) => setView(v as typeof view)}
+            />
+            {/* The text alone has no e-mail to show light or dark: greyed. */}
+            <RichTextEditor.Control
+              onClick={() => setDark((d) => !d)}
+              disabled={view === "content"}
+              aria-label={dark ? "Afficher en clair" : "Afficher en sombre"}
+            >
+              {dark ? <IconSun size={16} /> : <IconMoon size={16} />}
+            </RichTextEditor.Control>
+          </>
+        )
+      }
+      preview={
+        view === "preview" && (
+          <Box h="100%">
+            <MailPreview html={previewHtml} dark={dark} scheme={scheme} dragging={false} />
+          </Box>
+        )
+      }
       toolbarControls={
         (byEmail || withFiles) && (
           <>
             {withFiles && (
               <RichTextEditor.Control
-                onClick={() => filePicker.current?.click()}
+                onClick={() => setFilesOpen((open) => !open)}
+                active={filesOpen}
                 aria-label="Joindre des fichiers"
               >
                 <IconPaperclip size={16} />
@@ -789,37 +950,65 @@ export function SupportReply({
                 </RichTextEditor.Control>
               </>
             )}
-            {/* The selector itself, hidden: the paperclip opens it. Several
-                files at once, added to those already chosen. */}
-            <input
-              ref={filePicker}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => {
-                const selected = [...(e.currentTarget.files ?? [])];
-                setFiles((already) => [...already, ...selected]);
-                e.currentTarget.value = "";
-              }}
-            />
           </>
+        )
+      }
+      // The predefined replies, behind an icon at the toolbar's end: the one
+      // chosen goes where the cursor was — the editor keeps its selection.
+      toolbarEnd={
+        snippets.length > 0 && (
+          <Menu position="bottom-end" withinPortal shadow="md">
+            <Menu.Target>
+              <RichTextEditor.Control aria-label="Insérer une réponse pré-définie">
+                <IconMessagePlus size={16} />
+              </RichTextEditor.Control>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {snippets.map((s) => (
+                <Menu.Item
+                  key={s.value}
+                  onClick={() => editor?.chain().focus().insertContent(asBlocks(s.html)).run()}
+                >
+                  {s.label}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
         )
       }
       // The chosen attachments, as in the messages, under the text;
       // each is removed with a cross as long as the reply has not been sent.
       contentEnd={
-        files.length > 0 && (
+        (files.length > 0 || (withFiles && filesOpen)) && (
           <>
-            <FileList
-              px={10}
-              rows={files.map((f, rank) => ({
-                key: `${rank}-${f.name}`,
-                name: f.name,
-                size: f.size,
-                onRemove: () =>
-                  setFiles((already) => already.filter((_, i) => i !== rank)),
-              }))}
-            />
+            {files.length > 0 && (
+              <FileList
+                px={10}
+                rows={files.map((f, rank) => ({
+                  key: `${rank}-${f.name}`,
+                  name: f.name,
+                  size: f.size,
+                  onRemove: () =>
+                    setFiles((already) => already.filter((_, i) => i !== rank)),
+                }))}
+              />
+            )}
+            {/* The paperclip's panel, between the text and "Envoyer", a line
+                above it as the copies' rows: files dropped, or chosen with a
+                click, join the list. */}
+            {withFiles && filesOpen && (
+              <Box
+                px={10}
+                py={10}
+                style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
+              >
+                <FileDropzone
+                  icon={IconPaperclip}
+                  message="Déposez des fichiers ici, ou cliquez pour en choisir"
+                  onDrop={(dropped) => setFiles((already) => [...already, ...dropped])}
+                />
+              </Box>
+            )}
             {tooHeavy && (
               <Text size="xs" c="red" px={12} pb={6}>
                 Les pièces jointes d'une réponse par e-mail ne dépassent pas 3

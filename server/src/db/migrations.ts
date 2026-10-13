@@ -8,9 +8,12 @@
 import type { Database } from "better-sqlite3";
 import {
   CONTACT_SETTINGS_DEFAULTS,
+  PRODUCT_TAX_DEFAULTS,
   DECLARED_ASSET_EXTRAS,
   DECLARED_ASSET_EXTRA_LISTS,
   DECLARED_ASSET_KINDS,
+  LEGACY_INDICATOR_TYPES,
+  legacyIndicator,
   QUERY_PARAMS,
   renamedWidgetKinds,
   renamedWidgetType,
@@ -39,6 +42,7 @@ import {
   EXTRA_LIST_COLUMNS,
   declaredAssetTables,
 } from "./declared-asset-tables.js";
+import { settingsPerList, sourcesByKey } from "./settings-per-list.js";
 
 /** The milestones all projects shared before they followed the category. */
 const HISTORICAL_MILESTONES = [
@@ -283,8 +287,12 @@ export const migrate = (db: Database): void => {
   assetsNamedByKind(db);
   applicationAssets(db);
   logisticsWidgets(db);
+  indicatorWidgets(db);
+  legacyIndicators(db);
   declaredAssetListKeys(db);
   declaredAssetExtras(db);
+  declaredAssetCategoryTree(db);
+  declaredAssetPurchaseDate(db);
   sortedCategories(db);
   categoryTree(db);
   // Cards created before the period, the recurrence and the due-date reminder.
@@ -296,13 +304,47 @@ export const migrate = (db: Database): void => {
       db.exec(`ALTER TABLE contacts ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
   }
-  // Products from before their own variants, and before their category.
+  // Products from before their own variants, their category, their suppliers and their SKU.
   const productColumns = columns(db, "products");
-  for (const column of ["variants", "category"]) {
+  for (const column of ["variants", "category", "suppliers", "sku"]) {
     if (!productColumns.includes(column)) {
-      const value = column === "variants" ? "'[]'" : "''";
+      const value = column === "category" || column === "sku" ? "''" : "'[]'";
       db.exec(`ALTER TABLE products ADD COLUMN ${column} TEXT NOT NULL DEFAULT ${value}`);
     }
+  }
+  // Products from before their archiving.
+  if (!columns(db, "products").includes("archived")) {
+    db.exec("ALTER TABLE products ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+  }
+  // Order contents from before their order.
+  if (!columns(db, "order_contents").includes("position")) {
+    db.exec("ALTER TABLE order_contents ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+  }
+  // Orders from before their numbers.
+  const orderColumns = columns(db, "orders");
+  for (const column of ["quote_number", "quote_index", "order_number", "order_index"]) {
+    if (!orderColumns.includes(column)) {
+      const type = column.endsWith("_index") ? "INTEGER NOT NULL DEFAULT 0" : "TEXT NOT NULL DEFAULT ''";
+      db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${type}`);
+    }
+  }
+  // Order messages from before their status: a quote request's is a quote's.
+  if (!columns(db, "order_messages").includes("order_status")) {
+    db.exec("ALTER TABLE order_messages ADD COLUMN order_status TEXT NOT NULL DEFAULT ''");
+    db.exec("UPDATE order_messages SET order_status = 'quote' WHERE kind = 'order_quote_request'");
+  }
+  // Order documents from before the invoices: documents.
+  if (!columns(db, "order_attachments").includes("kind")) {
+    db.exec("ALTER TABLE order_attachments ADD COLUMN kind TEXT NOT NULL DEFAULT 'document'");
+  }
+  // Orders from before their delivery warehouse.
+  if (!orderColumns.includes("warehouse_id")) {
+    db.exec("ALTER TABLE orders ADD COLUMN warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL");
+  }
+  // Product widgets from before their taxes: the defaults, 20 % and 0 %.
+  if (!columns(db, "board_product_settings").includes("taxes")) {
+    const taxes = JSON.stringify(PRODUCT_TAX_DEFAULTS);
+    db.exec(`ALTER TABLE board_product_settings ADD COLUMN taxes TEXT NOT NULL DEFAULT '${taxes}'`);
   }
   if (!columns(db, "board_contact_settings").includes("countries")) {
     const countries = JSON.stringify(CONTACT_SETTINGS_DEFAULTS.countries).replace(/'/g, "''");
@@ -397,6 +439,15 @@ export const migrate = (db: Database): void => {
   if (!userColumns.includes("notification_settings")) {
     db.exec("ALTER TABLE users ADD COLUMN notification_settings TEXT NOT NULL DEFAULT ''");
   }
+  // How an e-mail being written first shows, chosen in the profile.
+  if (!userColumns.includes("reply_editor")) {
+    db.exec("ALTER TABLE users ADD COLUMN reply_editor TEXT NOT NULL DEFAULT 'layout'");
+  }
+  // Each list widget owns its labels, categories, milestone types and tables
+  // (db/settings-per-list.ts): last, once everything else is in place.
+  settingsPerList(db);
+  // The counting widgets name the widgets they read by their keys.
+  sourcesByKey(db);
 };
 
 /** Set once workstation lists name their tags with collectors. */
@@ -1442,6 +1493,85 @@ const declaredAssetExtras = (db: Database): void => {
   })();
 };
 
+/** The declared assets from before their purchase date receive the column, empty. */
+const declaredAssetPurchaseDate = (db: Database): void => {
+  for (const kind of DECLARED_ASSET_KINDS) {
+    const { assets } = declaredAssetTables(kind);
+    if (!columns(db, assets).includes("purchase_date")) {
+      db.exec(`ALTER TABLE ${assets} ADD COLUMN purchase_date TEXT NOT NULL DEFAULT ''`);
+    }
+  }
+};
+
+/** Set once the declared assets' categories have become a tree. */
+const DECLARED_ASSET_CATEGORY_TREE = "declared_asset_category_tree";
+
+/**
+ * The declared assets' categories — device types, software types — become a
+ * tree, as the locations: each name of a board's list becomes a node at the
+ * root, and the products and assets that named it name it by its id. A name
+ * no longer in the list, still carried by a product or an asset, becomes a
+ * node too: nothing is lost.
+ */
+const declaredAssetCategoryTree = (db: Database): void => {
+  if (readSetting(db, DECLARED_ASSET_CATEGORY_TREE)) return;
+  db.transaction(() => {
+    for (const kind of DECLARED_ASSET_KINDS) {
+      const { assets, settings } = declaredAssetTables(kind);
+      const rows = db
+        .prepare(`SELECT board_id, list_key, categories, products FROM ${settings}`)
+        .all() as { board_id: number; list_key: string; categories: string; products: string }[];
+      const writeLists = db.prepare(
+        `UPDATE ${settings} SET categories = ?, products = ? WHERE board_id = ? AND list_key = ?`,
+      );
+      const assetsOf = db.prepare(
+        `SELECT id, category FROM ${assets} WHERE board_id = ? AND list_key = ? AND category != ''`,
+      );
+      const writeAsset = db.prepare(`UPDATE ${assets} SET category = ? WHERE id = ?`);
+      const parsedList = (stored: string): Record<string, unknown>[] => {
+        try {
+          const list = JSON.parse(stored) as unknown;
+          return Array.isArray(list) ? (list as Record<string, unknown>[]) : [];
+        } catch {
+          return [];
+        }
+      };
+      for (const row of rows) {
+        const nodes: { id: string; parent: string | null; name: string }[] = [];
+        const ids = new Map<string, string>();
+        /** A category's id, by its name: a node added when it is not one yet. */
+        const idOf = (name: string): string => {
+          const key = name.toLowerCase();
+          let id = ids.get(key);
+          if (!id) {
+            id = crypto.randomUUID();
+            ids.set(key, id);
+            nodes.push({ id, parent: null, name });
+          }
+          return id;
+        };
+        const categories = parsedList(row.categories);
+        // Already a tree: nothing to convert.
+        if (categories.some((c) => typeof c?.id === "string")) continue;
+        for (const c of categories) {
+          const name = String(c?.name ?? "").trim();
+          if (name) idOf(name);
+        }
+        const products = parsedList(row.products).map((p) => {
+          const name = String(p?.category ?? "").trim();
+          return { ...p, category: name ? idOf(name) : "" };
+        });
+        for (const asset of assetsOf.all(row.board_id, row.list_key) as { id: number; category: string }[]) {
+          const name = asset.category.trim();
+          writeAsset.run(name ? idOf(name) : "", asset.id);
+        }
+        writeLists.run(JSON.stringify(nodes), JSON.stringify(products), row.board_id, row.list_key);
+      }
+    }
+    writeSetting(db, DECLARED_ASSET_CATEGORY_TREE, true);
+  })();
+};
+
 /** Set once the "Applications" type has been granted to the groups. */
 const APPLICATION_ASSETS = "application_assets_added";
 
@@ -1481,6 +1611,62 @@ const logisticsWidgets = (db: Database): void => {
       write.run(JSON.stringify({ ...parsedObject(widgets), logistics: "delete" }), rowid);
     }
     writeSetting(db, LOGISTICS_WIDGETS, true);
+  })();
+};
+
+/** Set once the "Indicateurs" type has been granted to the groups. */
+const INDICATOR_WIDGETS = "indicator_widgets_added";
+
+/**
+ * The "Indicateurs" type arrives — a number, a breakdown, of the data chosen
+ * —: as for the logistics, the groups receive every permission on it. The
+ * declared assets' figures, placed for a while under their own prefix
+ * ("unmanaged_device_asset.count"), become "Indicateurs" reading that data.
+ */
+const indicatorWidgets = (db: Database): void => {
+  if (readSetting(db, INDICATOR_WIDGETS)) return;
+  db.transaction(() => {
+    const rows = db
+      .prepare("SELECT rowid, widgets FROM principal_permissions WHERE principal_type = 'group'")
+      .all() as { rowid: number; widgets: string }[];
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      write.run(JSON.stringify({ ...parsedObject(widgets), indicator: "delete" }), rowid);
+    }
+    const placed = db
+      .prepare(
+        `SELECT id, type, config FROM board_widgets
+         WHERE type IN ('unmanaged_device_asset.count', 'unmanaged_device_asset.breakdown',
+                        'application_asset.count', 'application_asset.breakdown')`,
+      )
+      .all() as { id: number; type: string; config: string }[];
+    const move = db.prepare("UPDATE board_widgets SET type = ?, config = ? WHERE id = ?");
+    for (const { id, type, config } of placed) {
+      const [data, figure] = type.split(".");
+      move.run(`indicator.${figure}`, JSON.stringify({ ...parsedObject(config), data }), id);
+    }
+    writeSetting(db, INDICATOR_WIDGETS, true);
+  })();
+};
+
+/**
+ * The figures each kind carried — "support.tickets", "project.categories",
+ * the mail counts… — become "Indicateurs" widgets reading that data
+ * (shared, legacyIndicator): their name, sources and colors kept. Recognized
+ * by their type: none is left after.
+ */
+const legacyIndicators = (db: Database): void => {
+  const placeholders = LEGACY_INDICATOR_TYPES.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`SELECT id, type, config FROM board_widgets WHERE type IN (${placeholders})`)
+    .all(...LEGACY_INDICATOR_TYPES) as { id: number; type: string; config: string }[];
+  if (rows.length === 0) return;
+  const write = db.prepare("UPDATE board_widgets SET type = ?, config = ? WHERE id = ?");
+  db.transaction(() => {
+    for (const row of rows) {
+      const converted = legacyIndicator(row.type, parsedObject(row.config));
+      if (converted) write.run(converted.type, JSON.stringify(converted.config), row.id);
+    }
   })();
 };
 

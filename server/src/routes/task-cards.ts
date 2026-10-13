@@ -20,7 +20,7 @@ import { quote, logAction, date, changes, list, editMessage } from "../lib/histo
 import type { Field } from "../lib/history.js";
 import { concerned, notify, notifyBoard, notifyLinked, notifyDeletion, root } from "../lib/notify.js";
 import { due, now } from "../lib/time.js";
-import { touch } from "../middleware/events.js";
+import { touch, touchNow } from "../middleware/events.js";
 import { openTaskBoard, boards } from "../repositories/boards.js";
 import {
   cardComments,
@@ -32,7 +32,7 @@ import {
   addCardLabel,
 } from "../repositories/cards.js";
 import { SYSTEM_COMMENT, creationNote, withAuthor } from "../repositories/comments.js";
-import { duplicateTaskCard } from "../repositories/copy-list.js";
+import { duplicateTaskCard, relabelCards } from "../repositories/copy-list.js";
 import { nextCardReference } from "../repositories/references.js";
 import {
   boardOfCard,
@@ -138,8 +138,8 @@ taskCardRoutes.post("/", (req, res) => {
   const label =
     kind === "separator"
       ? null
-      : contextLabel("task.list", list.board_id, req.body.context);
-  if (label !== null) addCardLabel(Number(lastInsertRowid), label, list.board_id);
+      : contextLabel("task.list", list.board_id, list.list_key, req.body.context);
+  if (label !== null) addCardLabel(Number(lastInsertRowid), label);
 
   // A card created from another mode ("Créer une tâche") arrives with its
   // description: the link to the item it comes from. A separator has no
@@ -241,6 +241,17 @@ taskCardRoutes.put("/reorder", (req, res) => {
   }
 
   reorderTaskCards(list.id, fullOrder);
+  // Cards from a list of another widget take its labels' twins.
+  const strangers = [...listBefore].filter(
+    ([, origin]) => taskLists.byId.get(origin)?.list_key !== list.list_key,
+  );
+  if (strangers.length > 0) {
+    relabelCards(
+      strangers.map(([id]) => id),
+      { board: list.board_id, list: list.list_key },
+    );
+    touchNow(res, "labels");
+  }
   const arrived = [...listBefore.values()].some((origin) => origin !== list.id);
   if (!arrived && fullOrder.some((id, index) => id !== before[index])) {
     notifyBoard({
@@ -334,7 +345,7 @@ taskCardRoutes.put("/:id", (req, res) => {
     replaceCardMembers(existing.id, toIds(req.body.member_ids));
   }
   if (Array.isArray(req.body.label_ids)) {
-    replaceCardLabels(existing.id, toIds(req.body.label_ids), boardOfCard(existing));
+    replaceCardLabels(existing.id, toIds(req.body.label_ids));
   }
 
   const next = taskCards.byId.get(existing.id)!;

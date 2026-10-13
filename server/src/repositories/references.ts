@@ -9,7 +9,8 @@
 import type { Id } from "@milo/shared";
 import { mutation, scalar, selection } from "../db/query.js";
 
-export type ReferenceKind = "project" | "card" | "support";
+/** "quote", "order": an order widget's counts, one by numbering format (shared, orders.ts). */
+export type ReferenceKind = "project" | "card" | "support" | "quote" | "order";
 
 /** The key of a widget's counter. */
 export const referenceScope = (kind: ReferenceKind, boardId: Id, listKey: string): string =>
@@ -37,7 +38,20 @@ const largest: Record<ReferenceKind, (boardId: Id, listKey: string) => { max: nu
   support: scalar(
     "SELECT COALESCE(MAX(number), 0) AS max FROM support_requests WHERE board_id = ? AND list_key = ?",
   ),
+  quote: scalar(
+    "SELECT COALESCE(MAX(quote_index), 0) AS max FROM orders WHERE board_id = ? AND list_key = ?",
+  ),
+  order: scalar(
+    "SELECT COALESCE(MAX(order_index), 0) AS max FROM orders WHERE board_id = ? AND list_key = ?",
+  ),
 };
+
+/** The widget's next reference, without taking it: what nextReference would give. */
+export const peekReference = (kind: ReferenceKind, boardId: Id, listKey: string): number =>
+  Math.max(
+    lastGiven.get(referenceScope(kind, boardId, listKey))?.last ?? 0,
+    largest[kind](boardId, listKey).max,
+  ) + 1;
 
 /**
  * The widget's next reference, with its counter advanced accordingly. The
@@ -49,9 +63,8 @@ const largest: Record<ReferenceKind, (boardId: Id, listKey: string) => { max: nu
  * fails, the number is not consumed.
  */
 export const nextReference = (kind: ReferenceKind, boardId: Id, listKey: string): number => {
-  const scope = referenceScope(kind, boardId, listKey);
-  const next = Math.max(lastGiven.get(scope)?.last ?? 0, largest[kind](boardId, listKey).max) + 1;
-  writeLast.run(scope, next);
+  const next = peekReference(kind, boardId, listKey);
+  writeLast.run(referenceScope(kind, boardId, listKey), next);
   return next;
 };
 

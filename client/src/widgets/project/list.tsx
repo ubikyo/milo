@@ -6,7 +6,6 @@ import ColumnFields, { LIST_COLUMNS } from "../../components/ui/ColumnFields";
 import ProjectCategoriesFields from "../../components/project/ProjectCategoriesFields";
 import BoardListFields from "../../components/ui/BoardListFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
-import { useSettingsMode } from "../../lib/rights";
 import type { WidgetConfigProps } from "../types";
 import type { ProjectIndicatorWidget } from "./types";
 
@@ -14,7 +13,7 @@ import type { ProjectIndicatorWidget } from "./types";
 // indicator, and its configuration says what it displays — its columns. The
 // open board's projects, its filters and what is opened from it come from the
 // page (ProjectsListContext). The "Actions" menu of its drawer copies and
-// pastes the board's labels and categories.
+// pastes its labels and categories.
 
 export const projectsListIndicator: ProjectIndicatorWidget = {
   type: "list",
@@ -41,19 +40,16 @@ export const projectsListIndicator: ProjectIndicatorWidget = {
 };
 
 function Settings(props: WidgetConfigProps) {
-  // Milestone types fall under the Paramétrage.
-  const canEditSettings = useSettingsMode();
   return (
     <>
       <CopyPasteActions scope="projects" items={["labels", "categories"]} />
       <Stack gap="xl">
         <ColumnFields columns={PROJECT_COLUMNS} {...props} />
-        {/* The categories, the board's labels and the milestone types,
-            under its columns: they go to saving, with the
-            configuration. */}
+        {/* The widget's categories, labels and milestone types, under its
+            columns: they go to saving, with the configuration. */}
         <ProjectCategoriesFields />
         <LabelGroupFields kind="project-labels" />
-        {canEditSettings && <BoardListFields kind="milestone-types" />}
+        <BoardListFields kind="milestone-types" />
       </Stack>
     </>
   );

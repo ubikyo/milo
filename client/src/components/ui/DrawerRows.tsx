@@ -113,12 +113,19 @@ export function Handle({ label, active = true, onDragStart, onDragEnd }: HandleP
   return (
     <Box
       draggable={active}
+      // A drawer is a portal: React carries its events up to the widget it
+      // was opened from, which would take the row's drag for its own — and
+      // show where it would land. The row's drag stops here.
       onDragStart={(e) => {
+        e.stopPropagation();
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", label);
         onDragStart(e);
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={(e) => {
+        e.stopPropagation();
+        onDragEnd();
+      }}
       aria-label={label}
       style={{ display: "flex", cursor: "grab" }}
     >
@@ -144,7 +151,8 @@ export const move = <T,>(list: T[], held: number, to: number): T[] | null => {
 /**
  * What a drawer list shows when it has nothing yet — no category, no label, no
  * address, no tag: the empty-screen prompt, on the rows' background, in place
- * of the stack. The "Ajouter" button stays below.
+ * of the stack, drawn as a drop zone (FileDropzone) without its border. The
+ * "Ajouter" button stays below.
  */
 export function EmptyList({
   icon,
@@ -164,11 +172,13 @@ export function EmptyList({
       py="md"
       style={{
         backgroundColor: ROW_BACKGROUND,
+        // The drop zone's border, unseen: both are the same height.
+        border: "1px solid transparent",
         borderRadius: attached ? `0 0 ${RADIUS}px ${RADIUS}px` : RADIUS,
         ...(fill ? { flex: 1, display: "flex", flexDirection: "column" as const } : null),
       }}
     >
-      <EmptyPanel icon={icon} message={message} size="sm" fill={fill} />
+      <EmptyPanel icon={icon} message={message} fill={fill} />
     </Box>
   );
 }

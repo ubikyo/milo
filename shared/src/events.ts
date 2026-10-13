@@ -32,6 +32,12 @@ export const RESOURCES = [
   "contacts",
   /** The products, their labels and their comments (products.ts). */
   "products",
+  /** The orders, their labels and their comments (orders.ts). */
+  "orders",
+  /** The warehouses, and their labels (warehouses.ts). */
+  "warehouses",
+  /** The locations, and their labels (locations.ts). */
+  "locations",
   /** The styles the titles share. */
   "title-styles",
   /** The proxies, and whether each is connected (shared/proxies.ts). */

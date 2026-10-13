@@ -14,6 +14,8 @@ import { IconBrandWindows } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api, entraLoginUrl } from "../api";
 import { passwordIssues } from "@milo/shared";
+import scene from "../assets/styles/LoginScene.module.css";
+import logoClasses from "../assets/styles/Logo.module.css";
 import classes from "../assets/styles/LoginStars.module.css";
 import Logo from "../components/ui/Logo";
 import PasswordRules from "../components/ui/PasswordRules";
@@ -163,9 +165,17 @@ export default function LoginPage({
         pos="relative"
         style={{
           borderRadius: 10,
-          background: "url(/background.jpg) center / cover no-repeat",
+          // The image's layers go under the content with z-index -1.
+          isolation: "isolate",
         }}
       >
+        <div className={scene.scene}>
+          <div className={scene.frame}>
+            <img src="/background.png" alt="" className={scene.layer} />
+            <DuneFlag />
+            <img src="/background-mask.png" alt="" className={scene.layer} />
+          </div>
+        </div>
         <div className={classes.zone}>
           {STARS.map((star, i) => (
             <span
@@ -271,7 +281,6 @@ export default function LoginPage({
                 )}
               </Stack>
 
-
               {mode === "microsoft" && (
                 // A link and not a call: the browser leaves the application
                 // for Microsoft's page, and comes back with its session.
@@ -313,7 +322,10 @@ export default function LoginPage({
                     onChange={(e) => setConfirmation(e.currentTarget.value)}
                     required
                   />
-                  <PasswordRules password={password} confirmation={confirmation} />
+                  <PasswordRules
+                    password={password}
+                    confirmation={confirmation}
+                  />
                 </>
               )}
 
@@ -358,5 +370,33 @@ export default function LoginPage({
         </Box>
       </Center>
     </Flex>
+  );
+}
+
+/**
+ * Milo-flag.svg, copied rather than loaded as an image so its canvas can wave
+ * like the logo's. The canvas is detached from the pole and overlaps it by a
+ * point, so that no gap opens between the two.
+ */
+function DuneFlag() {
+  return (
+    <svg
+      className={`${logoClasses.animatedLogo} ${scene.flag}`}
+      viewBox="0 0 167 247"
+      aria-hidden
+    >
+      <g transform="matrix(0.387515,0,0,0.503321,0,0)">
+        <g
+          transform="matrix(4.43118,0,0,3.04951,-5495.36,-4437.04)"
+          fill="rgb(35,182,151)"
+        >
+          <path d="M1257,1617.88L1240.16,1617.88L1240.16,1460.79C1240.16,1459.25 1240.7,1457.78 1241.67,1456.7C1242.64,1455.61 1243.96,1455 1245.33,1455L1257,1455Z" />
+          <path
+            className={logoClasses.flag}
+            d="M1256,1455L1337.07,1459L1313.83,1492.92L1337.07,1526.84L1256,1526.84Z"
+          />
+        </g>
+      </g>
+    </svg>
   );
 }

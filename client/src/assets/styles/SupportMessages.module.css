@@ -4,3 +4,13 @@
 .body > :last-child {
   margin-bottom: 0;
 }
+
+/* As the editor wrote it — an order's exchanges: Enter starts a line, not a
+   spaced paragraph; an empty one is a blank line. */
+.tight p {
+  margin: 0;
+}
+
+.tight p:empty::before {
+  content: "\00a0";
+}

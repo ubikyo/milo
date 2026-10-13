@@ -422,7 +422,8 @@ const DUE_BG: Record<DueState, string> = {
 // The three backgrounds are solid: the text on them is white.
 const DUE_FG = "var(--mantine-color-white)";
 
-// A card's number, as a green label: the same shape as the due date.
+// A card's number, as a green label: the same rounding as the reference in
+// the card's detail (ReferenceTag).
 function CardNumberTag({ number }: { number: number }) {
   return (
     <span
@@ -430,7 +431,7 @@ function CardNumberTag({ number }: { number: number }) {
         display: "inline-flex",
         alignItems: "center",
         padding: "1px 6px",
-        borderRadius: 6,
+        borderRadius: "var(--mantine-radius-sm)",
         backgroundColor: "var(--mantine-color-green-filled)",
         color: "var(--mantine-color-white)",
         flexShrink: 0,
@@ -460,7 +461,7 @@ function CardDueBadge({ card }: CardDueBadgeProps) {
         alignItems: "center",
         gap: ICON_VALUE_GAP,
         padding: "1px 6px",
-        borderRadius: 6,
+        borderRadius: "var(--mantine-radius-sm)",
         backgroundColor: DUE_BG[state],
         color: DUE_FG,
         flexShrink: 0,
@@ -510,7 +511,7 @@ function CardChecklistBadge({ card, onToggle }: CardChecklistBadgeProps) {
         alignItems: "center",
         gap: ICON_VALUE_GAP,
         padding: "1px 0",
-        borderRadius: 6,
+        borderRadius: "var(--mantine-radius-sm)",
         backgroundColor: complete ? CHECKLIST_DONE_BG : "transparent",
         color: complete ? "var(--mantine-color-white)" : "inherit",
       }}
@@ -1482,11 +1483,16 @@ export function TaskBoardWidget({ config }: { config: unknown }) {
   const board = useContext(TaskBoardContext);
   const all = board?.lists;
   const visibleLists = useMemo(() => all?.filter(inList(config)) ?? [], [all, config]);
+  // The widget's own labels: the board's other "Tâches" widgets have theirs.
+  const allLabels = board?.labels;
+  const key = listKey(config);
+  const ownLabels = useMemo(() => allLabels?.filter((l) => l.list_key === key) ?? [], [allLabels, key]);
   if (!board) return null;
   return (
     <TaskBoard
       key={board.boardId}
       {...board}
+      labels={ownLabels}
       lists={visibleLists}
       listKey={listKey(config)}
       withNumber={withNumbers(config)}
@@ -2424,8 +2430,6 @@ export default function TaskBoard({
             message="Aucune liste"
             actionLabel={withoutListAdd ? undefined : "Ajouter une liste"}
             onAction={withoutListAdd ? undefined : () => setComposing(true)}
-            // The size of the other empty lists — projects, requests.
-            size="md"
           />
         )
       ) : (
@@ -2602,6 +2606,7 @@ export default function TaskBoard({
         labels={labels ?? []}
         users={users ?? []}
         boardId={boardId}
+        list={boardId && listKey ? { board: Number(boardId), list: listKey } : null}
         onLabelsChanged={onLabelsChanged}
         onSaved={onListsChanged}
         readOnly={!rights.updateStatement}

@@ -1,0 +1,28 @@
+/* An empty-screen prompt (components/ui/EmptyPanel.tsx). On a page — a mode's
+   content, a widget —, it stands alone on a large area: text 20% larger
+   than a drop zone's, icon 28px. Housed in a drawer, a modal or a
+   dropdown, it keeps the drop zone's size (FileDropzone), next to which it
+   sits. */
+.icon {
+  width: 28px;
+  height: 28px;
+}
+
+/* Through Mantine's Text variables: they win over its own rule. */
+.message {
+  --text-fz: calc(var(--mantine-font-size-sm) * 1.2);
+  --text-lh: var(--mantine-line-height-sm);
+}
+
+:global(.mantine-Drawer-content) .icon,
+:global(.mantine-Modal-content) .icon,
+:global(.mantine-Popover-dropdown) .icon {
+  width: 22px;
+  height: 22px;
+}
+
+:global(.mantine-Drawer-content) .message,
+:global(.mantine-Modal-content) .message,
+:global(.mantine-Popover-dropdown) .message {
+  --text-fz: var(--mantine-font-size-sm);
+}

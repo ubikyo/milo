@@ -1,4 +1,5 @@
-import { IconCoin, IconFlag, IconReceipt } from "@tabler/icons-react";
+import { IconCoin, IconReceipt } from "@tabler/icons-react";
+import { useListRef } from "../../lib/list-ref";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { CONTACT_CODE_MAX, CONTACT_FIELD_MAX, CONTACT_SYMBOL_MAX } from "@milo/shared";
 import type { ContactSettings } from "@milo/shared";
@@ -9,6 +10,7 @@ import { DrawerRegistrationsContext } from "../ui/IndicatorDrawer";
 import { pluralize } from "../ui/DrawerRows";
 import { ListRows } from "../ui/EditableRows";
 import type { Column } from "../ui/EditableRows";
+import CountryRows from "./CountryRows";
 
 // The open board's contact lists, in the drawer of a Contact widget: the
 // payment terms and the currencies a company is given, the countries an
@@ -35,14 +37,10 @@ const NOTHING: ContactSettings = { payment_terms: [], currencies: [], countries:
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Under each list's title: whom it is shared by. */
-const scope = (what: string) =>
-  `${what} configurées ci-dessous sont communes à l'ensemble des widgets, de type contact, du tableau actuel et uniquement pour ce tableau.`;
-
 export default function ContactTablesFields() {
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
   // A paste from the "Actions" menu may change the board: it is re-read.
   const pastes = board?.pastes ?? 0;
 
@@ -51,15 +49,15 @@ export default function ContactTablesFields() {
   const [settings, setSettings] = useState<ContactSettings>(NOTHING);
 
   const reload = useCallback(async () => {
-    if (boardId === null) return;
+    if (list === null) return;
     try {
-      const read = await api.getContactSettings(boardId);
+      const read = await api.getContactSettings(list);
       setOriginal(read);
       setSettings(read);
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [boardId]);
+  }, [list]);
 
   useEffect(() => {
     void reload();
@@ -72,7 +70,7 @@ export default function ContactTablesFields() {
     state.current = { original, settings };
   }, [original, settings]);
   useEffect(() => {
-    if (!register || boardId === null) return;
+    if (!register || list === null) return;
     return register(async () => {
       const { original: before, settings: after } = state.current;
       const data: Partial<ContactSettings> = {};
@@ -80,19 +78,18 @@ export default function ContactTablesFields() {
       if (!same(before.currencies, after.currencies)) data.currencies = after.currencies;
       if (!same(before.countries, after.countries)) data.countries = after.countries;
       if (Object.keys(data).length === 0) return;
-      const saved = await api.updateContactSettings(boardId, data);
+      const saved = await api.updateContactSettings(list, data);
       setOriginal(saved);
       setSettings(saved);
     });
-  }, [register, boardId]);
+  }, [register, list]);
 
-  if (boardId === null || !register) return null;
+  if (list === null || !register) return null;
 
   return (
     <>
       <ListRows
         title="Conditions de paiement"
-        description={scope("Les conditions de paiement")}
         columns={TERM_COLUMNS}
         rows={settings.payment_terms.map((t) => [t.name])}
         save={async (rows) => {
@@ -108,7 +105,6 @@ export default function ContactTablesFields() {
       />
       <ListRows
         title="Devises"
-        description={scope("Les devises")}
         columns={CURRENCY_COLUMNS}
         rows={settings.currencies.map((c) => [c.name, c.code, c.symbol])}
         save={async (rows) => {
@@ -129,21 +125,9 @@ export default function ContactTablesFields() {
         several={(n) => pluralize(n, "devise")}
         reorderable
       />
-      <ListRows
-        title="Pays"
-        description={`${scope("Les pays")} Le premier est celui d'une nouvelle adresse.`}
-        columns={TERM_COLUMNS}
-        rows={settings.countries.map((c) => [c.name])}
-        save={async (rows) => {
-          setSettings((s) => ({ ...s, countries: rows.map(([name = ""]) => ({ name })) }));
-          return true;
-        }}
-        emptyIcon={IconFlag}
-        emptyText="Aucun pays"
-        addLabel="Ajouter un pays"
-        deleteTitle="Supprimer le pays"
-        several={(n) => `${n} pays`}
-        reorderable
+      <CountryRows
+        value={settings.countries}
+        onChange={(countries) => setSettings((s) => ({ ...s, countries }))}
       />
     </>
   );

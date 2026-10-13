@@ -1,7 +1,10 @@
-import { Input } from "@mantine/core";
+import { Box, Group, Input } from "@mantine/core";
 import { RichTextEditor } from "@mantine/tiptap";
 import { Placeholder } from "@tiptap/extensions";
 import Image from "@tiptap/extension-image";
+import MailFrame, { mailFrameContentClass } from "./MailFrame";
+import { VariableBlock } from "./VariableBlock";
+import type { BlockStore } from "./VariableBlock";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
@@ -15,6 +18,7 @@ import classes from "../../assets/styles/RichText.module.css";
 // of an "input" of "default" variant. The toolbar takes the same, and a line
 // separates it from the input area.
 export const FIELD_BG = "var(--mantine-color-default)";
+
 
 // The trash icon of the button that removes an image: Tabler's icon, copied as
 // is. The view below is in DOM and not in React (see why just below): it
@@ -107,6 +111,11 @@ interface RichEditorOptions {
    * descriptions that come without a place to upload to.
    */
   onPasteImage?: (file: File) => Promise<string>;
+  /**
+   * Variables that stand for tables, shown as such in the text (VariableBlock):
+   * an order's exchanges. Read once: the editor is built once.
+   */
+  blocks?: BlockStore;
 }
 
 /**
@@ -115,7 +124,7 @@ interface RichEditorOptions {
  * — so that both accept exactly the same formatting. "StarterKit" already
  * carries underline and links: adding them by hand would duplicate them.
  */
-export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOptions = {}) {
+export function useRichEditor({ placeholder = "", onPasteImage, blocks }: RichEditorOptions = {}) {
   // The editor is only built once: what the paste must call therefore goes
   // through refs, otherwise it would always call the first version of the
   // function received.
@@ -123,7 +132,12 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
   const current = useRef<Editor | null>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, Placeholder.configure({ placeholder }), ImageWithRemoval],
+    extensions: [
+      StarterKit,
+      Placeholder.configure({ placeholder }),
+      ImageWithRemoval,
+      ...(blocks ? [VariableBlock.configure({ store: blocks })] : []),
+    ],
     content: "",
     editorProps: {
       // A pasted image is not pasted as is: it goes to the server, and it is
@@ -178,6 +192,23 @@ interface RichTextFieldProps {
   bottomBar?: ReactNode;
   /** Extra commands, at the end of the toolbar — a reply's "CC" and "CCI". */
   toolbarControls?: ReactNode;
+  /** At the toolbar's very end, flush right: a reply's predefined replies. */
+  toolbarEnd?: ReactNode;
+  /** After it, still active under a preview: a reply's choice of view. */
+  toolbarLast?: ReactNode;
+  /**
+   * In the input area's place, the toolbar disabled: a reply's e-mail,
+   * previewed. The editor stays as it was, to go back to.
+   */
+  preview?: ReactNode;
+  /**
+   * The e-mail's template, laid out around a marker in the text's place
+   * (MailFrame): the input area is shown inside it, the template around it
+   * only shown. Empty while it loads: the area alone.
+   */
+  frame?: string;
+  /** The template dark, as a dark mail client shows it: the interface's theme by default. */
+  frameDark?: boolean;
   /** What goes between the toolbar and the input area: a reply's "CC" lines. */
   topSection?: ReactNode;
   /** What goes under the input area, before "bottomBar": a reply's attachments. */
@@ -192,6 +223,8 @@ interface RichTextFieldProps {
    * of no use.
    */
   fill?: boolean;
+  /** Without the quote and code block commands: an e-mail's text — a support's, an order's. */
+  noBlocks?: boolean;
 }
 
 export default function RichTextField({
@@ -199,11 +232,17 @@ export default function RichTextField({
   label,
   bottomBar,
   toolbarControls,
+  toolbarEnd,
+  toolbarLast,
+  preview,
+  frame = "",
+  frameDark,
   topSection,
   contentEnd,
   maxLines,
   minLines,
   fill = false,
+  noBlocks = false,
 }: RichTextFieldProps) {
   // No tooltip: Mantine gives the toolbar buttons a "title" (their label) that
   // no prop removes for all of them — the link's one even takes precedence. It
@@ -219,6 +258,8 @@ export default function RichTextField({
     observer.observe(treeNode, { subtree: true, childList: true, attributeFilter: ["title"] });
     return () => observer.disconnect();
   }, []);
+
+  const disabledUnder: CSSProperties | undefined = preview ? { opacity: 0.4, pointerEvents: "none" } : undefined;
 
   const field = (
     <RichTextEditor
@@ -249,49 +290,98 @@ export default function RichTextField({
       }}
     >
       <RichTextEditor.Toolbar sticky stickyOffset={0}>
-        <RichTextEditor.ControlsGroup>
+        {/* Under a preview, nothing to format: the commands fade and take no
+            click — the choice of view stays. */}
+        <RichTextEditor.ControlsGroup style={disabledUnder}>
           <RichTextEditor.Bold />
           <RichTextEditor.Italic />
           <RichTextEditor.Underline />
           <RichTextEditor.Strikethrough />
           <RichTextEditor.ClearFormatting />
         </RichTextEditor.ControlsGroup>
-        <RichTextEditor.ControlsGroup>
+        <RichTextEditor.ControlsGroup style={disabledUnder}>
           <RichTextEditor.BulletList />
           <RichTextEditor.OrderedList />
-          <RichTextEditor.Blockquote />
-          <RichTextEditor.CodeBlock />
+          {!noBlocks && (
+            <>
+              <RichTextEditor.Blockquote />
+              <RichTextEditor.CodeBlock />
+            </>
+          )}
         </RichTextEditor.ControlsGroup>
-        <RichTextEditor.ControlsGroup>
+        <RichTextEditor.ControlsGroup style={disabledUnder}>
           <RichTextEditor.Link />
           <RichTextEditor.Unlink />
         </RichTextEditor.ControlsGroup>
-        <RichTextEditor.ControlsGroup>
+        <RichTextEditor.ControlsGroup style={disabledUnder}>
           <RichTextEditor.Undo />
           <RichTextEditor.Redo />
         </RichTextEditor.ControlsGroup>
         {toolbarControls && (
-          <RichTextEditor.ControlsGroup>{toolbarControls}</RichTextEditor.ControlsGroup>
+          <RichTextEditor.ControlsGroup style={disabledUnder}>
+            {toolbarControls}
+          </RichTextEditor.ControlsGroup>
+        )}
+        {(toolbarEnd || toolbarLast) && (
+          // Side by side, 4 px apart: a reply's predefined replies, its view, its theme.
+          <Group ml="auto" gap={4} wrap="nowrap">
+            {toolbarEnd && <Box style={disabledUnder}>{toolbarEnd}</Box>}
+            {toolbarLast}
+          </Group>
         )}
       </RichTextEditor.Toolbar>
       {topSection}
-      <RichTextEditor.Content
-        className={
-          fill
-            ? `${classes.content} ${classes.fill}`
-            : minLines
-              ? `${classes.content} ${classes.minLines}`
-              : classes.content
-        }
-        style={
-          {
-            backgroundColor: FIELD_BG,
-            ...(maxLines ? { "--milo-rich-lines": maxLines } : {}),
-            ...(minLines ? { "--milo-rich-min-lines": minLines } : {}),
-          } as CSSProperties
-        }
-      />
-      {contentEnd && <div style={{ backgroundColor: FIELD_BG }}>{contentEnd}</div>}
+      {/* The text and what follows it, the preview over them: in place,
+          unseen, they keep the field's height from one view to the other. */}
+      <div
+        style={{
+          position: "relative",
+          ...(fill && { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }),
+        }}
+      >
+        <div
+          style={
+            {
+              // Under a preview, kept in place but unseen: the field keeps its height.
+              ...(preview ? { visibility: "hidden" } : {}),
+              ...(maxLines ? { "--milo-rich-lines": maxLines } : {}),
+              ...(fill && { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }),
+            } as CSSProperties
+          }
+        >
+          <MailFrame html={frame} dark={frameDark}>
+            {(framed) => (
+              <RichTextEditor.Content
+                className={
+                  framed
+                    ? mailFrameContentClass
+                    : fill
+                      ? `${classes.content} ${classes.fill}`
+                      : minLines
+                        ? `${classes.content} ${classes.minLines}`
+                        : classes.content
+                }
+                style={
+                  {
+                    // In the template, the e-mail's background: the field's,
+                    // set on every area by "styles" above, gives way.
+                    ...(framed
+                      ? { backgroundColor: "transparent", borderRadius: 0 }
+                      : { backgroundColor: FIELD_BG }),
+                    ...(minLines ? { "--milo-rich-min-lines": minLines } : {}),
+                  } as CSSProperties
+                }
+              />
+            )}
+          </MailFrame>
+        </div>
+        {contentEnd && (
+          <div style={{ backgroundColor: FIELD_BG, ...(preview ? { visibility: "hidden" } : {}) }}>
+            {contentEnd}
+          </div>
+        )}
+        {preview && <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>{preview}</div>}
+      </div>
       {bottomBar && <div style={{ display: "flex" }}>{bottomBar}</div>}
     </RichTextEditor>
   );

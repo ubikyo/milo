@@ -10,7 +10,15 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import { DragHandle, InsertLine, useDraggableStack } from "./DraggableStack";
 import EmptyPanel from "./EmptyPanel";
 import LabelChip from "./LabelChip";
-import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR, PRODUCT_ROUTES } from "@milo/shared";
+import {
+  CONTACT_ROUTES,
+  DECLARED_ASSET_ROUTES,
+  DEFAULT_LABEL_COLOR,
+  ORDER_ROUTES,
+  PRODUCT_ROUTES,
+  WAREHOUSE_ROUTES,
+  LOCATION_ROUTES,
+} from "@milo/shared";
 import type {
   DeclaredAssetKind,
   Id,
@@ -18,6 +26,7 @@ import type {
   LabelGroup,
   LabelGroupLayout,
   LabelsBase,
+  ListRef,
   ProjectLabel,
   SupportLabel,
 } from "@milo/shared";
@@ -35,7 +44,7 @@ type AnyLabel = Label | ProjectLabel | SupportLabel;
 export interface LabelsApi {
   /** Without a group, the label goes into the first one. */
   create: (
-    parentId: number,
+    list: ListRef,
     name: string,
     color: string,
     groupId?: number,
@@ -103,7 +112,7 @@ const GROUP_GAP = 20;
 // the same way: only the routes change. They are named here rather than calling
 // "api" directly, so that the same component serves both modes.
 export const CARD_LABELS_API: LabelsApi = {
-  create: (boardId, name, color, groupId) => api.createLabel(boardId, name, color, groupId),
+  create: (list, name, color, groupId) => api.createLabel(list, name, color, groupId),
   update: api.updateLabel,
   remove: api.deleteLabel,
   // What deletion takes along, stated in the mode's own words.
@@ -129,15 +138,15 @@ export const SUPPORT_LABELS_API: LabelsApi = {
 
 /** A declared asset kind's labels (shared, declared-assets.ts). */
 export const declaredAssetLabelsApi = (kind: DeclaredAssetKind): LabelsApi => ({
-  create: (boardId, name, color, groupId) =>
-    api.createDeclaredAssetLabel(kind, boardId, name, color, groupId),
+  create: (list, name, color, groupId) =>
+    api.createDeclaredAssetLabel(kind, list, name, color, groupId),
   update: (id, data) => api.updateDeclaredAssetLabel(kind, id, data),
   remove: (id) => api.deleteDeclaredAssetLabel(kind, id),
   carriers: "des assets qui la portent",
   base: DECLARED_ASSET_ROUTES[kind].labels,
 });
 
-/** A board's contact labels (shared, contacts.ts). */
+/** A Contact widget's labels (shared, contacts.ts). */
 export const CONTACT_LABELS_API: LabelsApi = {
   create: api.createContactLabel,
   update: api.updateContactLabel,
@@ -146,13 +155,40 @@ export const CONTACT_LABELS_API: LabelsApi = {
   base: CONTACT_ROUTES.labels,
 };
 
-/** A board's product labels (shared, products.ts). */
+/** A Produits widget's labels (shared, products.ts). */
 export const PRODUCT_LABELS_API: LabelsApi = {
   create: api.createProductLabel,
   update: api.updateProductLabel,
   remove: api.deleteProductLabel,
   carriers: "des produits qui la portent",
   base: PRODUCT_ROUTES.labels,
+};
+
+/** An Entrepôts widget's labels (shared, warehouses.ts). */
+export const WAREHOUSE_LABELS_API: LabelsApi = {
+  create: api.createWarehouseLabel,
+  update: api.updateWarehouseLabel,
+  remove: api.deleteWarehouseLabel,
+  carriers: "des entrepôts qui la portent",
+  base: WAREHOUSE_ROUTES.labels,
+};
+
+/** An Emplacements widget's labels (shared, locations.ts). */
+export const LOCATION_LABELS_API: LabelsApi = {
+  create: api.createLocationLabel,
+  update: api.updateLocationLabel,
+  remove: api.deleteLocationLabel,
+  carriers: "des fiches qui la portent",
+  base: LOCATION_ROUTES.labels,
+};
+
+/** A Commandes widget's labels (shared, orders.ts). */
+export const ORDER_LABELS_API: LabelsApi = {
+  create: api.createOrderLabel,
+  update: api.updateOrderLabel,
+  remove: api.deleteOrderLabel,
+  carriers: "des commandes qui la portent",
+  base: ORDER_ROUTES.labels,
 };
 
 /**
@@ -169,8 +205,8 @@ interface LabelPickerProps {
   /** The selected identifiers, as strings. */
   value: string[];
   onChange: (value: string[]) => void;
-  /** The board these labels hang from. */
-  boardId: string | number;
+  /** The list widget these labels belong to; none yet, nothing can be added. */
+  list: ListRef | null;
   /** Without argument: re-read. With a patch: apply it in place. */
   onLabelsChanged: (patch?: { id: number; data: Partial<AnyLabel> }) => void | Promise<void>;
   chipHeight?: number;
@@ -186,12 +222,12 @@ export default function LabelPicker({
   labels,
   value,
   onChange,
-  boardId,
+  list: owner,
   onLabelsChanged,
   chipHeight,
   // The mode these labels belong to: cards by default.
   labelsApi = CARD_LABELS_API,
-  emptyText = "Aucune étiquette sur ce tableau",
+  emptyText = "Aucune étiquette dans ce widget",
   label = "Étiquettes",
 }: LabelPickerProps) {
   // Label being modified — its name and color live there until validated — and
@@ -214,11 +250,11 @@ export default function LabelPicker({
   const [groups, setGroups] = useState<LabelGroup[]>([]);
   const readGroups = useCallback(async () => {
     try {
-      setGroups(await api.getLabelGroups(labelsApi.base, boardId));
+      setGroups(owner ? await api.getLabelGroups(labelsApi.base, owner) : []);
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [labelsApi.base, boardId]);
+  }, [labelsApi.base, owner]);
   // Re-read whenever the labels change: a group may have come with them.
   useEffect(() => {
     void readGroups();
@@ -231,9 +267,10 @@ export default function LabelPicker({
   const layout = placed ?? layoutOf(groups, labels);
 
   const arrange = async (next: LabelGroupLayout[]) => {
+    if (!owner) return;
     setPlaced(next);
     try {
-      await api.arrangeLabels(labelsApi.base, next, boardId);
+      await api.arrangeLabels(labelsApi.base, next, owner);
       await onLabelsChanged();
       await readGroups();
     } catch (e) {
@@ -337,8 +374,9 @@ export default function LabelPicker({
       setAdding(null);
       return;
     }
+    if (!owner) return;
     const created = await labelsApi.create(
-      Number(boardId),
+      owner,
       newValue,
       adding.color,
       adding.groupId,
@@ -352,9 +390,9 @@ export default function LabelPicker({
   const createGroup = async () => {
     const name = (addingGroup ?? "").trim();
     setAddingGroup(null);
-    if (!name) return;
+    if (!name || !owner) return;
     try {
-      const created = await api.createLabelGroup(labelsApi.base, name, boardId);
+      const created = await api.createLabelGroup(labelsApi.base, name, owner);
       await readGroups();
       openAdd(created.id);
     } catch (e) {
@@ -598,7 +636,7 @@ export default function LabelPicker({
     <div ref={zone}>
       {layout.length === 0 && (
         <Box py="sm">
-          <EmptyPanel icon={IconFolder} message="Aucun groupe" size="sm" fill={false} />
+          <EmptyPanel icon={IconFolder} message="Aucun groupe" fill={false} />
         </Box>
       )}
       {layout.map((group, groupRank) => {

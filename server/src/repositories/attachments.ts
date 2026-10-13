@@ -19,22 +19,28 @@ export const attachments = {
   byId: selection<AttachmentRow>("SELECT * FROM card_attachments WHERE id = ?"),
   /**
    * The first row that cites this file — a card's attachment, or a declared
-   * asset's document —: it carries the original name.
+   * asset's, a product's, an order's or a project's document —: it carries
+   * the original name.
    */
   byFile: selection<{ name: string }>(
     `SELECT name FROM card_attachments WHERE file = @file
      ${DECLARED_TABLES.map((t) => `UNION ALL SELECT name FROM ${t.attachments} WHERE file = @file`).join("\n")}
      UNION ALL SELECT name FROM product_attachments WHERE file = @file
+     UNION ALL SELECT name FROM order_attachments WHERE file = @file
+     UNION ALL SELECT name FROM project_attachments WHERE file = @file
      LIMIT 1`,
   ),
   ofCard: selection<AttachmentRow>(
     "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY position, id DESC",
   ),
-  /** A dropped attachment is placed first: before the first one. */
+  /**
+   * A dropped attachment is placed first: before the first one. The card is
+   * named twice: better-sqlite3 refuses a numbered parameter used twice.
+   */
   create: mutation(
     `INSERT INTO card_attachments (card_id, file, name, mime, size, user_id, created_at, position)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
-       (SELECT COALESCE(MIN(position), 1) - 1 FROM card_attachments WHERE card_id = ?1))`,
+     VALUES (?, ?, ?, ?, ?, ?, ?,
+       (SELECT COALESCE(MIN(position), 1) - 1 FROM card_attachments WHERE card_id = ?))`,
   ),
   remove: mutation("DELETE FROM card_attachments WHERE id = ?"),
   /** How many rows still cite this file. Zero: it may leave the disk. */
@@ -47,7 +53,9 @@ export const attachments = {
                + (SELECT COUNT(*) FROM ${t.photos} WHERE file = @file)`,
           ).join("\n")}
           + (SELECT COUNT(*) FROM product_attachments WHERE file = @file)
-          + (SELECT COUNT(*) FROM product_photos WHERE file = @file) AS count`,
+          + (SELECT COUNT(*) FROM product_photos WHERE file = @file)
+          + (SELECT COUNT(*) FROM order_attachments WHERE file = @file)
+          + (SELECT COUNT(*) FROM project_attachments WHERE file = @file) AS count`,
   ),
 };
 
@@ -94,11 +102,13 @@ export const removeAttachment = (row: AttachmentRow): void => {
 
 // --- Cleanup ---------------------------------------------------------------
 
-/** All files cited by an attachment — a card's, a declared asset's or a product's document — or a photo. */
+/** All files cited by an attachment — a card's, a declared asset's, a product's, an order's or a project's document — or a photo. */
 const attachmentFiles = selection<{ file: string }>(
   `SELECT file FROM card_attachments
    ${DECLARED_TABLES.map((t) => `UNION SELECT file FROM ${t.attachments} UNION SELECT file FROM ${t.photos}`).join("\n")}
-   UNION SELECT file FROM product_attachments UNION SELECT file FROM product_photos`,
+   UNION SELECT file FROM product_attachments UNION SELECT file FROM product_photos
+   UNION SELECT file FROM order_attachments
+   UNION SELECT file FROM project_attachments`,
 );
 
 /**

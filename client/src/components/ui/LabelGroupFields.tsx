@@ -1,76 +1,83 @@
 import { Input } from "@mantine/core";
+import type { LabelsBase } from "@milo/shared";
 import { useContext } from "react";
 import { CopyPasteContext } from "./CopyPasteActions";
 import { DrawerRegistrationsContext } from "./IndicatorDrawer";
+import { useListRef } from "../../lib/list-ref";
 import LabelGroupsEditor from "./LabelGroupsEditor";
 
-// The open board's labels, in the drawer of a "Tâches", "Projets", "Assets" or
-// "Tickets" widget, gathered in their groups (LabelGroupsEditor). They are not widget settings
-// but board data: they go with "Sauvegarder", like the categories
-// (BoardListFields).
+// A list widget's labels, in its drawer — "Tâches", "Projets", "Assets",
+// "Tickets"… —, gathered in their groups (LabelGroupsEditor). They are not
+// its configuration but its own data (lib/list-ref.tsx): they go with
+// "Sauvegarder", like the categories.
 
-const KINDS = {
+type Kind =
+  | "task-labels"
+  | "project-labels"
+  | "managed-device-asset-labels"
+  | "unmanaged-device-asset-labels"
+  | "application-asset-labels"
+  | "contact-labels"
+  | "product-labels"
+  | "order-labels"
+  | "warehouse-labels"
+  | "location-labels"
+  | "support-labels";
+
+const KINDS: Record<Kind, { base: LabelsBase; hint?: string }> = {
   "task-labels": {
     base: "/labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type tâche, du tableau actuel et uniquement pour ce tableau.",
   },
   "project-labels": {
     base: "/project-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
   },
   "managed-device-asset-labels": {
     base: "/managed-device-asset-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type asset, du tableau actuel. Une étiquette nommée comme le tag d'un poste s'affiche sur ce poste.",
+    hint: "Une étiquette nommée comme le tag d'un poste s'affiche sur ce poste.",
   },
   "unmanaged-device-asset-labels": {
     base: "/unmanaged-device-asset-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type équipement déclaré, du tableau actuel et uniquement pour ce tableau.",
   },
   "application-asset-labels": {
     base: "/application-asset-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type application, du tableau actuel et uniquement pour ce tableau.",
   },
   "contact-labels": {
     base: "/contact-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type contact, du tableau actuel et uniquement pour ce tableau.",
   },
   "product-labels": {
     base: "/product-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type produit, du tableau actuel et uniquement pour ce tableau.",
+  },
+  "order-labels": {
+    base: "/order-labels",
+  },
+  "warehouse-labels": {
+    base: "/warehouse-labels",
+  },
+  "location-labels": {
+    base: "/location-labels",
   },
   "support-labels": {
     base: "/support-labels",
-    scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type ticket, du tableau actuel et uniquement pour ce tableau.",
   },
-} as const;
+};
 
-export default function LabelGroupFields({ kind }: { kind: keyof typeof KINDS }) {
+export default function LabelGroupFields({ kind }: { kind: Kind }) {
   const s = KINDS[kind];
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
-  const boardId = board?.board?.id ?? null;
+  const list = useListRef();
 
-  if (boardId === null || !register) return null;
+  if (!list || !register) return null;
 
   return (
-    // These are not widget settings: say so under the label, at 20 px from
-    // the list.
     <Input.Wrapper
       label="Étiquettes"
-      description={s.scope}
-      styles={{ description: { paddingBottom: 20 } }}
+      description={s.hint}
+      styles={{ description: { paddingBottom: s.hint ? 20 : 0 } }}
     >
       <LabelGroupsEditor
         base={s.base}
-        boardId={boardId}
+        list={list}
         register={register}
         // A paste from the "Actions" menu changes the list: it is re-read.
         version={board?.pastes ?? 0}

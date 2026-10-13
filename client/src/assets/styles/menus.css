@@ -8,3 +8,10 @@
 .mantine-Combobox-dropdown .mantine-Divider-root {
   margin-inline: calc(-1 * var(--milo-menu-px, var(--combobox-padding, 4px)));
 }
+
+/* A menu's irreversible action — "Annuler" — turns white on red under the
+   pointer or the keyboard. */
+.mantine-Menu-item.milo-menu-danger:not([data-disabled]):is(:hover, [data-hovered]) {
+  background-color: var(--mantine-color-red-filled);
+  color: var(--mantine-color-white);
+}

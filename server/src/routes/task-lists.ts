@@ -7,7 +7,7 @@ import { concerned, notifyBoard, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch, touchNow } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
-import { copyTaskList } from "../repositories/copy-list.js";
+import { copyTaskList, relabelList } from "../repositories/copy-list.js";
 import { keyInBoard } from "../repositories/lists.js";
 import { renumberListCards } from "../repositories/references.js";
 import { transaction } from "../db/query.js";
@@ -111,10 +111,10 @@ taskListRoutes.post("/:id/copy", (req, res) => {
   openTaskBoard(existing.board_id, req);
   const target = openTaskBoard(boardId, req, "create");
 
-  // Copying to another board may create the labels that were missing there:
-  // the client must reread them, otherwise the cards would arrive with
-  // labels it does not know yet.
-  if (target.id !== existing.board_id) touchNow(res, "labels");
+  // Copying may create the labels that were missing in the destination
+  // widget: the client must reread them, otherwise the cards would arrive
+  // with labels it does not know yet.
+  touchNow(res, "labels");
 
   const copy = copyTaskList({
     sourceId: existing.id,
@@ -164,8 +164,11 @@ taskListRoutes.put("/:id", (req, res) => {
       ? keyInBoard(Number(boardId), "task.list", undefined)
       : existing.list_key;
     taskLists.update.run(boardId, name, position, color, key, existing.id);
-    // Its cards are numbered in their new widget.
-    if (change) renumberListCards(existing.id);
+    // Its cards are numbered in their new widget, and carry its labels.
+    if (change) {
+      renumberListCards(existing.id);
+      if (relabelList(existing.id, { board: Number(boardId), list: key })) touchNow(res, "labels");
+    }
   })();
 
   const what: string[] = [];

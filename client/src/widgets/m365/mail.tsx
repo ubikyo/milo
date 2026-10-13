@@ -686,7 +686,6 @@ function Mail({ blockId, config, onEdit, locked }: WidgetDisplayProps) {
         message="Aucune boîte aux lettres"
         actionLabel={locked ? undefined : "Ajouter"}
         onAction={onEdit}
-        size="md"
         fill={false}
       />
     );

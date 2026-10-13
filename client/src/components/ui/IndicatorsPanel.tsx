@@ -88,8 +88,8 @@ export interface IndicatorWidgetBase<Type extends string> {
    */
   ownClicks?: boolean;
   /**
-   * True when a widget that counts places its "Widget associé" field itself
-   * (list-source.tsx) — the logistics' indicator, whose list follows its data.
+   * True when a widget that counts places its "Widgets associés" field itself
+   * (lib/sources.tsx) — the logistics' indicator, whose lists follow its data.
    */
   ownSource?: boolean;
   /**
@@ -175,6 +175,11 @@ export interface IndicatorsApi<Type extends string> {
    */
   update: (id: Id, data: { config: Record<string, unknown>; in_use?: boolean }) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
+  /**
+   * A cut widget, pasted: moved to this section — of this board or another —
+   * at this place, with its configuration and its content (lib/clipboard.ts).
+   */
+  move: (id: Id, sectionId: Id, index: number) => Promise<unknown>;
   /** What the section now holds, in order. */
   reorder: (sectionId: Id, ids: Id[]) => Promise<unknown>;
   sections: PanelSections;
@@ -267,6 +272,26 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     }
   };
 
+  /** What the clipboard keeps of a widget: its type and its configuration. */
+  const copiedOf = (indicator: Indicator<Type>) => ({
+    type: String(indicator.type),
+    config: indicator.config,
+    label: titleOf(indicator, widgetOf(indicator.type)?.label ?? String(indicator.type)),
+  });
+
+  /**
+   * Put on the clipboard as cut: the widget stays in place, dimmed, until it is
+   * pasted — which moves it, configuration and content (lib/clipboard.ts).
+   */
+  const cut = (indicator: Indicator<Type>) => {
+    const copy = { ...copiedOf(indicator), cut: indicator.id };
+    copyWidget(copy);
+    notifications.show({
+      color: "teal",
+      message: `Widget « ${copy.label} » coupé : collez-le là où il doit aller`,
+    });
+  };
+
   const indicatorsOf = (section: IndicatorSection) =>
     indicators.filter((i) => i.section_id === section.id);
 
@@ -298,19 +323,28 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
 
   /**
    * Paste the copied widget into a section: at its end, or at the given place —
-   * right after the widget whose menu pasted it. Pasted, it leaves the
-   * clipboard: it is not pasted a second time.
+   * right after the widget whose menu pasted it. A cut widget is moved there,
+   * as it is; a copied one is created from its configuration. Pasted, it leaves
+   * the clipboard: it is not pasted a second time.
    */
   const pasteInto = (section: Id, index = Number.MAX_SAFE_INTEGER) => {
     if (!pastable) return;
+    const { cut } = pastable;
     void write(() =>
-      createAt({ section_id: section, type: pastable.type as Type, config: pastable.config }, index),
+      cut !== undefined
+        ? api.move(cut, section, index)
+        : createAt({ section_id: section, type: pastable.type as Type, config: pastable.config }, index),
     )
       .then(() => {
         clearCopiedWidget();
         notifications.show({ color: "teal", message: `Widget « ${pastable.label} » collé` });
       })
-      .catch((e: unknown) => notifyError(errorMessage(e)));
+      .catch((e: unknown) => {
+        // A cut widget that could not move stays where it was: nothing is
+        // lost, and the clipboard no longer offers it.
+        if (cut !== undefined) clearCopiedWidget();
+        notifyError(errorMessage(e));
+      });
   };
 
   /**
@@ -395,6 +429,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
               write(() => api.update(indicator.id, { config: withField(indicator.config, NAME, name) }))
             }
             onContextMenu={(indicator, position) => setMenu({ indicator, position })}
+            cutId={copy?.cut}
             withFrozenMenu={(indicator) => Boolean(extraMenu?.(indicator, () => {}))}
           />
         )}
@@ -442,19 +477,17 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           const frozen = locked || !widget || !canUpdate(access(widget.kind));
           const close = () => setMenu(null);
           const extra = extraMenu?.(indicator, close) ?? null;
-          const copiable = Boolean(widget) && !isListWidgetType(String(indicator.type));
+          // Every widget is copied: its configuration only. A list widget
+          // pasted is a new list, with its own key (server, board-widgets.ts).
+          const copiable = Boolean(widget);
           // Cutting deletes it: only a widget the account may delete.
           const removable = !frozen && widget !== undefined && accessIncludes(access(widget.kind), "delete");
           const editItems = frozen ? null : (editMenu?.(indicator, close) ?? null);
           // The clipboard group, set apart from the items around it.
           const above =
-            !frozen && (hasDrawer(indicator) || (Boolean(onDuplicate) && copiable));
+            !frozen &&
+            (hasDrawer(indicator) || (Boolean(onDuplicate) && !isListWidgetType(String(indicator.type))));
           const below = Boolean(editItems || extra);
-          const copied = () => ({
-            type: String(indicator.type),
-            config: indicator.config,
-            label: titleOf(indicator, widget?.label ?? String(indicator.type)),
-          });
           return (
             <PointMenu position={menu.position} onClose={close}>
               {!frozen && hasDrawer(indicator) && (
@@ -474,9 +507,8 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                   Dupliquer
                 </Menu.Item>
               )}
-              {/* The clipboard, in edit mode only: copy, cut, paste right
-                  after this widget. A list widget owns its items: it cannot be
-                  copied or cut any more than duplicated. */}
+              {/* The clipboard, in edit mode only, for every widget: copy,
+                  cut, paste right after this widget. */}
               {!locked && (copiable || pastable) && (
                 <>
                   {above && <Menu.Divider />}
@@ -485,7 +517,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                       leftSection={<IconCopy size={16} />}
                       onClick={() => {
                         close();
-                        copyWidget(copied());
+                        copyWidget(copiedOf(indicator));
                       }}
                     >
                       Copier
@@ -496,19 +528,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                       leftSection={<IconCut size={16} />}
                       onClick={() => {
                         close();
-                        const copy = copied();
-                        copyWidget(copy);
-                        void write(async () =>
-                          // Undone by ⌘Z too; the notification below says "coupé".
-                          rememberDeletion(await api.remove(indicator.id), "Widget coupé", {
-                            reload: onChanged,
-                            silent: true,
-                          }),
-                        )
-                          .then(() => {
-                            notifications.show({ color: "teal", message: `Widget « ${copy.label} » coupé` });
-                          })
-                          .catch((e: unknown) => notifyError(errorMessage(e)));
+                        cut(indicator);
                       }}
                     >
                       Couper
@@ -519,10 +539,18 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                       leftSection={<IconClipboard size={16} />}
                       onClick={() => {
                         close();
-                        const ids = indicators
+                        const inSection = indicators
                           .filter((i) => i.section_id === indicator.section_id)
                           .map((i) => i.id);
-                        pasteInto(indicator.section_id, ids.indexOf(indicator.id) + 1);
+                        // A cut widget moving within its section: the place
+                        // is counted without it. Pasted after itself, it stays.
+                        const ids = inSection.filter((id) => id !== pastable.cut);
+                        pasteInto(
+                          indicator.section_id,
+                          indicator.id === pastable.cut
+                            ? inSection.indexOf(indicator.id)
+                            : ids.indexOf(indicator.id) + 1,
+                        );
                       }}
                     >
                       Coller « {pastable.label} »
@@ -597,6 +625,8 @@ interface SectionIndicatorsProps<Type extends string, P extends IndicatorWidgetB
   onContextMenu: (indicator: Indicator<Type>, position: PointMenuPosition) => void;
   /** True when a frozen widget still has actions to offer. */
   withFrozenMenu: (indicator: Indicator<Type>) => boolean;
+  /** The widget cut, waiting to be pasted: it is dimmed. */
+  cutId?: Id;
 }
 
 /** A section's indicators, as cards, and the drag that reorders them. */
@@ -612,6 +642,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   onRename,
   onContextMenu,
   withFrozenMenu,
+  cutId,
 }: SectionIndicatorsProps<Type, P>) {
   const { target, propsOf, stackProps } = useWidgetDrop(section.id, drag, locked);
   // The account's permission on each widget's type.
@@ -685,10 +716,10 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
         };
         const dragProps = { ...propsOf(indicator.id, index), ...(frozen ? { draggable: false } : {}) };
         const alignment = alignmentProps(indicator.config);
-        // The right-click menu — edit, delete — is only for widgets that can be
-        // modified, or that have other actions to offer.
+        // The right-click menu: always in edit mode — every widget copies —;
+        // otherwise only for widgets that have other actions to offer.
         const menuOf = (e: React.MouseEvent<HTMLElement>) => {
-          if (frozen && !withFrozenMenu(indicator)) return;
+          if (locked && !withFrozenMenu(indicator)) return;
           onContextMenu(indicator, menuPosition(e));
         };
         return (
@@ -709,7 +740,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
               position: "relative",
               marginTop: gapBefore,
               ...sideMargins(widget.styled?.(indicator.config) ?? indicator.config),
-              opacity: drag.dragged === indicator.id ? 0.4 : 1,
+              opacity: drag.dragged === indicator.id ? 0.4 : cutId === indicator.id ? 0.5 : 1,
               cursor: frozen || widget.ownClicks ? "default" : "grab",
               ...(fill(rank)
                 ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }

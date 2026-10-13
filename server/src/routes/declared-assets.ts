@@ -131,14 +131,14 @@ const typedValuesOf =
     return JSON.stringify(list);
   };
 
-/** A place's id, as the client draws it. */
-const LOCATION_ID_MAX = 64;
+/** A node's id — a place, a category —, as the client draws it. */
+const NODE_ID_MAX = 64;
 
 /** Each extra field, read from the request, as stored. */
 const EXTRA_READERS: Record<DeclaredAssetExtraField, (value: unknown) => string> = {
   identifications: typedValuesOf("Les identifications"),
   // A place of the board's locations tree, by its id: one no longer in it shows none.
-  location: (value) => text(value, LOCATION_ID_MAX, "Un emplacement"),
+  location: (value) => text(value, NODE_ID_MAX, "Un emplacement"),
   version: (value) => text(value, DECLARED_ASSET_VERSION_MAX, "Une version"),
   website: websiteOf,
   license_infos: typedValuesOf("Les informations de licence"),
@@ -159,6 +159,16 @@ const storedTypedValues = (stored: unknown): DeclaredAssetTypedValue[] => {
   }
 };
 
+/** A purchase date, "2026-10-12"; empty, none. */
+const purchaseDateOf = (value: unknown): string => {
+  const read = String(value ?? "").trim().slice(0, 10);
+  if (!read) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(read) || Number.isNaN(Date.parse(read))) {
+    badRequest("Date d'achat illisible");
+  }
+  return read;
+};
+
 /** The fields an asset is written with, read from the request. */
 const fieldsOf = (kind: DeclaredAssetKind, body: Record<string, unknown>) => ({
   ...Object.fromEntries(DECLARED_ASSET_EXTRAS[kind].map((f) => [f, EXTRA_READERS[f](body[f])])),
@@ -167,12 +177,14 @@ const fieldsOf = (kind: DeclaredAssetKind, body: Record<string, unknown>) => ({
     DECLARED_ASSET_NAME_MAX,
     "Un nom",
   ),
-  category: text(body.category, DECLARED_ASSET_NAME_MAX, "Un nom"),
+  // A node of the board's categories tree, by its id: one no longer in it shows none.
+  category: text(body.category, NODE_ID_MAX, "Une catégorie"),
   supplier: text(body.supplier, DECLARED_ASSET_NAME_MAX, "Un nom"),
   maker: text(body.maker, DECLARED_ASSET_NAME_MAX, "Un nom"),
   product: text(body.product, DECLARED_ASSET_NAME_MAX, "Un nom"),
   quantity: quantityOf(body.quantity),
   price: priceOf(body.price),
+  purchase_date: purchaseDateOf(body.purchase_date),
   description: text(body.description, DECLARED_ASSET_DESCRIPTION_MAX, "Une description"),
   notes: text(body.notes, DECLARED_ASSET_DESCRIPTION_MAX, "Des notes"),
 });
@@ -272,13 +284,14 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
 
   const insert = mutation(
     `INSERT INTO ${t.assets} (board_id, list_key, name, category, supplier, maker, product,
-       quantity, price, description, notes${extraColumns}, created_at, updated_at)
+       quantity, price, purchase_date, description, notes${extraColumns}, created_at, updated_at)
      VALUES (@board_id, @list_key, @name, @category, @supplier, @maker, @product,
-       @quantity, @price, @description, @notes${extraValues}, @at, @at)`,
+       @quantity, @price, @purchase_date, @description, @notes${extraValues}, @at, @at)`,
   );
   const update = mutation(
     `UPDATE ${t.assets} SET name = @name, category = @category, supplier = @supplier,
        maker = @maker, product = @product, quantity = @quantity, price = @price,
+       purchase_date = @purchase_date,
        description = @description, notes = @notes${extraSets}, updated_at = @at
      WHERE id = @id`,
   );
@@ -290,10 +303,12 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
      SELECT ?, id FROM users WHERE id = ?`,
   );
   const clearLabels = mutation(`DELETE FROM ${t.labelLinks} WHERE asset_id = ?`);
-  // Only a label of the asset's board.
+  // Only a label of the asset's widget.
   const addLabel = mutation(
     `INSERT OR IGNORE INTO ${t.labelLinks} (asset_id, label_id)
-     SELECT ?, id FROM ${t.labels} WHERE id = ? AND board_id = ?`,
+     SELECT x.id, l.id FROM ${t.assets} x
+     JOIN ${t.labels} l ON l.board_id = x.board_id AND l.list_key = x.list_key
+     WHERE x.id = ? AND l.id = ? AND x.board_id = ?`,
   );
 
   /** The record, its actors and labels, written together. */
@@ -369,11 +384,12 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
     ofAsset: selection<FileRow>(
       `SELECT * FROM ${t.attachments} WHERE asset_id = ? ORDER BY position, id DESC`,
     ),
-    // A dropped attachment is placed first, as on a card.
+    // A dropped attachment is placed first, as on a card. The asset is
+    // named twice: better-sqlite3 refuses a numbered parameter used twice.
     create: mutation(
       `INSERT INTO ${t.attachments} (asset_id, file, name, mime, size, user_id, created_at, position)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
-         (SELECT COALESCE(MIN(position), 1) - 1 FROM ${t.attachments} WHERE asset_id = ?1))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?,
+         (SELECT COALESCE(MIN(position), 1) - 1 FROM ${t.attachments} WHERE asset_id = ?))`,
     ),
     remove: mutation(`DELETE FROM ${t.attachments} WHERE id = ?`),
     place: mutation(
@@ -483,6 +499,7 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
       content.length,
       req.user.id,
       now(),
+      asset.id,
     );
     res.status(201).json(attachmentOf(files.byId.get(lastInsertRowid)!));
   });

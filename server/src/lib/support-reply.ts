@@ -15,6 +15,7 @@ import { env } from "../env.js";
 import { supportComments } from "../repositories/support.js";
 import { entraConfigured, replyByGraph } from "./entra.js";
 import { replyTemplate } from "./mail-template.js";
+import { ticketReference, withReference } from "./mail-reference.js";
 
 /**
  * The inbox to reply from for a request, or nothing: a request entered in
@@ -63,7 +64,9 @@ export const replyByEmail = async (
       return content ? [{ name: f.name, mime: f.mime, content }] : [];
     });
     const ticket = supportTicketRef(request.number);
-    const laidOut = await replyTemplate(kind, { content: html, ticket, subject: request.subject, name });
+    // Its ticket in a hidden line too: a reply whose subject lost it still finds the request.
+    const content = withReference(html, ticketReference(ticket));
+    const laidOut = await replyTemplate(kind, { content, ticket, subject: request.subject, name });
     // The logos its template cites go with it, inline.
     const logos = laidOut.attachments.map((a) => ({
       name: a.filename,

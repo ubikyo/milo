@@ -31,14 +31,14 @@ mailTemplateRoutes.put("/:key", (req, res, next) => {
     .catch(next);
 });
 
-// A support content in its reply template, as saved — the support window's
-// preview.
+// A support content — or an order's — in its reply template, as saved — the
+// content window's preview.
 mailTemplateRoutes.post("/:key/reply-preview", (req, res, next) => {
   const key = keyOf(req.params.key);
-  if (!isReplyTemplateKey(key)) notFound("Modèle de réponse introuvable");
+  if (!isReplyTemplateKey(key)) return notFound("Modèle de réponse introuvable");
   const body = (req.body ?? {}) as Record<string, unknown>;
   const text = (field: string) => String(body[field] ?? "");
-  previewReply(key as "support_reply" | "support_auto_reply", {
+  previewReply(key, {
     content: text("content"),
     ticket: text("ticket"),
     subject: text("subject"),

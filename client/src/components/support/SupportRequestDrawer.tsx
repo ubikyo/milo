@@ -21,8 +21,9 @@ import {
   IconMessage,
   IconSettings,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { api } from "../../api";
+import { listOf } from "../../lib/list-ref";
 import {
   ACTIONS_BUTTON_STYLE,
   DRAWER_MENU_OFFSET,
@@ -45,6 +46,7 @@ import { BARE_FIELDSET, useRights } from "../../lib/rights";
 import SupportMessages, { SupportReply } from "./SupportMessages";
 import type { ReplySending, SupportMessage } from "./SupportMessages";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { lockedIds, senderIds, sentAddresses } from "../../lib/recipients";
 import {
   DEFAULT_SUPPORT_STATUS,
   MILO_ACTOR_ID,
@@ -76,6 +78,8 @@ const TABS = [
 // The messages panel does not shrink below this height, even when the
 // form above takes up space: at least one message is always readable.
 const MESSAGES_MIN_HEIGHT = 200;
+/** No exchange yet: the frame and its prompt, at this height. */
+const EMPTY_EXCHANGES_HEIGHT = 115;
 
 // The status and due date, on the row under the subject.
 const STATUS_WIDTH = 120;
@@ -101,7 +105,7 @@ const threadEvent = (exchanges: SupportMessage[]): SupportContentEvent =>
 // Much wider than the other drawers (560): a request holds its
 // actors, its labels and its exchanges side by side, and its thread reads
 // without each comment wrapping.
-const DRAWER_WIDTH = 820;
+const DRAWER_WIDTH = 870;
 
 // On creation, 200 px more than for an open request.
 const DRAWER_WIDTH_CREATION = DRAWER_WIDTH + 200;
@@ -169,7 +173,7 @@ export default function SupportRequestDrawer({
 }: SupportRequestDrawerProps) {
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState<SupportStatus>(DEFAULT_SUPPORT_STATUS);
-  /** The support labels of the request's board. */
+  /** The support labels of the request's widget. */
   const [labels, setLabels] = useState<SupportLabel[]>([]);
   /** The retained actors, as strings: those who handle the request. */
   const [actorIds, setActorIds] = useState<string[]>([]);
@@ -227,15 +231,27 @@ export default function SupportRequestDrawer({
     currentUser.id,
   ]);
 
-  /** The support labels: those of the request's board. */
+  /**
+   * The support labels: those of the request's "Tickets" widget, or of the one
+   * it is entered from. Without one, none.
+   */
+  const ownList = useMemo(
+    () =>
+      request
+        ? listOf(request)
+        : boardId != null && listKey
+          ? { board: boardId, list: listKey }
+          : null,
+    [request, boardId, listKey],
+  );
   const reloadLabels = useCallback(async () => {
-    if (boardId == null) return;
+    if (!ownList) return setLabels([]);
     try {
-      setLabels(await api.getSupportLabels(boardId));
+      setLabels(await api.getSupportLabels(ownList));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [boardId]);
+  }, [ownList]);
 
   useEffect(() => {
     if (opened) void reloadLabels();
@@ -263,6 +279,8 @@ export default function SupportRequestDrawer({
   // the sender, and the internal comments.
   const exchanges = comments.filter((c) => !c.internal);
   const notes = comments.filter((c) => c.internal);
+  // The actors a message went to, or who sent one: they stay.
+  const lockedActors = [...lockedIds(users, sentAddresses(exchanges)), ...senderIds(exchanges)];
 
   // What the reply carries by default: the content for the moment in the thread, then that
   // of any message — a signature — after a blank line; their variables
@@ -272,17 +290,23 @@ export default function SupportRequestDrawer({
   // a signature without a phone number that would fix itself before one's eyes.
   const contentFor = (event: SupportContentEvent) =>
     contents.find((c) => c.event === event)?.html ?? "";
+  const replyValues = supportReplyValues({
+    ...people,
+    request: { number: request?.number ?? 0, subject, status },
+  });
   const replyTemplate = (() => {
     const html = [contentFor(threadEvent(exchanges)), contentFor("all")]
       .filter(Boolean)
       .join("<p></p>");
     if (!html || !people.user) return "";
-    const values = supportReplyValues({
-      ...people,
-      request: { number: request?.number ?? 0, subject, status },
-    });
-    return fillSupportTemplate(html, values);
+    return fillSupportTemplate(html, replyValues);
   })();
+  // The predefined replies, offered in the editor's toolbar: their variables filled the same way.
+  const snippets = contents.map((c) => ({
+    value: String(c.id),
+    label: c.name,
+    html: fillSupportTemplate(c.html, replyValues),
+  }));
 
   const refreshComments = async () => {
     if (!request) return;
@@ -568,6 +592,7 @@ export default function SupportRequestDrawer({
                           users={users}
                           value={actorIds}
                           onChange={setActorIds}
+                          locked={lockedActors}
                           renderChip={(u) => (
                             <span
                               style={{ display: "inline-flex" }}
@@ -603,7 +628,7 @@ export default function SupportRequestDrawer({
                           labels={labels}
                           value={labelIds}
                           onChange={setLabelIds}
-                          boardId={boardId ?? ""}
+                          list={ownList}
                           onLabelsChanged={reloadLabels}
                           labelsApi={SUPPORT_LABELS_API}
                           emptyText="Aucune étiquette"
@@ -692,8 +717,9 @@ export default function SupportRequestDrawer({
                   of the form's other fields. */}
                 <div
                   style={{
-                    flex: 1,
-                    minHeight: MESSAGES_MIN_HEIGHT,
+                    // Without exchanges, the empty frame keeps its own height.
+                    flex: exchanges.length === 0 ? "0 0 auto" : 1,
+                    minHeight: exchanges.length === 0 ? undefined : MESSAGES_MIN_HEIGHT,
                     display: "flex",
                     flexDirection: "column",
                   }}
@@ -704,8 +730,9 @@ export default function SupportRequestDrawer({
                   <Paper
                     bg="var(--mantine-color-default)"
                     style={{
-                      flex: 1,
+                      flex: exchanges.length === 0 ? "0 0 auto" : 1,
                       minHeight: 0,
+                      ...(exchanges.length === 0 && { height: EMPTY_EXCHANGES_HEIGHT }),
                       display: "flex",
                       flexDirection: "column",
                       overflow: "hidden",
@@ -719,7 +746,6 @@ export default function SupportRequestDrawer({
                       <EmptyPanel
                         icon={IconMessage}
                         message="Aucun échange pour le moment."
-                        size="sm"
                       />
                     ) : (
                       <ScrollArea
@@ -764,6 +790,18 @@ export default function SupportRequestDrawer({
                 {!readOnly && (
                   <SupportReply
                     template={replyTemplate}
+                    snippets={snippets}
+                    // The reply as the sender will read it: in the team reply's template.
+                    preview={(html) =>
+                      api
+                        .previewReply("support_reply", {
+                          content: html,
+                          ticket: request ? supportTicketRef(request.number) : "",
+                          subject,
+                          name: "",
+                        })
+                        .then((r) => r.html)
+                    }
                     byEmail={Boolean(request?.sender_email)}
                     withFiles={Boolean(request)}
                     // On creation, a reply only makes sense if someone

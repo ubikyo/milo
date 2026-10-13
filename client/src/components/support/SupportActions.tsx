@@ -13,8 +13,8 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react";
 import { useRights } from "../../lib/rights";
-import { useCallback, useContext, useRef, useState } from "react";
-import { CopyPasteContext } from "../ui/CopyPasteActions";
+import { useCallback, useRef, useState } from "react";
+import { listOf } from "../../lib/list-ref";
 import LabelGroupsEditor from "../ui/LabelGroupsEditor";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -87,8 +87,6 @@ export default function SupportActions({
   onToggleFollow,
 }: SupportActionsProps) {
   const [toConfirm, setToConfirm] = useState<ToConfirm>(null);
-  /** Label management: those of the open board. */
-  const boardId = useContext(CopyPasteContext)?.board?.id;
   const [managesLabels, setManagingLabels] = useState(false);
   const openLabels = () => setManagingLabels(true);
   // The editor's save, run by "Enregistrer".
@@ -121,6 +119,8 @@ export default function SupportActions({
         : -1,
   )[0];
   const others = targetedItems.filter((d) => d !== keptByKey);
+  /** Label management: those of the "Tickets" widget of the first targeted request. */
+  const labelList = targetedItems[0] ? listOf(targetedItems[0]) : null;
 
   // The actions follow the account's rights on support.
   const can = useRights();
@@ -389,7 +389,9 @@ export default function SupportActions({
         styles={modalHeaderStyles(MODAL_PADDING)}
       >
         <Stack gap="md">
-          <LabelGroupsEditor base="/support-labels" boardId={boardId} register={registerLabels} />
+          {labelList && (
+            <LabelGroupsEditor base="/support-labels" list={labelList} register={registerLabels} />
+          )}
           {/* Nothing is sent before "Enregistrer": it saves, closes and has
               the requests re-read, so that they show the labels as they were
               just left. "Fermer" leaves everything as before. */}

@@ -4,6 +4,11 @@
 // its configuration; pasting means adding it there, as from the widgets
 // drawer.
 //
+// The widget cut by "Couper" stays in place until it is pasted: pasting
+// moves it (server, PUT /board-widgets/:id/move). It stays the same widget,
+// its configuration and its content — a list its items, a calendar its
+// consents. Cut and never pasted, it is not lost.
+//
 // Pasted once, it is emptied: the "Coller" items leave the menus, and the
 // same widget is not pasted again by mistake.
 //
@@ -12,6 +17,7 @@
 // private window — leaves it in memory only.
 
 import { migrateWidgetConfig } from "@milo/shared";
+import type { Id } from "@milo/shared";
 import { useSyncExternalStore } from "react";
 
 export interface CopiedWidget {
@@ -19,6 +25,8 @@ export interface CopiedWidget {
   config: Record<string, unknown>;
   /** Its name, for "Coller …" in the sections menu. */
   label: string;
+  /** The widget cut, by its id: pasting moves it rather than copying it. */
+  cut?: Id;
 }
 
 const KEY = "milo.clipboard.widget";
@@ -39,6 +47,7 @@ const read = (): CopiedWidget | null => {
           type: readValue.type,
           config: migrateWidgetConfig(readValue.type, readValue.config),
           label: String(readValue.label ?? readValue.type),
+          ...(typeof readValue.cut === "number" && { cut: readValue.cut }),
         }
       : null;
   } catch {

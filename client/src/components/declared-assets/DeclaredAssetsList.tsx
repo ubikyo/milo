@@ -42,17 +42,19 @@ import { inList } from "../../lib/lists";
 import { useWidgetAccess } from "../../lib/rights";
 import { clearRequest, useRequestedItem } from "../../lib/searchSources";
 import { useDeclaredAssets } from "../../lib/declaredAssets";
+import { useListRef } from "../../lib/list-ref";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { STRONG_TEXT } from "../../themes/colors";
+import { NewShortcut } from "../../lib/newShortcut";
 
 // The list of a declared asset kind — equipment, applications —: the assets
 // entered by hand, which no agent inventories (widgets/declared-asset). The
 // same grid as the managed device assets' (ManagedDeviceAssetsList): its
 // header, its sort, its columns chosen in the drawer — its labels, its
 // actors, and a value from each of the board's lists
-// (DeclaredAssetTablesFields), in the kind's words — and, for a device, its
-// location, as its path in the board's tree. It reads its own assets
+// (DeclaredAssetTablesFields), in the kind's words — its category as its
+// path in the board's tree, as, for a device, its location. It reads its own assets
 // (lib/declaredAssets.ts), and only shows those of its widget (LIST_KEY).
 //
 // Its columns sort and filter as the tickets' do (SupportRequestsList): the
@@ -91,8 +93,13 @@ export type ColumnKey =
   | "quantity"
   | "price";
 
-/** An asset as the grid reads it: its location's path beside its id. */
-type Row = DeclaredAsset & { location_path: string; location_name: string };
+/** An asset as the grid reads it: its category's and location's paths beside their ids. */
+type Row = DeclaredAsset & {
+  category_path: string;
+  category_name: string;
+  location_path: string;
+  location_name: string;
+};
 
 /** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
@@ -112,7 +119,7 @@ const VALUES: Record<ColumnKey, (a: Row) => string | number | null> = {
   // A column limited to a group reads its own (DeclaredAssetsList).
   labels: (a) => labelRank(a.labels, null),
   actor: (a) => a.actors[0]?.name || null,
-  category: (a) => a.category || null,
+  category: (a) => a.category_path || null,
   supplier: (a) => a.supplier || null,
   maker: (a) => a.maker || null,
   product: (a) => a.product || null,
@@ -151,7 +158,7 @@ const NO_FILTER: Filters = {
 const CHOICES: Record<Exclude<FilterKey, "name">, (a: Row) => FilterOption[]> = {
   labels: (a) => a.labels.map((l) => ({ value: l.name, label: l.name })),
   actor: (a) => a.actors.map((u) => ({ value: String(u.id), label: u.name })),
-  category: (a) => (a.category ? [{ value: a.category, label: a.category }] : []),
+  category: (a) => (a.category_path ? [{ value: a.category_path, label: a.category_path }] : []),
   supplier: (a) => (a.supplier ? [{ value: a.supplier, label: a.supplier }] : []),
   maker: (a) => (a.maker ? [{ value: a.maker, label: a.maker }] : []),
   product: (a) => (a.product ? [{ value: a.product, label: a.product }] : []),
@@ -178,8 +185,8 @@ export const declaredAssetColumns = (kind: DeclaredAssetKind): (ListColumn & { k
     { key: "labels", label: "Étiquettes", labelGroups: DECLARED_ASSET_ROUTES[kind].labels },
     { key: "actor", label: "Acteurs" },
     // Each takes its value from the board's list of the same name
-    // (DeclaredAssetTablesFields).
-    { key: "category", label: category.title },
+    // (DeclaredAssetTablesFields); the category, its whole path or itself alone.
+    { key: "category", label: category.title, formats: PATH_FORMATS },
     { key: "supplier", label: DECLARED_ASSET_SUPPLIER.title },
     { key: "maker", label: maker.title },
     { key: "product", label: product.title },
@@ -277,19 +284,26 @@ export default function DeclaredAssetsList({
   const look = DECLARED_ASSET_LOOKS[kind];
   const boardId = useContext(CopyPasteContext)?.board?.id;
   const { assets: all, reload } = useDeclaredAssets(kind, boardId);
-  // A device's board locations tree: each reads with its location's path.
-  // Re-read when the assets are — a change of the tree announces them too.
-  const withLocation = DECLARED_ASSET_EXTRAS[kind].includes("location");
+  // The widget's categories tree, and a device's locations tree: each asset
+  // reads with its category's and location's paths. Re-read when the assets
+  // are — a change of a tree announces them too.
+  const [categories, setCategories] = useState<DeclaredAssetLocation[]>([]);
   const [locations, setLocations] = useState<DeclaredAssetLocation[]>([]);
+  const list = useListRef();
   useEffect(() => {
-    if (boardId === undefined || !withLocation) return;
+    if (!list) return;
     api
-      .getDeclaredAssetSettings(kind, boardId)
-      .then((s) => setLocations(s.locations ?? []))
+      .getDeclaredAssetSettings(kind, list)
+      .then((s) => {
+        setCategories(s.categories);
+        setLocations(s.locations ?? []);
+      })
       .catch((e) => notifyError(errorMessage(e)));
-  }, [kind, boardId, withLocation, all]);
+  }, [kind, list, all]);
   // Those of this widget only.
   const assets = useMemo(() => {
+    const categoryPaths = locationPaths(categories);
+    const categoryNames = new Map(categories.map((c) => [c.id, c.name]));
     const paths = locationPaths(locations);
     const names = new Map(locations.map((l) => [l.id, l.name]));
     return (
@@ -298,12 +312,14 @@ export default function DeclaredAssetsList({
         .map(
           (a): Row => ({
             ...a,
+            category_path: (a.category && categoryPaths.get(a.category)) || "",
+            category_name: (a.category && categoryNames.get(a.category)) || "",
             location_path: (a.location && paths.get(a.location)) || "",
             location_name: (a.location && names.get(a.location)) || "",
           }),
         ) ?? null
     );
-  }, [all, config, locations]);
+  }, [all, config, categories, locations]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
@@ -469,9 +485,9 @@ export default function DeclaredAssetsList({
         <ActorAvatars actors={asset.actors} />
       </Table.Td>
     ),
-    category: (asset) => (
+    category: (asset, _group, format) => (
       <Table.Td key="category">
-        <TextCell value={asset.category} />
+        <TextCell value={formatPath(asset.category_path, asset.category_name, format)} />
       </Table.Td>
     ),
     supplier: (asset) => (
@@ -574,7 +590,8 @@ export default function DeclaredAssetsList({
   if (boardId === undefined || !assets) return null;
 
   return (
-    <>
+    // "N" adds one, as "Ajouter" does (lib/newShortcut).
+    <NewShortcut action={`Nouvel asset (${words.label.toLowerCase()})`} run={canAdd ? () => setDrawer({ asset: null }) : undefined}>
       {assets.length === 0 ? (
         // With nothing to show, only the empty state, which offers to add.
         <EmptyPanel
@@ -582,7 +599,6 @@ export default function DeclaredAssetsList({
           message="Aucun asset"
           actionLabel={canAdd ? "Ajouter un asset" : undefined}
           onAction={canAdd ? () => setDrawer({ asset: null }) : undefined}
-          size="md"
         />
       ) : (
         // A section narrower than the list makes it scroll sideways.
@@ -600,6 +616,6 @@ export default function DeclaredAssetsList({
         canSave={accessIncludes(access, "update")}
         canDelete={accessIncludes(access, "delete")}
       />
-    </>
+    </NewShortcut>
   );
 }

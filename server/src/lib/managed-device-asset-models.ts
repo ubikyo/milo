@@ -1,13 +1,14 @@
-// The model table of a board's Asset widgets: the identifier a workstation
-// declares ("Mac14,6") and the name it is known by.
+// The model table of an Asset widget: the identifier a workstation declares
+// ("Mac14,6") and the name it is known by.
 //
 // Apple only reports that identifier, and the agent does not translate it.
-// As long as the board has recorded nothing, the table starts from the most
-// common Apple-silicon Macs; once recorded, it is the board's, and nothing is
+// As long as the widget has recorded nothing, the table starts from the most
+// common Apple-silicon Macs; once recorded, it is the widget's, and nothing is
 // added to it by itself any more.
 
-import type { ManagedDeviceAssetModel, Id } from "@milo/shared";
+import type { ManagedDeviceAssetModel } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
+import type { ListScope } from "../repositories/lists.js";
 
 /** The starting table: Apple-silicon Macs, from 2020 to 2024. */
 const STARTER_TEMPLATES: ManagedDeviceAssetModel[] = [
@@ -42,19 +43,19 @@ const STARTER_TEMPLATES: ManagedDeviceAssetModel[] = [
 ];
 
 const read = selection<{ models: string | null }>(
-  "SELECT models FROM board_managed_device_asset_settings WHERE board_id = ?",
+  "SELECT models FROM board_managed_device_asset_settings WHERE board_id = ? AND list_key = ?",
 );
 const write = mutation(
-  `INSERT INTO board_managed_device_asset_settings (board_id, models) VALUES (?, ?)
-   ON CONFLICT(board_id) DO UPDATE SET models = excluded.models`,
+  `INSERT INTO board_managed_device_asset_settings (board_id, list_key, models) VALUES (?, ?, ?)
+   ON CONFLICT(board_id, list_key) DO UPDATE SET models = excluded.models`,
 );
 
 /**
- * The board's model table, or the starting one. Unreadable JSON counts as
- * nothing recorded. A workstation without a board has the starting one.
+ * The widget's model table, or the starting one. Unreadable JSON counts as
+ * nothing recorded. A workstation without a widget has the starting one.
  */
-export const templates = (boardId: Id | null): ManagedDeviceAssetModel[] => {
-  const saved = boardId === null ? null : read.get(boardId)?.models;
+export const templates = (scope: ListScope | null): ManagedDeviceAssetModel[] => {
+  const saved = scope === null ? null : read.get(scope.board, scope.list)?.models;
   if (saved == null) return STARTER_TEMPLATES;
   try {
     const list = JSON.parse(saved) as unknown;
@@ -64,8 +65,8 @@ export const templates = (boardId: Id | null): ManagedDeviceAssetModel[] => {
   }
 };
 
-export const saveTemplates = (boardId: Id, list: ManagedDeviceAssetModel[]): void => {
-  write.run(boardId, JSON.stringify(list));
+export const saveTemplates = (scope: ListScope, list: ManagedDeviceAssetModel[]): void => {
+  write.run(scope.board, scope.list, JSON.stringify(list));
 };
 
 /**

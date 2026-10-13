@@ -1,17 +1,10 @@
 import { RadialBarChart } from "@mantine/charts";
-import { Stack, Text } from "@mantine/core";
-import { IconUsers } from "@tabler/icons-react";
+import { Text } from "@mantine/core";
 import { CHART_COLORS, chosenColor, colorOf, colorRow, defaultText, defaultTrack, partRows } from "../chart-colors";
-import { NAME, IndicatorTitle } from "./common";
-import type { SupportIndicatorWidget } from "./types";
-import type { Actor, Id } from "@milo/shared";
 
-// Each actor's share in the requests of the company being viewed, as radial
-// bars. A "Total" ring holds all the requests: it sets
-// the scale, and each actor is read relative to it. A request with two
-// actors counts for each.
-
-const LABEL = "Acteurs";
+// Each slice's share — an actor's, a label's… — in the items counted, as
+// radial bars (widgets/indicators, "Contributions"). A "Total" ring holds all
+// the items: it sets the scale, and each slice is read relative to it.
 
 /** All the requests: the ring that gives the scale. */
 const TOTAL = "Total";
@@ -44,7 +37,7 @@ const color = (config: unknown, rank: number) => {
   return colorOf(config, rankKey(shade), COLORS[shade] as string);
 };
 
-/** The "Apparence du graphique" rows of the actors' rings: Project and Task modes share them. */
+/** The "Apparence du graphique" rows of the rings. */
 export const actorsAppearance = (config: unknown, onChange: (config: Record<string, unknown>) => void) => [
   ...partRows(config, onChange, [
     { key: TOTAL_KEY, name: TOTAL, what: "du total", defaultColor: TOTAL_COLOR },
@@ -62,30 +55,32 @@ export const actorsAppearance = (config: unknown, onChange: (config: Record<stri
 const CHART_HEIGHT = 240;
 
 /**
- * The actors' rings: "actors" gives, item by item — request,
- * project, card —, those who carry it. Project and Task modes use it
- * too. "unit" names what is counted, in the hover bubble.
+ * Contribution rings: a "Total" ring that sets the scale — all the items
+ * counted —, then each slice — an actor, a label… —, the largest first. An
+ * item that falls in two counts for each. "unit" names what is counted, in
+ * the hover bubble.
  */
-export function ActorRings({ actors, unit, config }: { actors: Actor[][]; unit: string; config: unknown }) {
-  const byActor = new Map<Id, { name: string; value: number }>();
-  for (const actorGroup of actors) {
-    for (const actor of actorGroup) {
-      const already = byActor.get(actor.id);
-      if (already) already.value += 1;
-      else byActor.set(actor.id, { name: actor.name, value: 1 });
-    }
-  }
-  const sorted = [...byActor.values()].sort(
-    (a, b) => b.value - a.value || a.name.localeCompare(b.name),
-  );
-  if (sorted.length === 0) {
+export function Rings({
+  rows,
+  total,
+  unit,
+  config,
+  none,
+}: {
+  rows: { name: string; value: number }[];
+  total: number;
+  unit: string;
+  config: unknown;
+  none: string;
+}) {
+  if (rows.length === 0) {
     return (
       <Text size="sm" c="dimmed">
-        Aucun acteur
+        {none}
       </Text>
     );
   }
-  const data = [{ name: TOTAL, value: actors.length }, ...sorted].map((row, rank) => ({
+  const data = [{ name: TOTAL, value: total }, ...rows].map((row, rank) => ({
     name: row.name,
     [unit]: row.value,
     color: color(config, rank),
@@ -104,20 +99,3 @@ export function ActorRings({ actors, unit, config }: { actors: Actor[][]; unit: 
     />
   );
 }
-
-export const actorsIndicator: SupportIndicatorWidget = {
-  type: "actors",
-  kind: "helpdesk",
-  label: LABEL,
-  icon: IconUsers,
-  defaultConfig: { [NAME]: "" },
-
-  Display: ({ config, requests }) => (
-    <Stack gap={4} style={{ flex: 1 }}>
-      <IndicatorTitle config={config} defaultValue={LABEL} />
-      <ActorRings actors={requests.map((d) => d.actors)} unit="tickets" config={config} />
-    </Stack>
-  ),
-
-  chartAppearance: actorsAppearance,
-};

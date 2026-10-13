@@ -51,6 +51,7 @@ export default function BoardPanel({
       create: api.createBoardWidget,
       update: (id, data) => api.updateBoardWidget(id, data),
       remove: api.deleteBoardWidget,
+      move: api.moveBoardWidget,
       reorder: api.reorderBoardWidgets,
       sections: api.boardSections(boardId),
     }),

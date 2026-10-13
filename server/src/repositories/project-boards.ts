@@ -1,15 +1,18 @@
-// Project categories, and their milestones. A category belongs to a board; its
-// visibility is the board's (repositories/boards.ts). They form a tree: each
-// has a parent, none at the root.
+// Project categories, and their milestones. A category belongs to a
+// "Projets" widget (ListScope); its visibility is its board's
+// (repositories/boards.ts). They form a tree: each has a parent, none at the
+// root.
 
 import { mutation, selection } from "../db/query.js";
 import { isLabelColor } from "@milo/shared";
 import type { Category, Id, Milestone } from "@milo/shared";
 import type { CategoryRow } from "../db/rows.js";
+import type { ListScope } from "./lists.js";
 
 const createCategory = mutation(
-  `INSERT INTO categories (board_id, name, milestones, parent_id, position)
-   VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM categories WHERE board_id = ?))`,
+  `INSERT INTO categories (board_id, list_key, name, milestones, parent_id, position)
+   VALUES (@board, @list, @name, @milestones, @parent,
+     (SELECT COALESCE(MAX(position), -1) + 1 FROM categories WHERE board_id = @board))`,
 );
 
 export const categories = {
@@ -17,13 +20,13 @@ export const categories = {
   // Two categories of a parent do not share a name; those of two parents may.
   byName: selection<CategoryRow>(
     `SELECT * FROM categories
-     WHERE board_id = ? AND parent_id IS ? AND name = ? COLLATE NOCASE AND id != ?`,
+     WHERE board_id = ? AND list_key = ? AND parent_id IS ? AND name = ? COLLATE NOCASE AND id != ?`,
   ),
   children: selection<CategoryRow>("SELECT * FROM categories WHERE parent_id = ?"),
   // A new category is placed at the end of its board's.
   create: {
-    run: (boardId: unknown, name: string, milestones: string, parentId: Id | null = null) =>
-      createCategory.run(boardId, name, milestones, parentId, boardId),
+    run: (scope: ListScope, name: string, milestones: string, parentId: Id | null = null) =>
+      createCategory.run({ board: scope.board, list: scope.list, name, milestones, parent: parentId }),
   },
   rename: mutation("UPDATE categories SET name = ? WHERE id = ?"),
   setParent: mutation("UPDATE categories SET parent_id = ? WHERE id = ?"),

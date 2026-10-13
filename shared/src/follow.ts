@@ -7,7 +7,7 @@
 
 import type { Id } from "./domain.js";
 
-export const FOLLOW_KINDS = ["project", "card", "list", "support"] as const;
+export const FOLLOW_KINDS = ["project", "card", "list", "support", "order"] as const;
 
 export type FollowKind = (typeof FOLLOW_KINDS)[number];
 
@@ -21,7 +21,7 @@ export const isFollowKind = (value: unknown): value is FollowKind =>
  */
 export type Follows = Record<FollowKind, Id[]>;
 
-export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], support: [] });
+export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], support: [], order: [] });
 
 /**
  * The address that opens an item in the application. A single definition, read
@@ -31,7 +31,7 @@ export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], s
  * A list has none: what is notified for a list is always one of
  * its cards, and the link points to that card.
  */
-export type LinkTargetKind = "project" | "card" | "support" | "managed_device_asset" | "access";
+export type LinkTargetKind = "project" | "card" | "support" | "managed_device_asset" | "access" | "order";
 
 /**
  * A machine opens by its id; an item of the Access mode, by its
@@ -44,6 +44,7 @@ export const QUERY_PARAMS: Record<LinkTargetKind, string> = {
   // The address keeps its short name: the links already sent still open.
   managed_device_asset: "asset",
   access: "access",
+  order: "order",
 };
 
 /**
@@ -56,6 +57,7 @@ export const LEGACY_QUERY_PARAMS: Record<LinkTargetKind, string> = {
   support: "demande",
   managed_device_asset: "poste",
   access: "acces",
+  order: "commande",
 };
 
 export const itemLink = (kind: LinkTargetKind, id: Id): string => `?${QUERY_PARAMS[kind]}=${id}`;

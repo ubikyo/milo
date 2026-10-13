@@ -22,7 +22,10 @@ export interface DeclaredAssetWidget extends IndicatorWidgetBase<string> {
   Display: ComponentType<DeclaredAssetDisplayProps>;
 }
 
-/** Each kind's widgets, in the order the widgets drawer presents them. */
+/**
+ * Each kind's widgets, in the order the widgets drawer presents them; its
+ * figures are the "Indicateurs" widgets' (widgets/indicators).
+ */
 export const declaredAssetWidgets = (kind: DeclaredAssetKind): DeclaredAssetWidget[] => [
   declaredAssetListWidget(kind),
 ];

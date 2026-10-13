@@ -71,9 +71,12 @@ import type {
   LabelGroupLayout,
   LabelInput,
   LabelsBase,
+  ListRef,
+  SourceWidget,
   ListColor,
   MailTestResult,
   Project,
+  ProjectAttachment,
   ProjectCopyInput,
   ProjectDetail,
   ProjectFilters,
@@ -145,13 +148,37 @@ import type {
   ProductInput,
   ProductPhoto,
   ProductSettings,
+  Order,
+  OrderContent,
+  OrderContentEvent,
+  OrderMessage,
+  OrderMailKind,
+  ReplyTemplateKey,
+  OrderNumberFormat,
+  OrderNumberTemplate,
+  OrderNumberTemplates,
+  OrderAttachment,
+  OrderComment,
+  OrderInput,
+  Warehouse,
+  WarehouseInput,
+  WarehouseSettings,
+  Location,
+  LocationInput,
   UpdateMeInput,
   OpeningView,
   VersionPayload,
   SearchResult,
   Notification,
 } from "@milo/shared";
-import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES, PRODUCT_ROUTES } from "@milo/shared";
+import {
+  CONTACT_ROUTES,
+  DECLARED_ASSET_ROUTES,
+  ORDER_ROUTES,
+  PRODUCT_ROUTES,
+  WAREHOUSE_ROUTES,
+  LOCATION_ROUTES,
+} from "@milo/shared";
 import { getToken, setToken } from "../lib/auth";
 
 /** An uploaded reply attachment: what the reply then cites. */
@@ -285,6 +312,30 @@ const groupsChange = <T>(base: LabelsBase, change: Promise<T>): Promise<T> =>
     window.dispatchEvent(new CustomEvent(LABEL_GROUPS_EVENT, { detail: base }));
     return result;
   });
+
+/**
+ * What a read of a list's settings names: a list (ListRef), or a whole board —
+ * every list's, each row carrying its list key.
+ */
+type ListScope = ListRef | Id | string;
+
+/** The query of a read: "?board=…&list=…". */
+const scopeQuery = (scope: ListScope | null | undefined): string =>
+  scope !== null && typeof scope === "object"
+    ? queryString({ board: scope.board, list: scope.list })
+    : queryString({ board: scope });
+
+/** The body fields that name a list, on a write. */
+const listBody = (ref: ListRef) => ({ board_id: ref.board, list_key: ref.list });
+
+/** A copy from one list widget to another. */
+const copyBody = (from: ListRef, to: ListRef, replace: boolean) => ({
+  from_board: from.board,
+  from_list: from.list,
+  to_board: to.board,
+  to_list: to.list,
+  replace,
+});
 
 const boardSections = (boardId: Id | string) => ({
   all: () => get<IndicatorSection[]>(`/boards/${boardId}/sections`),
@@ -463,6 +514,12 @@ export const api = {
   /** The copy is placed right below the original. */
   duplicateBoardWidget: (id: Id) => post<BoardWidget>(`/board-widgets/${id}/duplicate`, {}),
   deleteBoardWidget: (id: Id) => undoableDel(`/board-widgets/${id}`),
+  /**
+   * A cut widget, pasted: moved to this section — of its board or of another
+   * —, at this place. It stays the same widget: a list keeps its items.
+   */
+  moveBoardWidget: (id: Id, sectionId: Id, index: number) =>
+    put<BoardWidget>(`/board-widgets/${id}/move`, { section_id: sectionId, index }),
   /** Puts back what a deletion carried away, by the token it returned. */
   undoDeletion: (token: string) => post<null>(`/undo/${token}`),
   /** What the section now carries: a widget from another one moves into it. */
@@ -561,16 +618,15 @@ export const api = {
   uploadWidgetImage: (file: File) => upload<{ url: string }>("/widget-images", file),
 
   // --- Projects ------------------------------------------------------------
-  // Categories belong to a board.
-  getCategories: (boardId?: string | null) =>
-    get<Category[]>(`/categories${queryString({ board: boardId })}`),
+  // Categories belong to a "Projets" widget; a board's are all of its widgets'.
+  getCategories: (scope?: ListScope | null) => get<Category[]>(`/categories${scopeQuery(scope)}`),
   // Under "parent_id", or at the root.
-  createCategory: (board_id: Id | string, name: string, parent_id: Id | null = null) =>
-    post<Category>("/categories", { board_id, name, parent_id }),
-  // "replace": those of the destination board go first, except
+  createCategory: (ref: ListRef, name: string, parent_id: Id | null = null) =>
+    post<Category>("/categories", { ...listBody(ref), name, parent_id }),
+  // "replace": those of the destination widget go first, except
   // those that still hold projects.
-  copyCategories: (from_board: Id, to_board: Id, replace = false) =>
-    post<CopyResult>("/categories/copy", { from_board, to_board, replace }),
+  copyCategories: (from: ListRef, to: ListRef, replace = false) =>
+    post<CopyResult>("/categories/copy", copyBody(from, to, replace)),
   // The name, the parent and the milestones are modified separately: what
   // isn't sent stays.
   updateCategory: (
@@ -583,85 +639,98 @@ export const api = {
     ),
   deleteCategory: (id: Id) =>
     request<CascadeResult>(`/categories/${id}`, { method: "DELETE" }),
-  // The full order of a board's categories.
-  reorderCategories: (board_id: Id, ids: Id[]) =>
-    put<Category[]>("/categories/reorder", { board_id, ids }),
+  // The full order of a widget's categories.
+  reorderCategories: (ref: ListRef, ids: Id[]) =>
+    put<Category[]>("/categories/reorder", { ...listBody(ref), ids }),
 
-  getProjectLabels: (boardId: string | Id) =>
-    get<ProjectLabel[]>(`/project-labels${queryString({ board: boardId })}`),
-  createProjectLabel: (
-    board_id: Id | string,
-    name: string,
-    color: string,
-    group_id?: Id,
-  ) => post<ProjectLabel>("/project-labels", { board_id, name, color, group_id }),
-  // A board's labels placed in another. Those that already carry
+  getProjectLabels: (scope: ListScope) => get<ProjectLabel[]>(`/project-labels${scopeQuery(scope)}`),
+  createProjectLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<ProjectLabel>("/project-labels", { ...listBody(ref), name, color, group_id }),
+  // A widget's labels placed in another. Those that already carry
   // the same name there are not duplicated: the report counts them.
-  // "replace": those of the destination board go first.
-  copyProjectLabels: (from_board: Id, to_board: Id, replace = false) =>
-    post<CopyResult>("/project-labels/copy", { from_board, to_board, replace }),
+  // "replace": those of the destination widget go first.
+  copyProjectLabels: (from: ListRef, to: ListRef, replace = false) =>
+    post<CopyResult>("/project-labels/copy", copyBody(from, to, replace)),
   updateProjectLabel: (id: Id, data: LabelInput) =>
     put<ProjectLabel>(`/project-labels/${id}`, data),
   deleteProjectLabel: (id: Id) => del(`/project-labels/${id}`),
 
-  // A board's asset labels: each names the GLPI tag of the machines it brings.
-  getManagedDeviceAssetLabels: (boardId: string | Id) =>
-    get<Label[]>(`/managed-device-asset-labels${queryString({ board: boardId })}`),
-  createManagedDeviceAssetLabel: (
-    board_id: Id | string,
-    name: string,
-    color: string,
-    group_id?: Id,
-  ) => post<Label>("/managed-device-asset-labels", { board_id, name, color, group_id }),
+  // An Asset widget's labels: each names the GLPI tag of the machines it brings.
+  getManagedDeviceAssetLabels: (scope: ListScope) =>
+    get<Label[]>(`/managed-device-asset-labels${scopeQuery(scope)}`),
+  createManagedDeviceAssetLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>("/managed-device-asset-labels", { ...listBody(ref), name, color, group_id }),
   updateManagedDeviceAssetLabel: (id: Id, data: LabelInput) =>
     put<Label>(`/managed-device-asset-labels/${id}`, data),
   deleteManagedDeviceAssetLabel: (id: Id) => del(`/managed-device-asset-labels/${id}`),
 
-  // A board's declared asset labels, by kind: its own, named by no tag.
-  getDeclaredAssetLabels: (kind: DeclaredAssetKind, boardId: string | Id) =>
-    get<Label[]>(`${DECLARED_ASSET_ROUTES[kind].labels}${queryString({ board: boardId })}`),
+  // A declared asset widget's labels: its own, named by no tag.
+  getDeclaredAssetLabels: (kind: DeclaredAssetKind, scope: ListScope) =>
+    get<Label[]>(`${DECLARED_ASSET_ROUTES[kind].labels}${scopeQuery(scope)}`),
   createDeclaredAssetLabel: (
     kind: DeclaredAssetKind,
-    board_id: Id | string,
+    ref: ListRef,
     name: string,
     color: string,
     group_id?: Id,
-  ) => post<Label>(DECLARED_ASSET_ROUTES[kind].labels, { board_id, name, color, group_id }),
+  ) => post<Label>(DECLARED_ASSET_ROUTES[kind].labels, { ...listBody(ref), name, color, group_id }),
   updateDeclaredAssetLabel: (kind: DeclaredAssetKind, id: Id, data: LabelInput) =>
     put<Label>(`${DECLARED_ASSET_ROUTES[kind].labels}/${id}`, data),
   deleteDeclaredAssetLabel: (kind: DeclaredAssetKind, id: Id) =>
     del(`${DECLARED_ASSET_ROUTES[kind].labels}/${id}`),
 
-  // A board's contact labels (shared, contacts.ts).
-  getContactLabels: (boardId: string | Id) =>
-    get<Label[]>(`${CONTACT_ROUTES.labels}${queryString({ board: boardId })}`),
-  createContactLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
-    post<Label>(CONTACT_ROUTES.labels, { board_id, name, color, group_id }),
+  // A Contact widget's labels (shared, contacts.ts).
+  getContactLabels: (scope: ListScope) => get<Label[]>(`${CONTACT_ROUTES.labels}${scopeQuery(scope)}`),
+  createContactLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>(CONTACT_ROUTES.labels, { ...listBody(ref), name, color, group_id }),
   updateContactLabel: (id: Id, data: LabelInput) =>
     put<Label>(`${CONTACT_ROUTES.labels}/${id}`, data),
   deleteContactLabel: (id: Id) => del(`${CONTACT_ROUTES.labels}/${id}`),
 
-  // A board's product labels (shared, products.ts).
-  getProductLabels: (boardId: string | Id) =>
-    get<Label[]>(`${PRODUCT_ROUTES.labels}${queryString({ board: boardId })}`),
-  createProductLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
-    post<Label>(PRODUCT_ROUTES.labels, { board_id, name, color, group_id }),
+  // A Produits widget's labels (shared, products.ts).
+  getProductLabels: (scope: ListScope) => get<Label[]>(`${PRODUCT_ROUTES.labels}${scopeQuery(scope)}`),
+  createProductLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>(PRODUCT_ROUTES.labels, { ...listBody(ref), name, color, group_id }),
   updateProductLabel: (id: Id, data: LabelInput) =>
     put<Label>(`${PRODUCT_ROUTES.labels}/${id}`, data),
   deleteProductLabel: (id: Id) => del(`${PRODUCT_ROUTES.labels}/${id}`),
 
-  // The groups of a kind of labels: those of a board ("board_id"), or of
-  // Support, which belong to none.
-  getLabelGroups: (base: LabelsBase, board?: Id | string) =>
-    get<LabelGroup[]>(`${base}/groups${queryString({ board })}`),
-  createLabelGroup: (base: LabelsBase, name: string, board_id?: Id | string) =>
-    groupsChange(base, post<LabelGroup>(`${base}/groups`, { board_id, name })),
+  // An Entrepôts widget's labels (shared, warehouses.ts).
+  getWarehouseLabels: (scope: ListScope) => get<Label[]>(`${WAREHOUSE_ROUTES.labels}${scopeQuery(scope)}`),
+  createWarehouseLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>(WAREHOUSE_ROUTES.labels, { ...listBody(ref), name, color, group_id }),
+  updateWarehouseLabel: (id: Id, data: LabelInput) =>
+    put<Label>(`${WAREHOUSE_ROUTES.labels}/${id}`, data),
+  deleteWarehouseLabel: (id: Id) => del(`${WAREHOUSE_ROUTES.labels}/${id}`),
+
+  // An Emplacements widget's labels (shared, locations.ts).
+  getLocationLabels: (scope: ListScope) => get<Label[]>(`${LOCATION_ROUTES.labels}${scopeQuery(scope)}`),
+  createLocationLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>(LOCATION_ROUTES.labels, { ...listBody(ref), name, color, group_id }),
+  updateLocationLabel: (id: Id, data: LabelInput) =>
+    put<Label>(`${LOCATION_ROUTES.labels}/${id}`, data),
+  deleteLocationLabel: (id: Id) => del(`${LOCATION_ROUTES.labels}/${id}`),
+
+  // A Commandes widget's labels (shared, orders.ts).
+  getOrderLabels: (scope: ListScope) => get<Label[]>(`${ORDER_ROUTES.labels}${scopeQuery(scope)}`),
+  createOrderLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>(ORDER_ROUTES.labels, { ...listBody(ref), name, color, group_id }),
+  updateOrderLabel: (id: Id, data: LabelInput) =>
+    put<Label>(`${ORDER_ROUTES.labels}/${id}`, data),
+  deleteOrderLabel: (id: Id) => del(`${ORDER_ROUTES.labels}/${id}`),
+
+  // The groups of a kind of labels: those of a list widget, or of all a
+  // board's, each carrying its list key.
+  getLabelGroups: (base: LabelsBase, scope: ListScope) =>
+    get<LabelGroup[]>(`${base}/groups${scopeQuery(scope)}`),
+  createLabelGroup: (base: LabelsBase, name: string, ref: ListRef) =>
+    groupsChange(base, post<LabelGroup>(`${base}/groups`, { ...listBody(ref), name })),
   renameLabelGroup: (base: LabelsBase, id: Id, name: string) =>
     groupsChange(base, put<LabelGroup>(`${base}/groups/${id}`, { name })),
   deleteLabelGroup: (base: LabelsBase, id: Id) => groupsChange(base, del(`${base}/groups/${id}`)),
   // Every group in order, each with all its labels: labels may change group.
-  arrangeLabels: (base: LabelsBase, groups: LabelGroupLayout[], board_id?: Id | string) =>
-    groupsChange(base, put<null>(`${base}/arrange`, { board_id, groups })),
+  arrangeLabels: (base: LabelsBase, groups: LabelGroupLayout[], ref: ListRef) =>
+    groupsChange(base, put<null>(`${base}/arrange`, { ...listBody(ref), groups })),
 
   getProjects: (filters: ProjectFilters = {}) =>
     get<Project[]>(
@@ -675,8 +744,13 @@ export const api = {
   updateProject: (id: Id, data: ProjectInput) =>
     put<Project>(`/projects/${id}`, data),
   deleteProject: (id: Id) => del(`/projects/${id}`),
-  // The copy takes the record, the actors and the labels, but not the
-  // thread; without "board_id", it stays in the original board.
+  uploadProjectAttachment: (id: Id, file: File) =>
+    upload<ProjectAttachment>(`/projects/${id}/attachments`, file),
+  reorderProjectAttachments: (id: Id, ids: Id[]) =>
+    put<ProjectAttachment[]>(`/projects/${id}/attachments/order`, { ids }),
+  deleteProjectAttachment: (id: Id) => del(`/projects/attachments/${id}`),
+  // The copy takes the record, the actors, the labels and the documents, but
+  // not the thread; without "board_id", it stays in the original board.
   copyProject: (id: Id, data: ProjectCopyInput = {}) =>
     post<Project>(`/projects/${id}/copy`, data),
 
@@ -686,11 +760,12 @@ export const api = {
     put<Comment>(`/comments/${id}`, { text }),
   deleteComment: (id: Id) => del(`/comments/${id}`),
 
-  // The milestone types, set in the settings. The name and the milestones are
-  // modified separately: what isn't sent stays.
-  getMilestoneTypes: () => get<MilestoneType[]>("/milestone-types"),
-  createMilestoneType: (name: string) =>
-    post<MilestoneType>("/milestone-types", { name }),
+  // The milestone types of a "Projets" widget — or of all a board's, each
+  // carrying its list key. The name and the milestones are modified
+  // separately: what isn't sent stays.
+  getMilestoneTypes: (scope: ListScope) => get<MilestoneType[]>(`/milestone-types${scopeQuery(scope)}`),
+  createMilestoneType: (ref: ListRef, name: string) =>
+    post<MilestoneType>("/milestone-types", { ...listBody(ref), name }),
   updateMilestoneType: (
     id: Id,
     data: { name?: string; milestones?: Milestone[] },
@@ -851,6 +926,14 @@ export const api = {
       `/support-requests/variables${requestId ? `?request=${requestId}` : ""}`,
     ),
   // What is placed by default in a reply's editor: a signature…
+  getOrderContents: () => get<OrderContent[]>("/order-contents"),
+  createOrderContent: (name: string, event: OrderContentEvent | null = null) =>
+    post<OrderContent>("/order-contents", { name, event }),
+  updateOrderContent: (id: Id, data: { name?: string; html?: string; event?: OrderContentEvent | null }) =>
+    put<OrderContent>(`/order-contents/${id}`, data),
+  deleteOrderContent: (id: Id) => del(`/order-contents/${id}`),
+  /** The contents in this order. */
+  reorderOrderContents: (ids: Id[]) => put<OrderContent[]>("/order-contents/order", { ids }),
   getSupportContents: () => get<SupportContent[]>("/support-contents"),
   createSupportContent: (name: string, event: SupportContentEvent | null = null) =>
     post<SupportContent>("/support-contents", { name, event }),
@@ -859,48 +942,34 @@ export const api = {
     data: { name?: string; html?: string; event?: SupportContentEvent | null },
   ) => put<SupportContent>(`/support-contents/${id}`, data),
   deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
-  // A board's Asset widgets settings: the templates table, the VLAN one.
-  getManagedDeviceAssetSettings: (boardId: Id) =>
-    get<ManagedDeviceAssetSettings>(`/managed-device-asset-settings${queryString({ board: boardId })}`),
-  updateManagedDeviceAssetSettings: (boardId: Id, data: Partial<ManagedDeviceAssetSettings>) =>
-    put<ManagedDeviceAssetSettings>(
-      `/managed-device-asset-settings${queryString({ board: boardId })}`,
-      data,
-    ),
-  // A board's label templates, by asset kind; the preview is drawn by the
-  // format's printer, the test printed on it.
-  getLabelTemplates: (kind: LabelTemplateKind, boardId: Id) =>
-    get<LabelTemplates>(`/label-templates/${kind}${queryString({ board: boardId })}`),
-  updateLabelTemplates: (kind: LabelTemplateKind, boardId: Id, templates: LabelTemplate[]) =>
-    put<LabelTemplates>(`/label-templates/${kind}${queryString({ board: boardId })}`, { templates }),
-  previewLabelTemplate: (kind: LabelTemplateKind, boardId: Id, data: Omit<LabelTemplate, "name">) =>
-    post<LabelPreview>(`/label-templates/${kind}/preview${queryString({ board: boardId })}`, data),
-  printLabelTemplate: (kind: LabelTemplateKind, boardId: Id, data: Omit<LabelTemplate, "name">) =>
-    post<LabelTestPrint>(`/label-templates/${kind}/print${queryString({ board: boardId })}`, data),
-  // A board's asset number templates, by declared asset kind: the browser runs them.
-  getAssetNumberTemplates: (kind: DeclaredAssetKind, boardId: Id) =>
-    get<AssetNumberTemplates>(`/asset-number-templates/${kind}${queryString({ board: boardId })}`),
-  updateAssetNumberTemplates: (kind: DeclaredAssetKind, boardId: Id, templates: AssetNumberTemplate[]) =>
-    put<AssetNumberTemplates>(`/asset-number-templates/${kind}${queryString({ board: boardId })}`, {
-      templates,
-    }),
+  // An Asset widget's settings: the templates table, the VLAN one.
+  getManagedDeviceAssetSettings: (ref: ListRef) =>
+    get<ManagedDeviceAssetSettings>(`/managed-device-asset-settings${scopeQuery(ref)}`),
+  updateManagedDeviceAssetSettings: (ref: ListRef, data: Partial<ManagedDeviceAssetSettings>) =>
+    put<ManagedDeviceAssetSettings>(`/managed-device-asset-settings${scopeQuery(ref)}`, data),
+  // An asset widget's label templates; the preview is drawn by the format's
+  // printer, the test printed on it.
+  getLabelTemplates: (kind: LabelTemplateKind, ref: ListRef) =>
+    get<LabelTemplates>(`/label-templates/${kind}${scopeQuery(ref)}`),
+  updateLabelTemplates: (kind: LabelTemplateKind, ref: ListRef, templates: LabelTemplate[]) =>
+    put<LabelTemplates>(`/label-templates/${kind}${scopeQuery(ref)}`, { templates }),
+  previewLabelTemplate: (kind: LabelTemplateKind, ref: ListRef, data: Omit<LabelTemplate, "name">) =>
+    post<LabelPreview>(`/label-templates/${kind}/preview${scopeQuery(ref)}`, data),
+  printLabelTemplate: (kind: LabelTemplateKind, ref: ListRef, data: Omit<LabelTemplate, "name">) =>
+    post<LabelTestPrint>(`/label-templates/${kind}/print${scopeQuery(ref)}`, data),
+  // A declared asset widget's number templates: the browser runs them.
+  getAssetNumberTemplates: (kind: DeclaredAssetKind, ref: ListRef) =>
+    get<AssetNumberTemplates>(`/asset-number-templates/${kind}${scopeQuery(ref)}`),
+  updateAssetNumberTemplates: (kind: DeclaredAssetKind, ref: ListRef, templates: AssetNumberTemplate[]) =>
+    put<AssetNumberTemplates>(`/asset-number-templates/${kind}${scopeQuery(ref)}`, { templates }),
   // An asset's label, from the template of this name.
   printAssetLabel: (kind: LabelTemplateKind, assetId: Id, name: string) =>
     post<LabelTestPrint>(`/label-templates/${kind}/assets/${assetId}/print`, { name }),
-  // A board's declared asset lists, by kind: categories, suppliers, makers, products.
-  getDeclaredAssetSettings: (kind: DeclaredAssetKind, boardId: Id) =>
-    get<DeclaredAssetSettings>(
-      `${DECLARED_ASSET_ROUTES[kind].settings}${queryString({ board: boardId })}`,
-    ),
-  updateDeclaredAssetSettings: (
-    kind: DeclaredAssetKind,
-    boardId: Id,
-    data: Partial<DeclaredAssetSettings>,
-  ) =>
-    put<DeclaredAssetSettings>(
-      `${DECLARED_ASSET_ROUTES[kind].settings}${queryString({ board: boardId })}`,
-      data,
-    ),
+  // A declared asset widget's lists: categories, suppliers, makers, products.
+  getDeclaredAssetSettings: (kind: DeclaredAssetKind, ref: ListRef) =>
+    get<DeclaredAssetSettings>(`${DECLARED_ASSET_ROUTES[kind].settings}${scopeQuery(ref)}`),
+  updateDeclaredAssetSettings: (kind: DeclaredAssetKind, ref: ListRef, data: Partial<DeclaredAssetSettings>) =>
+    put<DeclaredAssetSettings>(`${DECLARED_ASSET_ROUTES[kind].settings}${scopeQuery(ref)}`, data),
   // A board's declared assets, by kind. Their photos and documents go out on
   // upload, like a card's.
   getDeclaredAssets: (kind: DeclaredAssetKind, boardId: Id) =>
@@ -942,17 +1011,47 @@ export const api = {
   updateContactComment: (id: Id, text: string) =>
     put<ContactComment>(`${CONTACT_ROUTES.contacts}/comments/${id}`, { text }),
   deleteContactComment: (id: Id) => del(`${CONTACT_ROUTES.contacts}/comments/${id}`),
-  getContactSettings: (boardId: Id) =>
-    get<ContactSettings>(`${CONTACT_ROUTES.settings}${queryString({ board: boardId })}`),
-  updateContactSettings: (boardId: Id, data: Partial<ContactSettings>) =>
-    put<ContactSettings>(`${CONTACT_ROUTES.settings}${queryString({ board: boardId })}`, data),
+  // A Contact widget's lists.
+  getContactSettings: (ref: ListRef) => get<ContactSettings>(`${CONTACT_ROUTES.settings}${scopeQuery(ref)}`),
+  updateContactSettings: (ref: ListRef, data: Partial<ContactSettings>) =>
+    put<ContactSettings>(`${CONTACT_ROUTES.settings}${scopeQuery(ref)}`, data),
+  // A board's warehouses.
+  getWarehouses: (boardId: Id) =>
+    get<Warehouse[]>(`${WAREHOUSE_ROUTES.warehouses}${queryString({ board: boardId })}`),
+  createWarehouse: (data: WarehouseInput & { board_id: Id; list_key: string }) =>
+    post<Warehouse>(WAREHOUSE_ROUTES.warehouses, data),
+  updateWarehouse: (id: Id, data: WarehouseInput) =>
+    put<Warehouse>(`${WAREHOUSE_ROUTES.warehouses}/${id}`, data),
+  deleteWarehouse: (id: Id) => del(`${WAREHOUSE_ROUTES.warehouses}/${id}`),
+  // A board's locations; a place's label, from the template of this name.
+  getLocations: (boardId: Id) =>
+    get<Location[]>(`${LOCATION_ROUTES.locations}${queryString({ board: boardId })}`),
+  createLocation: (data: LocationInput & { board_id: Id; list_key: string }) =>
+    post<Location>(LOCATION_ROUTES.locations, data),
+  updateLocation: (id: Id, data: LocationInput) =>
+    put<Location>(`${LOCATION_ROUTES.locations}/${id}`, data),
+  deleteLocation: (id: Id) => del(`${LOCATION_ROUTES.locations}/${id}`),
+  printLocationLabel: (id: Id, place: string, name: string) =>
+    post<LabelTestPrint>(
+      `${LOCATION_ROUTES.locations}/${id}/places/${encodeURIComponent(place)}/print`,
+      { name },
+    ),
+  // An Entrepôts widget's lists.
+  getWarehouseSettings: (ref: ListRef) =>
+    get<WarehouseSettings>(`${WAREHOUSE_ROUTES.settings}${scopeQuery(ref)}`),
+  updateWarehouseSettings: (ref: ListRef, data: WarehouseSettings) =>
+    put<WarehouseSettings>(`${WAREHOUSE_ROUTES.settings}${scopeQuery(ref)}`, data),
   // A board's products, their files and their comments.
   getProducts: (boardId: Id) =>
     get<Product[]>(`${PRODUCT_ROUTES.products}${queryString({ board: boardId })}`),
   createProduct: (data: ProductInput & { board_id: Id; list_key: string }) =>
     post<Product>(PRODUCT_ROUTES.products, data),
+  /** Archived, or back: an archived product is no longer offered to an order. */
+  archiveProduct: (id: Id, archived: boolean) =>
+    put<Product>(`${PRODUCT_ROUTES.products}/${id}/archive`, { archived }),
   updateProduct: (id: Id, data: ProductInput) =>
     put<Product>(`${PRODUCT_ROUTES.products}/${id}`, data),
+  duplicateProduct: (id: Id) => post<Product>(`${PRODUCT_ROUTES.products}/${id}/duplicate`),
   deleteProduct: (id: Id) => del(`${PRODUCT_ROUTES.products}/${id}`),
   getProductFiles: (id: Id) => get<ProductFiles>(`${PRODUCT_ROUTES.products}/${id}/files`),
   uploadProductPhoto: (id: Id, file: File) =>
@@ -971,20 +1070,80 @@ export const api = {
   updateProductComment: (id: Id, text: string) =>
     put<ProductComment>(`${PRODUCT_ROUTES.products}/comments/${id}`, { text }),
   deleteProductComment: (id: Id) => del(`${PRODUCT_ROUTES.products}/comments/${id}`),
-  // A board's product lists: its categories tree.
-  getProductSettings: (boardId: Id) =>
-    get<ProductSettings>(`${PRODUCT_ROUTES.settings}${queryString({ board: boardId })}`),
-  updateProductSettings: (boardId: Id, data: ProductSettings) =>
-    put<ProductSettings>(`${PRODUCT_ROUTES.settings}${queryString({ board: boardId })}`, data),
+  // A Produits widget's lists: its categories tree.
+  getProductSettings: (ref: ListRef) => get<ProductSettings>(`${PRODUCT_ROUTES.settings}${scopeQuery(ref)}`),
+  updateProductSettings: (ref: ListRef, data: ProductSettings) =>
+    put<ProductSettings>(`${PRODUCT_ROUTES.settings}${scopeQuery(ref)}`, data),
+  // A board's orders and their comments.
+  getOrders: (boardId: Id) =>
+    get<Order[]>(`${ORDER_ROUTES.orders}${queryString({ board: boardId })}`),
+  createOrder: (data: OrderInput & { board_id: Id; list_key: string }) =>
+    post<Order>(ORDER_ROUTES.orders, data),
+  updateOrder: (id: Id, data: OrderInput) => put<Order>(`${ORDER_ROUTES.orders}/${id}`, data),
+  deleteOrder: (id: Id) => del(`${ORDER_ROUTES.orders}/${id}`),
+  /** The index a format's count gives next, not taken: a number is drawn with it. */
+  getOrderNextIndex: (ref: ListRef, format: OrderNumberFormat) =>
+    get<{ index: number }>(
+      `${ORDER_ROUTES.orders}/next-index${queryString({ board: ref.board, list: ref.list, format })}`,
+    ),
+  /** The reply editor's preview: the message in its template, the order as the drawer holds it. */
+  previewOrderMail: (data: {
+    board_id: Id;
+    html: string;
+    supplier_id: Id | null;
+    due_date: string;
+    lines: OrderInput["lines"];
+    number: string;
+    recipient_id: Id | null;
+  }) => post<{ html: string }>(`${ORDER_ROUTES.orders}/mail-preview`, data),
+  /** The e-mail to the order's supplier contacts, from the signed-in account. */
+  sendOrderMail: (
+    id: Id,
+    data: {
+      kind: OrderMailKind;
+      html: string;
+      copy: boolean;
+      cc?: string[];
+      bcc?: string[];
+      /** Attached, in base 64: 3 MB at most in all. */
+      files?: { name: string; mime: string; content: string }[];
+    },
+  ) =>
+    post<{ sent: number; simulated: boolean }>(`${ORDER_ROUTES.orders}/${id}/mail`, data),
+  /** Whoever writes, for the editors' "{{user.…}}". */
+  getOrderVariables: () => get<{ user: SupportPerson }>(`${ORDER_ROUTES.orders}/variables`),
+  /** Where an order opens: its board, and its widget there. */
+  getOrderLocation: (id: Id) =>
+    get<{ board_id: Id; widget_id: Id | null }>(`${ORDER_ROUTES.orders}/${id}/location`),
+  /** An order's exchanges: the e-mails sent to its supplier contacts. */
+  getOrderMessages: (id: Id) => get<OrderMessage[]>(`${ORDER_ROUTES.orders}/${id}/messages`),
+  getOrderNumberTemplates: (ref: ListRef) =>
+    get<OrderNumberTemplates>(`${ORDER_ROUTES.numbers}${scopeQuery(ref)}`),
+  updateOrderNumberTemplates: (ref: ListRef, templates: OrderNumberTemplate[]) =>
+    put<OrderNumberTemplates>(`${ORDER_ROUTES.numbers}${scopeQuery(ref)}`, { templates }),
+  getOrderAttachments: (id: Id) => get<OrderAttachment[]>(`${ORDER_ROUTES.orders}/${id}/attachments`),
+  uploadOrderAttachment: (id: Id, file: File) =>
+    upload<OrderAttachment>(`${ORDER_ROUTES.orders}/${id}/attachments`, file),
+  uploadOrderInvoice: (id: Id, file: File) =>
+    upload<OrderAttachment>(`${ORDER_ROUTES.orders}/${id}/invoices`, file),
+  reorderOrderAttachments: (id: Id, ids: Id[]) =>
+    put<OrderAttachment[]>(`${ORDER_ROUTES.orders}/${id}/attachments/order`, { ids }),
+  deleteOrderAttachment: (id: Id) => del(`${ORDER_ROUTES.orders}/attachments/${id}`),
+  getOrderComments: (id: Id) => get<OrderComment[]>(`${ORDER_ROUTES.orders}/${id}/comments`),
+  addOrderComment: (id: Id, text: string) =>
+    post<OrderComment>(`${ORDER_ROUTES.orders}/${id}/comments`, { text }),
+  updateOrderComment: (id: Id, text: string) =>
+    put<OrderComment>(`${ORDER_ROUTES.orders}/comments/${id}`, { text }),
+  deleteOrderComment: (id: Id) => del(`${ORDER_ROUTES.orders}/comments/${id}`),
   getMiloSettings: () => get<MiloSettings>("/milo-settings"),
   updateMiloSettings: (data: Partial<MiloSettings>) => put<MiloSettings>("/milo-settings", data),
   getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),
   // The empty template goes back to Milo's own.
   updateMailTemplate: (key: MailTemplateKey, mjml: string) =>
     put<MailTemplate[]>(`/mail-templates/${key}`, { mjml }),
-  // A support content in its reply template, as saved.
+  // A support content — or an order's — in its reply template, as saved.
   previewReply: (
-    key: "support_reply" | "support_auto_reply",
+    key: ReplyTemplateKey,
     reply: { content: string; ticket: string; subject: string; name: string },
   ) => post<{ html: string }>(`/mail-templates/${key}/reply-preview`, reply),
   previewMailTemplate: (key: MailTemplateKey, mjml: string) =>
@@ -1073,27 +1232,25 @@ export const api = {
     put<SupportComment>(`/support-comments/${id}`, { text }),
   deleteSupportComment: (id: Id) => del(`/support-comments/${id}`),
 
-  // Support mode labels: they belong to the board, like the cards'.
-  getSupportLabels: (boardId: string | Id) =>
-    get<SupportLabel[]>(`/support-labels${queryString({ board: boardId })}`),
-  createSupportLabel: (
-    board_id: Id | string,
-    name: string,
-    color: string,
-    group_id?: Id,
-  ) =>
-    post<SupportLabel>("/support-labels", { board_id, name, color, group_id }),
+  // Support mode labels: they belong to a "Tickets" widget, like the cards'.
+  getSupportLabels: (scope: ListScope) => get<SupportLabel[]>(`/support-labels${scopeQuery(scope)}`),
+  createSupportLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<SupportLabel>("/support-labels", { ...listBody(ref), name, color, group_id }),
   updateSupportLabel: (id: Id, data: SupportLabelInput) =>
     put<SupportLabel>(`/support-labels/${id}`, data),
   deleteSupportLabel: (id: Id) => del(`/support-labels/${id}`),
 
-  // A board's labels: a name and a color, placed on its cards.
-  getLabels: (boardId: string | Id) =>
-    get<Label[]>(`/labels${queryString({ board: boardId })}`),
-  createLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
-    post<Label>("/labels", { board_id, name, color, group_id }),
-  copyLabels: (from_board: Id, to_board: Id, replace = false) =>
-    post<CopyResult>("/labels/copy", { from_board, to_board, replace }),
+  // A "Tâches" widget's labels: a name and a color, placed on its cards. A
+  // board's are all of its widgets', each carrying its list key.
+  getLabels: (scope: ListScope) => get<Label[]>(`/labels${scopeQuery(scope)}`),
+  createLabel: (ref: ListRef, name: string, color: string, group_id?: Id) =>
+    post<Label>("/labels", { ...listBody(ref), name, color, group_id }),
+  copyLabels: (from: ListRef, to: ListRef, replace = false) =>
+    post<CopyResult>("/labels/copy", copyBody(from, to, replace)),
+
+  // The widgets an indicator or a chart can read, on every board one sees.
+  getSourceWidgets: (type: string) =>
+    get<SourceWidget[]>(`/source-widgets${queryString({ type })}`),
   updateLabel: (id: Id, data: LabelInput) => put<Label>(`/labels/${id}`, data),
   deleteLabel: (id: Id) => del(`/labels/${id}`),
 };

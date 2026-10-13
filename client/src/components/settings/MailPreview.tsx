@@ -1,6 +1,7 @@
 import { Box, ScrollArea, UnstyledButton, useComputedColorScheme } from "@mantine/core";
 import type { SplitterPaneSize } from "@mantine/hooks";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { MAIL_DARK_CLASS, MAIL_NOTE_CLASS, MAIL_NOTE_DARK_BG } from "@milo/shared";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import { themeWindow } from "../../lib/themeWindow";
 
@@ -283,14 +284,17 @@ export const templateFooterStyle = (full: boolean) =>
 
 // The preview sits on the background of the theme it shows:
 // white in light, as a mail client shows a message, whatever the interface's
-// — its page background is gray in light, dark in dark; the dark one's in
-// dark.
-const PREVIEW_BG = { light: "#ffffff", dark: "var(--mantine-color-body)" };
+// — its page background is gray in light, dark in dark; in dark, the fields'
+// gray, a notch lighter than the page's — the reply editor's (MailFrame).
+const PREVIEW_DARK_BG = "var(--mantine-color-default)";
+const PREVIEW_BG = { light: "#ffffff", dark: PREVIEW_DARK_BG };
 
 /**
  * The e-mail, transparent over the preview's background. The dark preview
  * does what most mail clients do with a message that has no dark theme of
- * its own: it inverts its colors, hues kept — images excepted, turned back.
+ * its own: it inverts its colors, hues kept — images excepted, turned back,
+ * and what is already dark (MAIL_DARK_CLASS), which the clients leave as is;
+ * a note takes the gray they give it (MAIL_NOTE_CLASS).
  * The document takes the interface's color scheme: a different one would
  * make the browser paint it opaque.
  */
@@ -314,7 +318,10 @@ const previewed = (html: string, dark: boolean, scheme: "light" | "dark"): strin
   html.replace(
     "</head>",
     `<style>:root{color-scheme:${scheme}}html,body{background:transparent}${PREVIEW_IMAGES}${
-      dark ? `body>*{filter:${DARK_FILTER}}img{filter:${DARK_FILTER}}` : ""
+      dark
+        ? `body>*{filter:${DARK_FILTER}}img,.${MAIL_DARK_CLASS},.${MAIL_NOTE_CLASS}{filter:${DARK_FILTER}}` +
+          `.${MAIL_NOTE_CLASS}{background-color:${MAIL_NOTE_DARK_BG}!important;color:#ffffff!important}`
+        : ""
     }${logoFor(dark)}</style></head>`,
   );
 

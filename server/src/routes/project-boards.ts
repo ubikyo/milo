@@ -25,6 +25,8 @@ import {
   validMilestones,
 } from "../repositories/project-boards.js";
 import { receivedOrder, arrangeCategories } from "../repositories/reorder.js";
+import { listInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 
 const CATEGORY_NOT_FOUND = "Catégorie introuvable";
 
@@ -34,8 +36,8 @@ const announce = (req: Request, boardId: Id, message: string): void =>
 const EXISTING_CATEGORY = "Cette catégorie existe déjà";
 
 // --- Categories ------------------------------------------------------------
-// A category belongs to a project board: two boards can name a category the
-// same way.
+// A category belongs to a "Projets" widget: two widgets can name a category
+// the same way.
 
 const categoriesWithCounts = selection<CategoryRow & { project_count: number }>(
   `SELECT categories.*,
@@ -51,6 +53,18 @@ const categoriesOfBoard = selection<CategoryRow & { project_count: number }>(
    WHERE categories.board_id = ?
    ORDER BY position, name`,
 );
+const categoriesOfListStatement = selection<CategoryRow & { project_count: number }>(
+  `SELECT categories.*,
+          (SELECT COUNT(*) FROM projects WHERE projects.category_id = categories.id) AS project_count
+   FROM categories
+   WHERE categories.board_id = ? AND categories.list_key = ?
+   ORDER BY position, name`,
+);
+const categoriesOfList = (scope: ListScope) => categoriesOfListStatement.all(scope.board, scope.list);
+
+/** The "Projets" widget a request names, once its board is open to this person. */
+const scopeOf = (req: Request, boardId: unknown, list: unknown): ListScope =>
+  listInBoard(openBoard(boardId, req.user).id, "project.list", list);
 
 const deleteCategory = mutation("DELETE FROM categories WHERE id = ?");
 
@@ -72,14 +86,15 @@ const inTreeOrder = <Row extends CategoryRow>(rows: Row[]): Row[] => {
 };
 
 /**
- * The categories of one board set on another, with their tree. Those already
+ * The categories of one widget set on another, with their tree. Those already
  * bearing the same name under the same parent there are not duplicated: what
  * the source holds under them joins them. "replace": the destination's go
  * first, except those still holding projects — themselves or under them:
  * deleting them would take those projects with them. The report says they
  * were kept.
  */
-const copyCategories = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
+const copyCategories = transaction(
+  (source: ListScope, target: ListScope, replaceExisting: boolean): CopyResult => {
   let copied = 0;
   let skipped = 0;
   let removed = 0;
@@ -87,7 +102,7 @@ const copyCategories = transaction((source: Id, target: Id, replaceExisting: boo
 
   if (replaceExisting) {
     // The deepest first: a parent goes once its children are gone.
-    for (const category of inTreeOrder(categoriesOfBoard.all(target)).reverse()) {
+    for (const category of inTreeOrder(categoriesOfList(target)).reverse()) {
       if (categories.children.all(category.id).length > 0 || category.project_count > 0) {
         kept += 1;
         continue;
@@ -99,9 +114,9 @@ const copyCategories = transaction((source: Id, target: Id, replaceExisting: boo
 
   /** A source category's counterpart in the destination. */
   const counterpart = new Map<Id, Id>();
-  for (const category of inTreeOrder(categoriesOfBoard.all(source))) {
+  for (const category of inTreeOrder(categoriesOfList(source))) {
     const parent = category.parent_id === null ? null : (counterpart.get(category.parent_id) ?? null);
-    const already = categories.byName.get(target, parent, category.name, 0);
+    const already = categories.byName.get(target.board, target.list, parent, category.name, 0);
     if (already) {
       counterpart.set(category.id, already.id);
       skipped += 1;
@@ -113,17 +128,18 @@ const copyCategories = transaction((source: Id, target: Id, replaceExisting: boo
   }
 
   return { copied, skipped, removed, kept };
-});
+  },
+);
 
 /**
- * The parent received for a category of this board: null at the root. It must
- * be one of the board's, and not the category itself or one under it.
+ * The parent received for a category of this widget: null at the root. It
+ * must be one of the widget's, and not the category itself or one under it.
  */
-const readParent = (received: unknown, boardId: Id, own?: Id): Id | null => {
+const readParent = (received: unknown, scope: ListScope, own?: Id): Id | null => {
   if (received === null || received === undefined || received === "") return null;
   const parent = orNotFound(categories.byId.get(received), "Catégorie parente introuvable");
-  if (String(parent.board_id) !== String(boardId)) {
-    badRequest("La catégorie parente doit être du même tableau");
+  if (parent.board_id !== scope.board || parent.list_key !== scope.list) {
+    badRequest("La catégorie parente doit être du même widget");
   }
   if (own !== undefined && subtreeOf(own).has(parent.id)) {
     badRequest("Une catégorie ne peut pas être rangée sous elle-même");
@@ -170,10 +186,12 @@ categoryRoutes.use(touch("categories", "projects"));
 
 categoryRoutes.get("/", (req, res) => {
   if (!requestCan(req, "projects", "view")) return void res.json([]);
-  const { board } = req.query;
+  const { board, list } = req.query;
   if (board && board !== "all") {
     // The targeted board must be open to this person: its categories do not
-    // leave a board one does not see.
+    // leave a board one does not see. Without a list, all of its widgets':
+    // each carries its list key.
+    if (list) return void res.json(categoriesOfList(scopeOf(req, board, list)).map(renderedCategory));
     const visible = openBoard(board, req.user);
     return void res.json(categoriesOfBoard.all(visible.id).map(renderedCategory));
   }
@@ -183,7 +201,7 @@ categoryRoutes.get("/", (req, res) => {
 
 categoryRoutes.post("/copy", (req, res) => {
   require(req, "projects", "create");
-  const { from_board, to_board } = req.body;
+  const { from_board, from_list, to_board, to_list } = req.body;
   if (!from_board || !to_board) {
     badRequest("Le tableau d'origine et celui de destination sont requis");
   }
@@ -191,34 +209,37 @@ categoryRoutes.post("/copy", (req, res) => {
   // Erasing the destination's means deleting some.
   if (replaceExisting) require(req, "projects", "delete");
 
-  const source = openBoard(from_board, req.user);
-  const target = openBoard(to_board, req.user);
-  if (source.id === target.id) badRequest("Choisissez un autre tableau que celui-ci");
+  const source = scopeOf(req, from_board, from_list);
+  const target = scopeOf(req, to_board, to_list);
+  if (source.board === target.board && source.list === target.list) {
+    badRequest("Choisissez un autre widget que celui-ci");
+  }
 
-  const result = copyCategories(source.id, target.id, replaceExisting);
+  const result = copyCategories(source, target, replaceExisting);
   if (result.copied || result.removed) {
     announce(
       req,
-      target.id,
+      target.board,
       replaceExisting
-        ? "a remplacé les catégories par celles d'un autre tableau"
-        : `a copié ${result.copied} catégorie${result.copied > 1 ? "s" : ""} d'un autre tableau`,
+        ? "a remplacé les catégories par celles d'un autre widget"
+        : `a copié ${result.copied} catégorie${result.copied > 1 ? "s" : ""} d'un autre widget`,
     );
   }
   res.json(result);
 });
 
-// The order of a board's categories, dragged in the widget's drawer: it
-// names all those of the board, each once.
+// The order of a widget's categories, dragged in its drawer: it names all
+// those of the widget, each once. They take back the places they held among
+// the board's.
 categoryRoutes.put("/reorder", (req, res) => {
   require(req, "projects", "update");
-  const { board_id, ids } = req.body;
+  const { board_id, list_key, ids } = req.body;
   if (!board_id) badRequest("Le tableau est requis");
-  const board = openBoard(board_id, req.user);
-  const all = categoriesOfBoard.all(board.id);
-  arrangeCategories(receivedOrder(ids, all, "L'ordre doit nommer toutes les catégories"), board.id);
-  announce(req, board.id, "a réorganisé les catégories");
-  res.json(categoriesOfBoard.all(board.id).map(renderedCategory));
+  const scope = scopeOf(req, board_id, list_key);
+  const all = categoriesOfList(scope);
+  arrangeCategories(receivedOrder(ids, all, "L'ordre doit nommer toutes les catégories"), scope.board);
+  announce(req, scope.board, "a réorganisé les catégories");
+  res.json(categoriesOfList(scope).map(renderedCategory));
 });
 
 categoryRoutes.post("/", (req, res) => {
@@ -226,14 +247,14 @@ categoryRoutes.post("/", (req, res) => {
   const name = requireText(req.body.name, "Le nom est requis");
   const boardId = req.body.board_id;
   if (!boardId) badRequest("Le tableau est requis");
-  const board = openBoard(boardId, req.user);
-  const parent = readParent(req.body.parent_id, board.id);
-  if (categories.byName.get(board.id, parent, name, 0)) conflict(EXISTING_CATEGORY);
+  const scope = scopeOf(req, boardId, req.body.list_key);
+  const parent = readParent(req.body.parent_id, scope);
+  if (categories.byName.get(scope.board, scope.list, parent, name, 0)) conflict(EXISTING_CATEGORY);
 
   const milestones = readMilestones(req.body.milestones) ?? [];
 
-  const { lastInsertRowid } = categories.create.run(board.id, name, JSON.stringify(milestones), parent);
-  announce(req, board.id, `a ajouté la catégorie « ${name} »`);
+  const { lastInsertRowid } = categories.create.run(scope, name, JSON.stringify(milestones), parent);
+  announce(req, scope.board, `a ajouté la catégorie « ${name} »`);
   res.status(201).json(renderedCategory(categories.byId.get(lastInsertRowid)!));
 });
 
@@ -241,6 +262,7 @@ categoryRoutes.put("/:id", (req, res) => {
   require(req, "projects", "update");
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORY_NOT_FOUND);
   openBoard(existing.board_id, req.user);
+  const scope = { board: existing.board_id, list: existing.list_key };
 
   // The name, the parent and the milestones are each edited on their own:
   // what is not sent does not change.
@@ -250,11 +272,12 @@ categoryRoutes.put("/:id", (req, res) => {
   const parent =
     req.body.parent_id === undefined
       ? undefined
-      : readParent(req.body.parent_id, existing.board_id, existing.id);
+      : readParent(req.body.parent_id, scope, existing.id);
   if (
     (name !== null || parent !== undefined) &&
     categories.byName.get(
       existing.board_id,
+      existing.list_key,
       parent === undefined ? existing.parent_id : parent,
       name ?? existing.name,
       existing.id,

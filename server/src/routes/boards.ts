@@ -12,10 +12,8 @@ import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { concerned, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
-import { boardSections } from "../repositories/board-widgets.js";
-import { ensureSupportLabels } from "../repositories/support.js";
-import { ensureProjectPriorities } from "../repositories/projects.js";
-import { ensureDeclaredAssetLabels } from "../repositories/declared-asset-labels.js";
+import { boardSections, boardWidgets } from "../repositories/board-widgets.js";
+import { seedListWidget } from "../repositories/list-seeds.js";
 import { followLists } from "./board-widgets.js";
 import {
   boards,
@@ -142,12 +140,8 @@ export const createBoard = transaction(
     const { next } = boards.nextPosition(viewId);
     const id = Number(boards.create.run(viewId, name, next, 1, owner, now()).lastInsertRowid);
     if (firstWidget) boardSections.setFirst(id, firstWidget);
-    // A Support widget brings the default labels (repositories/support.ts).
-    if (firstWidget === "support.list") ensureSupportLabels(id);
-    // A projects widget brings the "Priorités" labels (repositories/projects.ts).
-    if (firstWidget === "project.list") ensureProjectPriorities(id);
-    // A declared asset widget brings its kind's (repositories/declared-asset-labels.ts).
-    if (firstWidget) ensureDeclaredAssetLabels(firstWidget, id);
+    // A list widget brings its own default labels (repositories/list-seeds.ts).
+    for (const widget of boardWidgets.all(id)) seedListWidget(widget.type, widget.config, id);
     return id;
   },
 );

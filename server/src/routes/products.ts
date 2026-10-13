@@ -14,7 +14,14 @@ import {
   PRODUCT_FIELD_MAX,
   PRODUCT_LIST_TYPE,
   PRODUCT_NAME_MAX,
+  PRODUCT_SKU_MAX,
   PRODUCT_NOTES_MAX,
+  PRODUCT_PRICE_MAX,
+  PRODUCT_QUANTITY_MAX,
+  PRODUCT_SUPPLIERS_MAX,
+  PRODUCT_TAXES_MAX,
+  PRODUCT_TAX_DEFAULTS,
+  PRODUCT_TAX_MAX,
   PRODUCT_VALUES_MAX,
   PRODUCT_VARIANTS_MAX,
   accessIncludes,
@@ -32,6 +39,8 @@ import type {
   ProductFiles,
   ProductPhoto,
   ProductSettings,
+  ProductSupplier,
+  ProductTax,
   ProductTracking,
   ProductVariant,
   SqliteBool,
@@ -48,7 +57,8 @@ import { touch } from "../middleware/events.js";
 import { attachments as cardAttachments } from "../repositories/attachments.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
 import { SYSTEM_COMMENT, creationNote, withAuthor } from "../repositories/comments.js";
-import { keyInBoard } from "../repositories/lists.js";
+import { keyInBoard, listInBoard } from "../repositories/lists.js";
+import type { ListScope } from "../repositories/lists.js";
 import { widgetRights } from "../repositories/users.js";
 
 const NOT_FOUND = "Produit introuvable";
@@ -58,12 +68,15 @@ interface ProductRow {
   id: Id;
   board_id: Id;
   list_key: string;
+  sku: string;
   name: string;
+  archived: SqliteBool;
   favorite: SqliteBool;
   notes: string;
   tracking: string;
   category: string;
   variants: string;
+  suppliers: string;
   created_at: string;
   updated_at: string;
 }
@@ -108,8 +121,8 @@ const text = (value: unknown, max: number, what: string): string => {
 };
 
 /**
- * The variants received: each an attribute and its values — a name and a
- * label's color —, every name once in its list. A value left without a name
+ * The variants received: each an attribute and its values — a name, a
+ * label's color and a SKU —, every name once in its list. A value left without a name
  * is dropped; an attribute needs its name.
  */
 const variantsOf = (value: unknown): ProductVariant[] => {
@@ -133,7 +146,7 @@ const variantsOf = (value: unknown): ProductVariant[] => {
       if (names.has(name.toLowerCase())) badRequest(`« ${name} » figure deux fois dans « ${attribute} »`);
       if (!isLabelColor(read.color)) badRequest("Couleur inconnue");
       names.add(name.toLowerCase());
-      values.push({ name, color: String(read.color) });
+      values.push({ name, color: String(read.color), sku: text(read.sku, PRODUCT_SKU_MAX, "Un SKU") });
     }
     if (values.length > PRODUCT_VALUES_MAX) {
       badRequest(`L'attribut « ${attribute} » tient en ${PRODUCT_VALUES_MAX} valeurs`);
@@ -144,6 +157,101 @@ const variantsOf = (value: unknown): ProductVariant[] => {
     badRequest(`Les variantes tiennent en ${PRODUCT_VARIANTS_MAX} attributs`);
   }
   return variants;
+};
+
+/** The companies of the Contact widgets, by id: what a supplier must be. */
+const companyById = selection<{ id: Id; name: string }>(
+  "SELECT id, name FROM contacts WHERE id = ? AND type = 'company'",
+);
+
+/** A price: a positive amount, to the cent; null when not given. */
+export const priceOf = (value: unknown, max: number): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const read = Number(value);
+  if (!Number.isFinite(read) || read < 0) badRequest("Un prix est un montant positif");
+  if (read > max) badRequest(`Un prix tient sous ${max.toLocaleString("fr-FR")}`);
+  return Math.round(read * 100) / 100;
+};
+
+/** A tax's rate: a percentage, to the hundredth; null when not given. */
+export const rateOf = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const read = Number(value);
+  if (!Number.isFinite(read) || read < 0 || read > PRODUCT_TAX_MAX) {
+    badRequest(`Une taxe est un pourcentage entre 0 et ${PRODUCT_TAX_MAX}`);
+  }
+  return Math.round(read * 100) / 100;
+};
+
+/** The taxes received: each a rate, once; in their order. */
+const taxesOf = (received: unknown): ProductTax[] => {
+  if (!Array.isArray(received)) badRequest("Les taxes sont une liste");
+  const rates: number[] = [];
+  for (const entry of received as unknown[]) {
+    const rate = rateOf(((entry ?? {}) as Record<string, unknown>).rate);
+    if (rate === null) return badRequest("Une taxe demande son taux");
+    if (rates.includes(rate)) badRequest(`La taxe ${rate.toLocaleString("fr-FR")} % figure deux fois`);
+    rates.push(rate);
+  }
+  if (rates.length > PRODUCT_TAXES_MAX) badRequest(`Un widget tient en ${PRODUCT_TAXES_MAX} taxes`);
+  return rates.map((rate) => ({ rate }));
+};
+
+/** A minimum quantity: a positive number; null, none. */
+const minQuantityOf = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const read = Number(value);
+  if (!Number.isFinite(read) || read <= 0) badRequest("Une quantité minimum est un nombre positif");
+  if (read > PRODUCT_QUANTITY_MAX) {
+    badRequest(`Une quantité tient sous ${PRODUCT_QUANTITY_MAX.toLocaleString("fr-FR")}`);
+  }
+  return Math.round(read * 1000) / 1000;
+};
+
+/**
+ * The prices received: each a company of a Contact widget, a minimum
+ * quantity or none — once per company — and its price, required from a
+ * minimum; sorted by company, then quantity, none first. A company that no
+ * longer exists is dropped.
+ */
+const suppliersOf = (value: unknown): ProductSupplier[] => {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) badRequest("Les fournisseurs sont une liste");
+  const seen = new Set<string>();
+  const suppliers: (ProductSupplier & { name: string })[] = [];
+  for (const entry of value as unknown[]) {
+    const row = (entry ?? {}) as Record<string, unknown>;
+    const contactId = Number(row.contact_id);
+    const company = Number.isInteger(contactId) ? companyById.get(contactId) : undefined;
+    if (!company) continue;
+    const minQuantity = minQuantityOf(row.min_quantity);
+    const key = `${contactId}\n${minQuantity ?? ""}`;
+    if (seen.has(key)) {
+      badRequest(
+        minQuantity === null
+          ? `« ${company.name} » : un seul prix sans quantité minimum`
+          : `« ${company.name} » : la quantité ${minQuantity.toLocaleString("fr-FR")} figure deux fois`,
+      );
+    }
+    seen.add(key);
+    const price = priceOf(row.price, PRODUCT_PRICE_MAX);
+    if (minQuantity !== null && price === null) {
+      badRequest(`« ${company.name} » : un prix à partir d'une quantité demande son prix`);
+    }
+    const tax = rateOf(row.tax);
+    suppliers.push({ contact_id: contactId, min_quantity: minQuantity, price, tax, name: company.name });
+  }
+  if (suppliers.length > PRODUCT_SUPPLIERS_MAX) {
+    badRequest(`Un produit tient en ${PRODUCT_SUPPLIERS_MAX} prix fournisseurs`);
+  }
+  return suppliers
+    .sort(
+      (a, b) =>
+        a.name.localeCompare(b.name, "fr", { numeric: true }) ||
+        a.contact_id - b.contact_id ||
+        (a.min_quantity ?? 0) - (b.min_quantity ?? 0),
+    )
+    .map(({ name: _name, ...supplier }) => supplier);
 };
 
 /** A category's id, as the client draws it. */
@@ -196,6 +304,7 @@ const fieldsOf = (body: Record<string, unknown>) => {
     body.tracking === undefined ? "none" : (body.tracking as ProductTracking);
   if (!isProductTracking(tracking)) badRequest("Suivi d'inventaire inconnu");
   return {
+    sku: text(body.sku, PRODUCT_SKU_MAX, "Un SKU"),
     name: text(requireText(body.name, "Le champ « Nom » est requis"), PRODUCT_NAME_MAX, "Un nom"),
     favorite: body.favorite === true ? 1 : 0,
     notes: text(body.notes, PRODUCT_NOTES_MAX, "Des notes"),
@@ -203,6 +312,7 @@ const fieldsOf = (body: Record<string, unknown>) => {
     // A category of the board's tree, by its id: one no longer in it shows none.
     category: text(body.category, CATEGORY_ID_MAX, "Une catégorie"),
     variants: JSON.stringify(variantsOf(body.variants)),
+    suppliers: JSON.stringify(suppliersOf(body.suppliers)),
   };
 };
 
@@ -230,45 +340,96 @@ const byProduct = (rows: (Label & { product_id: Id })[]): Map<Id, Label[]> => {
 /** A board's products, each with its labels. */
 const productsOf = (boardId: Id): Product[] => {
   const labels = byProduct(labelsOfBoard.all(boardId));
+  const used = new Set(usedProducts.all().map((r) => r.id));
   return ofBoard.all(boardId).map((row) => ({
     ...row,
+    archived: Boolean(row.archived),
+    used: used.has(row.id),
     favorite: Boolean(row.favorite),
     tracking: isProductTracking(row.tracking) ? row.tracking : "none",
-    variants: parsed<ProductVariant>(row.variants),
+    // A value saved before its SKU has none.
+    variants: parsed<ProductVariant>(row.variants).map((v) => ({
+      ...v,
+      values: v.values.map((x) => ({ ...x, sku: x.sku ?? "" })),
+    })),
+    // Stored before the minimum quantity, or the tax: none.
+    suppliers: parsed<ProductSupplier>(row.suppliers).map((s) => ({
+      ...s,
+      min_quantity: s.min_quantity ?? null,
+      tax: s.tax ?? null,
+    })),
     labels: labels.get(row.id) ?? [],
   }));
 };
 
+/** The products some order's lines cite — on any board. */
+const usedProducts = selection<{ id: Id }>(
+  `SELECT DISTINCT CAST(json_extract(j.value, '$.product_id') AS INTEGER) AS id
+   FROM orders, json_each(orders.lines) j
+   WHERE json_extract(j.value, '$.product_id') > 0`,
+);
+
+/** Does an order's line cite this product? */
+const isUsed = selection<{ one: number }>(
+  `SELECT 1 AS one FROM orders, json_each(orders.lines) j
+   WHERE json_extract(j.value, '$.product_id') = ? LIMIT 1`,
+);
+
+const setArchived = mutation("UPDATE products SET archived = ?, updated_at = ? WHERE id = ?");
+
 const oneProduct = (row: ProductRow): Product =>
   productsOf(row.board_id).find((p) => p.id === row.id)!;
 
-// --- The board's lists ------------------------------------------------------
+// --- A widget's lists -------------------------------------------------------
 
-const readSettings = selection<{ categories: string }>(
-  "SELECT categories FROM board_product_settings WHERE board_id = ?",
+const readSettings = selection<{ categories: string; taxes: string }>(
+  "SELECT categories, taxes FROM board_product_settings WHERE board_id = ? AND list_key = ?",
+);
+const writeTaxes = mutation(
+  `INSERT INTO board_product_settings (board_id, list_key, taxes) VALUES (?, ?, ?)
+   ON CONFLICT (board_id, list_key) DO UPDATE SET taxes = excluded.taxes`,
 );
 const writeCategories = mutation(
-  `INSERT INTO board_product_settings (board_id, categories) VALUES (?, ?)
-   ON CONFLICT (board_id) DO UPDATE SET categories = excluded.categories`,
+  `INSERT INTO board_product_settings (board_id, list_key, categories) VALUES (?, ?, ?)
+   ON CONFLICT (board_id, list_key) DO UPDATE SET categories = excluded.categories`,
 );
 
-/** A board's lists; without a row, none. */
-const settingsOf = (boardId: Id): ProductSettings => ({
-  categories: parsed<ProductCategory>(readSettings.get(boardId)?.categories),
-});
+/** A "Produits" widget's lists; without a row, no category and the default taxes. */
+const settingsOf = (scope: ListScope): ProductSettings => {
+  const row = readSettings.get(scope.board, scope.list);
+  return {
+    categories: parsed<ProductCategory>(row?.categories),
+    taxes: row ? parsed<ProductTax>(row.taxes) : PRODUCT_TAX_DEFAULTS,
+  };
+};
 
 /** What the thread notes about a product when its record changes (lib/history.ts). */
 const fieldsRead = (product: Product): Field[] => [
+  { label: "SKU", value: product.sku || "—" },
   { label: "Nom", value: quote(product.name) },
   { label: "Favoris", value: product.favorite ? "Oui" : "Non" },
   {
     label: "Catégorie",
-    value: categoryPaths(settingsOf(product.board_id).categories).get(product.category) ?? "—",
+    value:
+      categoryPaths(settingsOf({ board: product.board_id, list: product.list_key }).categories).get(
+        product.category,
+      ) ?? "—",
   },
   { label: "Suivi inventaire", value: productTrackingLabel(product.tracking) },
   {
     label: "Variantes",
     value: list(product.variants.map((v) => `${v.attribute} (${v.values.map((x) => x.name).join(", ")})`)),
+  },
+  {
+    label: "Fournisseurs",
+    value: list(
+      product.suppliers.map((x) => {
+        const name = companyById.get(x.contact_id)?.name ?? `#${x.contact_id}`;
+        const price = x.price === null ? "" : x.price.toLocaleString("fr-FR");
+        if (x.min_quantity === null) return price ? `${name} (${price})` : name;
+        return `${name} (dès ${x.min_quantity.toLocaleString("fr-FR")} : ${price})`;
+      }),
+    ),
   },
   { label: "Étiquettes", value: list(product.labels.map((l) => l.name)) },
   { label: "Notes", value: product.notes, opaque: true },
@@ -277,21 +438,25 @@ const fieldsRead = (product: Product): Field[] => [
 // --- Writing -----------------------------------------------------------------
 
 const insert = mutation(
-  `INSERT INTO products (board_id, list_key, name, favorite, notes, tracking, category, variants, created_at, updated_at)
-   VALUES (@board_id, @list_key, @name, @favorite, @notes, @tracking, @category, @variants, @at, @at)`,
+  `INSERT INTO products (board_id, list_key, sku, name, favorite, notes, tracking, category, variants, suppliers,
+     created_at, updated_at)
+   VALUES (@board_id, @list_key, @sku, @name, @favorite, @notes, @tracking, @category, @variants, @suppliers,
+     @at, @at)`,
 );
 const update = mutation(
-  `UPDATE products SET name = @name, favorite = @favorite, notes = @notes, tracking = @tracking,
-     category = @category, variants = @variants, updated_at = @at
+  `UPDATE products SET sku = @sku, name = @name, favorite = @favorite, notes = @notes, tracking = @tracking,
+     category = @category, variants = @variants, suppliers = @suppliers, updated_at = @at
    WHERE id = @id`,
 );
 const remove = mutation("DELETE FROM products WHERE id = ?");
 
 const clearLabels = mutation("DELETE FROM product_label_links WHERE product_id = ?");
-// Only a label of the product's board.
+// Only a label of the product's widget.
 const addLabel = mutation(
   `INSERT OR IGNORE INTO product_label_links (product_id, label_id)
-   SELECT ?, id FROM product_labels WHERE id = ? AND board_id = ?`,
+   SELECT x.id, l.id FROM products x
+   JOIN product_labels l ON l.board_id = x.board_id AND l.list_key = x.list_key
+   WHERE x.id = ? AND l.id = ? AND x.board_id = ?`,
 );
 
 type Fields = ReturnType<typeof fieldsOf>;
@@ -390,10 +555,10 @@ const dropFile = (file: string): void => {
 };
 
 /** The body is a file: we take it as is, whatever its declared type. */
-const fileBody = express.raw({ type: () => true, limit: SIZE_MAX });
+export const fileBody = express.raw({ type: () => true, limit: SIZE_MAX });
 
 /** The uploaded file: its content, its name — never a path —, its declared type. */
-const receivedFile = (req: Request) => {
+export const receivedFile = (req: Request) => {
   const content: unknown = req.body;
   if (!Buffer.isBuffer(content) || content.length === 0) badRequest("Fichier vide");
   const name =
@@ -476,8 +641,62 @@ productRoutes.put("/:id", (req, res) => {
   res.json(saved);
 });
 
+// The copy sits beside the original, "(copie)" after its name: its record,
+// its labels, its photos and documents — the same files, cited twice, as a
+// duplicated card's. Its thread starts anew, on its creation.
+const COPY_SUFFIX = " (copie)";
+
+const copyLabels = mutation(
+  `INSERT INTO product_label_links (product_id, label_id)
+   SELECT ?, label_id FROM product_label_links WHERE product_id = ?`,
+);
+const copyPhotos = mutation(
+  `INSERT INTO product_photos (product_id, file, name, size, position, created_at)
+   SELECT ?, file, name, size, position, ? FROM product_photos WHERE product_id = ?`,
+);
+const copyAttachments = mutation(
+  `INSERT INTO product_attachments (product_id, file, name, mime, size, user_id, created_at, position)
+   SELECT ?, file, name, mime, size, user_id, ?, position FROM product_attachments WHERE product_id = ?`,
+);
+
+const duplicate = transaction((source: ProductRow): Id => {
+  const at = now();
+  const name = source.name.slice(0, PRODUCT_NAME_MAX - COPY_SUFFIX.length) + COPY_SUFFIX;
+  const { board_id, list_key, favorite, notes, tracking, category, variants, suppliers } = source;
+  // A reference designates one product: the copy starts without.
+  const { lastInsertRowid } = insert.run({
+    board_id, list_key, sku: "", name, favorite, notes, tracking, category, variants, suppliers, at,
+  });
+  const id = Number(lastInsertRowid);
+  copyLabels.run(id, source.id);
+  copyPhotos.run(id, at, source.id);
+  copyAttachments.run(id, at, source.id);
+  return id;
+});
+
+productRoutes.post("/:id/duplicate", (req, res) => {
+  const source = openProduct(req, req.params.id, "update");
+  const id = duplicate(source);
+  const at = now();
+  comments.createSystem.run(id, creationNote("Produit créé", at, req.user.id), at, at);
+  res.status(201).json(oneProduct(byId.get(id)!));
+});
+
+/** Archived, or back: an archived product is no longer offered to an order. */
+productRoutes.put("/:id/archive", (req, res) => {
+  const existing = openProduct(req, req.params.id, "update");
+  const archived = req.body?.archived === true;
+  if (Boolean(existing.archived) !== archived) {
+    setArchived.run(archived ? 1 : 0, now(), existing.id);
+    logAction("product", existing.id, req.user, [eventLine("Archivage", archived ? "Archivé" : "Désarchivé")]);
+  }
+  res.json(oneProduct(byId.get(existing.id)!));
+});
+
 productRoutes.delete("/:id", (req, res) => {
   const existing = openProduct(req, req.params.id, "delete");
+  // A quote or an order cites it: it stays — archived, if need be.
+  if (isUsed.get(existing.id)) forbidden("Ce produit figure dans un devis ou une commande : archivez-le plutôt");
   const cited = [...photos.ofProduct.all(existing.id), ...files.ofProduct.all(existing.id)];
   remove.run(existing.id);
   for (const { file } of cited) dropFile(file);
@@ -592,25 +811,32 @@ productRoutes.delete("/comments/:comment", (req, res) => {
 });
 
 /**
- * The lists of a board's Produits widgets — its categories tree —: not a
- * widget's configuration but the board's, shared by every Produits widget on
- * it.
+ * The lists of a Produits widget — its categories tree, its taxes —: not its
+ * configuration but its own data (ListScope), named by "?board=&list=".
  */
 export const productSettingsRoutes = Router();
 
 productSettingsRoutes.use(touch("products"));
 
 productSettingsRoutes.get("/", (req, res) => {
-  res.json(settingsOf(verifyBoard(req, req.query.board, "view")));
+  const board = verifyBoard(req, req.query.board, "view");
+  res.json(settingsOf(listInBoard(board, "product.list", req.query.list)));
 });
 
-/** The tree received replaces the board's entirely. */
+/** The tree received replaces the widget's entirely. */
 productSettingsRoutes.put("/", (req, res) => {
   requireAccess(req, "update");
   const board = openBoard(req.query.board, req.user);
   requireBoardControl(board, req.user);
+  const scope = listInBoard(board.id, "product.list", req.query.list);
   const body = (req.body ?? {}) as Record<string, unknown>;
-  if (body.categories === undefined) badRequest("Rien à enregistrer");
-  writeCategories.run(board.id, JSON.stringify(categoriesOf(body.categories)));
-  res.json(settingsOf(board.id));
+  if (body.categories === undefined && body.taxes === undefined) badRequest("Rien à enregistrer");
+  // Each list read first: a refused one writes nothing.
+  const categories = body.categories === undefined ? undefined : categoriesOf(body.categories);
+  const taxes = body.taxes === undefined ? undefined : taxesOf(body.taxes);
+  transaction(() => {
+    if (categories) writeCategories.run(scope.board, scope.list, JSON.stringify(categories));
+    if (taxes) writeTaxes.run(scope.board, scope.list, JSON.stringify(taxes));
+  })();
+  res.json(settingsOf(scope));
 });

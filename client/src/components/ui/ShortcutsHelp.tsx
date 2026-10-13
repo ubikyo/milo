@@ -1,16 +1,15 @@
 import { Box, Divider, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
+import { useNewShortcutActions } from "../../lib/newShortcut";
 import { PAGE_GUTTER } from "../../themes/layout";
 import Logo from "./Logo";
 
 // Action on the left, shortcut on the right. "when" limits a shortcut to the board
-// where it acts: no new project without a projects list, no next context
-// without contexts, no switching between views or boards with fewer than two,
-// no interface editing without a board.
-type Condition = "projects" | "requests" | "contexts" | "views" | "boards" | "board";
+// where it acts: no next context without contexts, no switching between views
+// or boards with fewer than two, no interface editing without a board. The
+// "N" ones come first: those the list widgets shown declare (lib/newShortcut).
+type Condition = "contexts" | "views" | "boards" | "board";
 
 const SHORTCUTS: { action: string; key: string; when?: Condition }[] = [
-  { action: "Nouveau projet", key: "N", when: "projects" },
-  { action: "Nouvelle demande", key: "N", when: "requests" },
   { action: "Changer de vue", key: "Tab", when: "views" },
   { action: "Tableau suivant", key: "⌥ Tab", when: "boards" },
   { action: "Contexte suivant", key: "C", when: "contexts" },
@@ -31,34 +30,28 @@ const CORNER = {
 
 /**
  * The logo in the bottom right corner: the shortcuts show when the mouse is
- * on it, the version under them. What the open board holds: a projects list,
- * a requests list, contexts; whether there are views, boards, to go
+ * on it, the version under them. What the open board holds: contexts; whether there are views, boards, to go
  * through — at least two —, and a board at all.
  */
 export default function ShortcutsHelp({
-  projects,
-  requests,
   contexts,
   views,
   boards,
   board,
 }: {
-  projects: boolean;
-  requests: boolean;
   contexts: boolean;
   views: boolean;
   boards: boolean;
   board: boolean;
 }) {
   const holds: Record<Condition, boolean> = {
-    projects,
-    requests,
     contexts,
     views,
     boards,
     board,
   };
-  const shown = SHORTCUTS.filter((s) => !s.when || holds[s.when]);
+  const news = useNewShortcutActions().map((action) => ({ action, key: "N" }));
+  const shown = [...news, ...SHORTCUTS.filter((s) => !s.when || holds[s.when])];
   return (
     // No shortcut to show: the logo stays, without its bubble.
     <HoverCard

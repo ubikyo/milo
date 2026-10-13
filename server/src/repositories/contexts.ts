@@ -31,10 +31,10 @@ const byKind = <Row>(sql: (t: (typeof TABLES)[ContextList]) => string) =>
     Object.entries(TABLES).map(([type, t]) => [type, selection<Row>(sql(t))]),
   ) as Record<ContextList, Selection<Row>>;
 
-/** The groups of a kind for a board, in order. */
-const groupsOf = byKind<{ id: Id; name: string }>(
+/** The groups of a kind for a board, in order, each with the list that owns it. */
+const groupsOf = byKind<{ id: Id; name: string; list_key: string }>(
   (t) =>
-    `SELECT id, name FROM ${t.groups} WHERE board_id = @board
+    `SELECT id, name, list_key FROM ${t.groups} WHERE board_id = @board
      ORDER BY position, id`,
 );
 
@@ -75,13 +75,17 @@ const kindsOf = (boardId: Id): Set<ContextList> =>
   new Set(contextListsOf(boardId).map((l) => l.type));
 
 /**
- * The groups of this name among a kind's groups for this board — all of them
- * for ALL_CONTEXT_GROUPS; empty if there is none.
+ * The groups of this name among a list's groups — all of them for
+ * ALL_CONTEXT_GROUPS; empty if there is none. Each list has its own labels.
  */
-const groupsNamed = (type: ContextList, boardId: Id, name: string): Id[] =>
+const groupsNamed = (type: ContextList, boardId: Id, list: string, name: string): Id[] =>
   groupsOf[type]
     .all({ board: boardId })
-    .filter((g) => name === ALL_CONTEXT_GROUPS || contextKey(g.name) === contextKey(name))
+    .filter(
+      (g) =>
+        g.list_key === list &&
+        (name === ALL_CONTEXT_GROUPS || contextKey(g.name) === contextKey(name)),
+    )
     .map((g) => g.id);
 
 /** The board's context group, by its name; null for none. */
@@ -110,7 +114,7 @@ export const contextGroups = (boardId: Id): Record<string, Id[]> => {
   if (name === null) return {};
   return Object.fromEntries(
     contextListsOf(boardId).flatMap(({ type, list }) => {
-      const groups = groupsNamed(type, boardId, name);
+      const groups = groupsNamed(type, boardId, list, name);
       return groups.length === 0 ? [] : [[list, groups]];
     }),
   );
@@ -162,14 +166,19 @@ export const boardContexts = (boardId: Id): string[] =>
   boardContextSections(boardId).flatMap((s) => s.contexts);
 
 /**
- * The label to set, on creation, on an item of this kind so that it belongs
- * to the context being viewed: that of this name in the board's context group.
- * Null with no context, no group, or no label of that name.
+ * The label to set, on creation, on an item of this list so that it belongs
+ * to the context being viewed: that of this name in the list's group named
+ * by the board. Null with no context, no group, or no label of that name.
  */
-export const contextLabel = (type: ContextList, boardId: Id, context: unknown): Id | null => {
+export const contextLabel = (
+  type: ContextList,
+  boardId: Id,
+  list: string,
+  context: unknown,
+): Id | null => {
   if (typeof context !== "string" || !contextKey(context)) return null;
   const name = boardGroup(boardId);
-  const groups = name === null ? [] : groupsNamed(type, boardId, name);
+  const groups = name === null ? [] : groupsNamed(type, boardId, list, name);
   const label = groups
     .flatMap((group) => labelsOfGroup[type].all(group))
     .find((l) => contextKey(l.name) === contextKey(context));

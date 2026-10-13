@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   Cascader,
   Drawer,
@@ -20,11 +21,14 @@ import {
   IconEye,
   IconFolderSymlink,
   IconMessage,
+  IconPaperclip,
   IconSettings,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
+import { errorMessage, notifyError } from "../../lib/errors";
+import { useFileDrag } from "../../lib/useFileDrag";
 import { progressColor } from "../../themes/colors";
 import {
   ACTIONS_BUTTON_STYLE,
@@ -34,13 +38,18 @@ import {
 import { tabStyle } from "../../themes/tabs";
 import fields from "../../assets/styles/GapField.module.css";
 import { fieldWidth } from "../../lib/fieldWidth";
-import { DEFAULT_MILESTONE_TYPE } from "@milo/shared";
+import { DEFAULT_MILESTONE_TYPE, projectReference } from "@milo/shared";
+import CardAttachments from "../board/CardAttachments";
+import { ordered, pendingOf } from "../products/ProductDrawer";
+import type { Pending } from "../products/ProductDrawer";
 import CommentThread from "./CommentThread";
 import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
 import MoveOrCopyProjectModal from "./MoveOrCopyProjectModal";
+import ProjectCategoriesModal from "./ProjectCategoriesModal";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { ACTOR_GAP } from "../ui/ActorAvatars";
 import ActorPicker from "../ui/ActorPicker";
+import AddButton from "../ui/AddButton";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import DrawerFooter from "../ui/DrawerFooter";
@@ -56,7 +65,9 @@ import { categoryNodes } from "../../lib/categories";
 import { TREE_CASCADER, locationTreeData, treePath } from "../ui/EditableTree";
 import type {
   Category,
+  Id,
   MilestoneType,
+  ProjectAttachment,
   ProjectBoard,
   ProjectInput,
   ProjectLabel,
@@ -81,6 +92,8 @@ const TABS = [
   { value: "settings", label: "Paramètres", icon: IconSettings },
   { value: "comments", label: "Commentaires", icon: IconMessage },
 ] as const;
+
+const DOCUMENT_WORDS = { title: "Documents", one: "le document", many: "documents" };
 
 // Height of the actor avatars and labels: the same for both, and
 // for the "+" that follows them, so the two columns line up. The same
@@ -118,6 +131,8 @@ interface ProjectDrawerProps {
     id: number;
     data: Partial<ProjectLabel>;
   }) => void | Promise<void>;
+  /** The widget's categories changed from this drawer: the board re-reads them. */
+  onCategoriesChanged: () => void | Promise<void>;
   onSaved: () => void;
   onDeleted: () => void;
   /** Followed: you are notified of every change to this project. */
@@ -130,15 +145,16 @@ export default function ProjectDrawer({
   onClose,
   projectId,
   boardId,
-  categories,
+  categories: boardCategories,
   context,
   listKey,
-  milestoneTypes,
+  milestoneTypes: boardMilestoneTypes,
   users,
-  labels,
+  labels: boardLabels,
   boards,
   currentUser,
   onLabelsChanged,
+  onCategoriesChanged,
   onSaved,
   onDeleted,
   following,
@@ -146,6 +162,12 @@ export default function ProjectDrawer({
 }: ProjectDrawerProps) {
   const [form, setForm] = useState<Form>(emptyForm);
   const [comments, setComments] = useState<ThreadItem[]>([]);
+  /**
+   * Its documents: an existing project's go out on upload; a new one's wait
+   * for it to be created, then follow.
+   */
+  const [attachments, setAttachments] = useState<(ProjectAttachment | Pending)[]>([]);
+  const fileField = useRef<HTMLInputElement>(null);
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [saving, setSaving] = useState(false);
   /**
@@ -155,12 +177,41 @@ export default function ProjectDrawer({
    */
   const [movement, setMove] = useState<ProjectAction | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
+  /** The window that edits the widget's categories tree. */
+  const [categoriesOpened, setCategoriesOpened] = useState(false);
+  /** The project's number, read with it: "0" until then, and for a new project. */
+  const [number, setNumber] = useState(0);
 
   const isEditing = Boolean(projectId);
+
+  // Its categories, milestone types and labels are its "Projets" widget's:
+  // the project's own, read with it, or the one it is added from.
+  const [readKey, setReadKey] = useState<string | null>(null);
+  const ownKey = projectId ? readKey : (listKey ?? null);
+  const ownList = useMemo(
+    () => (boardId && ownKey ? { board: Number(boardId), list: ownKey } : null),
+    [boardId, ownKey],
+  );
+  const categories = useMemo(
+    () => boardCategories.filter((c) => c.list_key === ownKey),
+    [boardCategories, ownKey],
+  );
+  const milestoneTypes = useMemo(
+    () => boardMilestoneTypes.filter((t) => t.list_key === ownKey),
+    [boardMilestoneTypes, ownKey],
+  );
+  const labels = useMemo(
+    () => boardLabels.filter((l) => l.list_key === ownKey),
+    [boardLabels, ownKey],
+  );
 
   // Without the right to edit projects, the details are read-only.
   const can = useRights();
   const readOnly = isEditing && !can("projects", "update");
+  // Editing the tree adds, renames, moves: the server asks for both rights.
+  const canEditCategories = can("projects", "create") && can("projects", "update");
+  // Files dragged over the page: the drop zone shows, even under a full list.
+  const dragging = useFileDrag(opened && !readOnly);
 
   // The milestones under the progress slider are those of the chosen type: they
   // change with it, and are missing if there are none.
@@ -199,11 +250,18 @@ export default function ProjectDrawer({
         milestone_type_id: defaultValue ? String(defaultValue.id) : "",
       });
       setComments([]);
+      setAttachments([]);
+      setNumber(0);
       editor?.commands.setContent("");
       return;
     }
 
+    setReadKey(null);
+    setNumber(0);
+    setAttachments([]);
     api.getProject(projectId).then((project) => {
+      setReadKey(project.list_key);
+      setNumber(project.number);
       setForm({
         name: project.name,
         category_id: String(project.category_id),
@@ -215,6 +273,7 @@ export default function ProjectDrawer({
         label_ids: (project.labels || []).map((l) => String(l.id)),
       });
       setComments(project.comments);
+      setAttachments(project.attachments);
       editor?.commands.setContent(project.description || "");
     });
   }, [opened, projectId, editor]);
@@ -254,6 +313,12 @@ export default function ProjectDrawer({
       for (const comment of comments) {
         await api.addComment(created.id, comment.text);
       }
+      // From the last, each placed first: they keep their order.
+      for (const attachment of [...attachments].reverse()) {
+        if (!("upload" in attachment)) continue;
+        await api.uploadProjectAttachment(created.id, attachment.upload);
+        URL.revokeObjectURL(attachment.url);
+      }
     }
     setSaving(false);
     onSaved();
@@ -269,6 +334,44 @@ export default function ProjectDrawer({
   const handleMoved = (action: ProjectAction) => () => {
     setMove(null);
     if (action === "move") onSaved();
+  };
+
+  // --- Documents -------------------------------------------------------------
+
+  /** Chosen documents: the most recent first, as the server places them. */
+  const addAttachments = async (files: File[]) => {
+    for (const file of files) {
+      if (!projectId) {
+        setAttachments((already) => [pendingOf(file), ...already]);
+        continue;
+      }
+      try {
+        const attachment = await api.uploadProjectAttachment(projectId, file);
+        setAttachments((already) => [attachment, ...already]);
+      } catch (e) {
+        notifyError(errorMessage(e));
+      }
+    }
+  };
+
+  const arrangeAttachments = async (ids: Id[]) => {
+    setAttachments((already) => ordered(already, ids));
+    if (!projectId) return;
+    try {
+      setAttachments(await api.reorderProjectAttachments(projectId, ids));
+    } catch (e) {
+      notifyError(errorMessage(e));
+    }
+  };
+
+  const deleteAttachment = async (attachment: ProjectAttachment | Pending) => {
+    try {
+      if ("upload" in attachment) URL.revokeObjectURL(attachment.url);
+      else await api.deleteProjectAttachment(attachment.id);
+      setAttachments((already) => already.filter((a) => a.id !== attachment.id));
+    } catch (e) {
+      notifyError(errorMessage(e));
+    }
   };
 
   const handleDelete = async () => {
@@ -465,11 +568,24 @@ export default function ProjectDrawer({
                         onChange={(value) =>
                           setForm((f) => ({ ...f, label_ids: value }))
                         }
-                        boardId={boardId ?? ""}
+                        list={ownList}
                         onLabelsChanged={onLabelsChanged}
                         labelsApi={PROJECT_LABELS_API}
                       />
                     </div>
+                    {/* The project's number, at the end of the row, as on a
+                      support request's details. */}
+                    {number > 0 && (
+                      <Badge
+                        color="green"
+                        variant="filled"
+                        radius="sm"
+                        size="lg"
+                        style={{ flexShrink: 0, alignSelf: "center" }}
+                      >
+                        {projectReference(number)}
+                      </Badge>
+                    )}
                   </Group>
                   <TextInput
                     label="Nom du projet"
@@ -484,7 +600,9 @@ export default function ProjectDrawer({
                   <RichTextField editor={editor} label="Description" />
                   {/* In columns, level after level; any level may be chosen.
                       The project keeps the category's id; the categories are
-                      set in the widget's drawer. */}
+                      set in the widget's drawer, or in the window the link
+                      under the field opens — without leaving the project. */}
+                  <div>
                     <Cascader
                       label="Catégorie"
                       placeholder="Choisir une catégorie"
@@ -501,6 +619,14 @@ export default function ProjectDrawer({
                       searchable
                       required
                     />
+                    {canEditCategories && ownList && (
+                      <AddButton
+                        label="Ajouter une catégorie"
+                        onClick={() => setCategoriesOpened(true)}
+                        mt={4}
+                      />
+                    )}
+                  </div>
 
                   {/* The milestone names are written under the slider, in the
                       flow (MilestoneLabels): they count in what scrolls. */}
@@ -588,6 +714,26 @@ export default function ProjectDrawer({
                     />
                     <MilestoneLabels milestones={milestones} />
                   </div>
+
+                  {/* Read-only, the disabled fieldset turns its actions off; an
+                      empty list then has nothing to show, nor a zone to drop on. */}
+                  <CardAttachments
+                    attachments={attachments}
+                    onPick={() => fileField.current?.click()}
+                    onReorder={arrangeAttachments}
+                    onDelete={deleteAttachment}
+                    drop={
+                      readOnly
+                        ? undefined
+                        : {
+                            icon: IconPaperclip,
+                            message: "Déposez des fichiers ici",
+                            onDrop: (files) => void addAttachments(files),
+                            shown: dragging,
+                          }
+                    }
+                    words={DOCUMENT_WORDS}
+                  />
                 </Stack>
               </fieldset>
             </DrawerScrollArea>
@@ -633,6 +779,20 @@ export default function ProjectDrawer({
           }
           saving={saving}
         />
+
+        {/* The picker, reset afterwards: choosing the same file again must
+            still be seen. */}
+        <input
+          ref={fileField}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            const files = Array.from(e.currentTarget.files ?? []);
+            e.currentTarget.value = "";
+            void addAttachments(files);
+          }}
+        />
       </Drawer>
 
       {/* Categories belong to the board: changing board also means
@@ -648,6 +808,7 @@ export default function ProjectDrawer({
             ? {
                 id: projectId,
                 board_id: Number(boardId),
+                list_key: readKey ?? "",
                 name: form.name,
                 category_id: Number(form.category_id),
               }
@@ -655,6 +816,22 @@ export default function ProjectDrawer({
         }
         boards={boards}
         onMoved={handleMoved(movement ?? "move")}
+      />
+
+      <ProjectCategoriesModal
+        opened={categoriesOpened}
+        onClose={() => setCategoriesOpened(false)}
+        list={ownList}
+        onSaved={(saved) => {
+          // The chosen category may be gone: the project then takes the
+          // tree's first, as a new one does.
+          setForm((f) =>
+            saved.some((c) => String(c.id) === f.category_id)
+              ? f
+              : { ...f, category_id: categoryNodes(saved)[0]?.id ?? "" },
+          );
+          void onCategoriesChanged();
+        }}
       />
 
       <DeleteConfirmModal

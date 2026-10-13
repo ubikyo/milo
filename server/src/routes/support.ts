@@ -355,7 +355,7 @@ supportRequestRoutes.post("/", (req, res) => {
     replaceSupportLabels(created.id, toIds(req.body.label_ids));
   }
   // Entered in a context, it receives its label: it stays in sight.
-  const label = contextLabel("support.list", board.id, req.body.context);
+  const label = contextLabel("support.list", board.id, created.list_key, req.body.context);
   if (label !== null) addSupportLabel(created.id, label);
   // Those just assigned already have theirs.
   updatedRequest(req, created.id, "a créé la demande", assigned);

@@ -21,17 +21,19 @@ import type {
 } from "@milo/shared";
 import { MANAGED_DEVICE_ASSET_INDICATORS } from "./managed-device-asset";
 import { contactListWidget } from "./contact";
-import { contactCountIndicator } from "./contact/count";
 import { productListWidget } from "./product";
+import { orderListWidget } from "./order";
+import { warehouseListWidget } from "./warehouse";
+import { locationListWidget } from "./location";
 import { declaredAssetWidgets } from "./declared-asset";
+import { INDICATOR_WIDGETS } from "./indicators";
 import { INDICATORS } from "./support";
 import type { IndicatorConfigProps } from "./support/types";
 import { PROJECT_INDICATORS } from "./project";
 import { TASK_INDICATORS } from "./task";
 import { WIDGETS } from "./common";
-import { MAIL_COUNT_WIDGETS } from "./m365/mail-counts";
-import type { MailCountWidget } from "./m365/mail-counts";
 import { APPOINTMENT_WIDGETS } from "./m365/appointments";
+import type { AppointmentWidget } from "./m365/appointments";
 import {
   Frame,
   FRAME_PADDING,
@@ -42,12 +44,14 @@ import {
 } from "./margins";
 import { appearanceRows } from "../components/ui/AppearanceFields";
 import { alignmentRows } from "./alignment";
-import { FromListSource, ListSourceField } from "./list-source";
+import { SourcesField, useSourceItems, useSources } from "../lib/sources";
+import type { SourceItems } from "../lib/sources";
 import { heightRow } from "./height";
 import SettingRows, { frameRow } from "../components/ui/SettingRows";
 import { TitleStyleField } from "../components/ui/TitleStyles";
 import { FRAMED, isFramed, type AccessWidget } from "./types";
 import { WidgetConfigContext } from "../lib/editing";
+import { ProvideListRef } from "../lib/list-ref";
 import { CARD_PADDING, GAP } from "../components/ui/IndicatorsPanel";
 import type { IndicatorWidgetBase, WidgetRender } from "../components/ui/IndicatorsPanel";
 
@@ -221,41 +225,84 @@ const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorCo
     );
   };
 
+/** Where each data type's items are in a board's data. */
+const FIELDS = {
+  project: "projects",
+  task: "lists",
+  support: "requests",
+  managed_device_asset: "managedDeviceAssets",
+} as const satisfies Partial<Record<keyof SourceItems, keyof BoardData>>;
+
+type CountedPrefix = keyof typeof FIELDS;
+
+const isCounted = (prefix: string): prefix is CountedPrefix => prefix in FIELDS;
+
+/**
+ * The board's data, its items of the prefix replaced by those of the list
+ * widgets the configuration reads (lib/sources.tsx) — of this board or
+ * another.
+ */
+function FromSources({
+  prefix,
+  data,
+  config,
+  children,
+}: {
+  prefix: CountedPrefix;
+  data: BoardData;
+  config: unknown;
+  children: (data: BoardData) => ReactNode;
+}) {
+  const field = FIELDS[prefix];
+  const sources = useSources(`${prefix}.list`, config);
+  const items = useSourceItems(prefix, sources, data[field] as SourceItems[typeof prefix][]);
+  return <>{children({ ...data, [field]: items ?? [] })}</>;
+}
+
 /**
  * The widgets specific to a data type, under their prefix. The common widgets
  * that their registry took over from the Access mode aren't there: they
- * come once, from the Access mode itself. All but the list read all the
- * board's lists, or the one their drawer names first (list-source.tsx).
+ * come once, from the Access mode itself. All but the list read the list
+ * widgets their drawer names (SOURCES), on any board.
  */
 const prefixed = <W extends IndicatorWidgetBase<string>>(
   prefix: string,
   widgets: W[],
-  /** The data, reduced to the items of a list widget — its list key. */
-  scope: (data: BoardData, key: string) => BoardData,
   show: (widget: W, data: BoardData, config: unknown, render: WidgetRender) => ReactNode,
 ): BoardWidgetDefinition[] =>
   widgets
     .filter((w) => !COMMON.has(w.type))
     .map((w) => {
       const follows = w.type !== "list";
-      // A widget that places its own source field reads its list itself.
-      const wrapsSource = follows && !w.ownSource;
+      // A widget that places its own sources field reads its lists itself.
+      const wrapsSource = follows && !w.ownSource && isCounted(prefix);
       const content = (data: BoardData, config: unknown, render: WidgetRender) =>
         wrapsSource ? (
-          <FromListSource prefix={prefix} config={config}>
-            {(key) => show(w, key ? scope(data, key) : data, config, render)}
-          </FromListSource>
+          <FromSources prefix={prefix} data={data} config={config}>
+            {(read) => show(w, read, config, render)}
+          </FromSources>
         ) : (
           show(w, data, config, render)
         );
       const Own = w.Config;
+      // A list owns its labels, categories and tables: its display and its
+      // drawer know which list it is (lib/list-ref.tsx).
+      const isList = w.type === "list";
       return {
         ...w,
         type: `${prefix}.${w.type}`,
+        ...(isList &&
+          Own && {
+            Config: (props: IndicatorConfigProps) => (
+              <ProvideListRef config={props.config}>
+                <Own {...props} />
+              </ProvideListRef>
+            ),
+          }),
         ...(wrapsSource && {
           Config: ({ config, onChange }: IndicatorConfigProps) => (
             <Stack gap="xl">
-              <ListSourceField prefix={prefix} config={config} onChange={onChange} />
+              <SourcesField type={`${prefix}.list`} config={config} onChange={onChange} />
               {Own && <Own config={config} onChange={onChange} />}
             </Stack>
           ),
@@ -268,8 +315,8 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
         // A card has its padding from the panel (IndicatorsPanel). A list
         // may save its configuration in place: its columns' widths, set above
         // them in edit mode (useColumnWidthEditing).
-        show: (data: BoardData, config: unknown, render: WidgetRender) =>
-          w.ownClicks ? (
+        show: (data: BoardData, config: unknown, render: WidgetRender) => {
+          const shown = w.ownClicks ? (
             <WidgetConfigContext.Provider value={{ onChange: render.onChange, locked: render.locked }}>
               <Frame config={config} framed={!w.frameless && isFramed(config)}>
                 {content(data, config, render)}
@@ -277,7 +324,9 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
             </WidgetConfigContext.Provider>
           ) : (
             content(data, config, render)
-          ),
+          );
+          return isList ? <ProvideListRef config={config}>{shown}</ProvideListRef> : shown;
+        },
       };
     });
 
@@ -287,7 +336,7 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
  * cards like the indicators of a data type, or a list, but without a prefix —
  * they read no board data.
  */
-const followers = (widgets: MailCountWidget[]): BoardWidgetDefinition[] =>
+const followers = (widgets: AppointmentWidget[]): BoardWidgetDefinition[] =>
   widgets.map((w) => ({
     ...w,
     Appearance: appearanceOf(w),
@@ -303,29 +352,10 @@ const followers = (widgets: MailCountWidget[]): BoardWidgetDefinition[] =>
       ),
   }));
 
-/** Each data type's items, reduced to those of one list widget. */
-const inProjects = (d: BoardData, key: string): BoardData => ({
-  ...d,
-  projects: d.projects.filter((p) => p.list_key === key),
-});
-const inLists = (d: BoardData, key: string): BoardData => ({
-  ...d,
-  lists: d.lists.filter((l) => l.list_key === key),
-});
-const inRequests = (d: BoardData, key: string): BoardData => ({
-  ...d,
-  requests: d.requests.filter((r) => r.list_key === key),
-});
-const inManagedDeviceAssets = (d: BoardData, key: string): BoardData => ({
-  ...d,
-  managedDeviceAssets: d.managedDeviceAssets.filter((a) => a.list_key === key),
-});
-
 /** The managed device assets widgets: their list, then their indicators. */
 const MANAGED_DEVICE_ASSETS = prefixed(
   "managed_device_asset",
   MANAGED_DEVICE_ASSET_INDICATORS,
-  inManagedDeviceAssets,
   (w, d, config, render) => (
     <w.Display config={config} assets={d.managedDeviceAssets} {...render} />
   ),
@@ -341,15 +371,14 @@ const MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS = MANAGED_DEVICE_ASSETS.filter(
 /** In the order the widgets drawer presents them, grouped by type. */
 export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
   ...WIDGETS.map(fromAccess),
-  ...followers(MAIL_COUNT_WIDGETS),
   ...followers(APPOINTMENT_WIDGETS),
-  ...prefixed("project", PROJECT_INDICATORS, inProjects, (w, d, config, render) => (
+  ...prefixed("project", PROJECT_INDICATORS, (w, d, config, render) => (
     <w.Display config={config} projects={d.projects} userId={d.userId} {...render} />
   )),
-  ...prefixed("task", TASK_INDICATORS, inLists, (w, d, config, render) => (
+  ...prefixed("task", TASK_INDICATORS, (w, d, config, render) => (
     <w.Display config={config} lists={d.lists} userId={d.userId} {...render} />
   )),
-  ...prefixed("support", INDICATORS, inRequests, (w, d, config, render) => (
+  ...prefixed("support", INDICATORS, (w, d, config, render) => (
     <w.Display config={config} requests={d.requests} userId={d.userId} {...render} />
   )),
   // The asset lists side by side — the drawer files them under the same
@@ -357,20 +386,32 @@ export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
   // device asset indicators.
   ...MANAGED_DEVICE_ASSET_LIST_WIDGET,
   ...DECLARED_ASSET_KINDS.flatMap((kind) =>
-    prefixed(kind, declaredAssetWidgets(kind), (d) => d, (w, _d, config, render) => (
+    prefixed(kind, declaredAssetWidgets(kind), (w, _d, config, render) => (
       <w.Display config={config} {...render} />
     )),
   ),
   ...MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS,
-  // The logistics: the contacts, the products, then their indicator.
-  ...prefixed("contact", [contactListWidget], (d) => d, (w, _d, config, render) => (
+  // The logistics: the contacts, the products, the orders, the warehouses,
+  // the locations, then their indicator.
+  ...prefixed("contact", [contactListWidget], (w, _d, config, render) => (
     <w.Display config={config} {...render} />
   )),
-  ...prefixed("product", [productListWidget], (d) => d, (w, _d, config, render) => (
+  ...prefixed("product", [productListWidget], (w, _d, config, render) => (
     <w.Display config={config} {...render} />
   )),
-  ...prefixed("contact", [contactCountIndicator], (d) => d, (w, _d, config, render) => (
+  ...prefixed("order", [orderListWidget], (w, d, config, render) => (
+    <w.Display config={config} userId={d.userId} {...render} />
+  )),
+  ...prefixed("warehouse", [warehouseListWidget], (w, _d, config, render) => (
     <w.Display config={config} {...render} />
+  )),
+  ...prefixed("location", [locationListWidget], (w, _d, config, render) => (
+    <w.Display config={config} {...render} />
+  )),
+  // The "Indicateurs": a number, bars, a ring… of the data chosen in their
+  // drawer — any list widget kind that gives one (widgets/indicators).
+  ...prefixed("indicator", INDICATOR_WIDGETS, (w, d, config, render) => (
+    <w.Display config={config} board={d} {...render} />
   )),
 ];
 

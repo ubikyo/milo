@@ -8,14 +8,19 @@ import type { Id, Right } from "@milo/shared";
 import { conflict, orNotFound, requireText } from "../lib/http.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
 import { renameContextGroup } from "../repositories/contexts.js";
+import type { ListScope } from "../repositories/lists.js";
 
 const GROUP_NOT_FOUND = "Groupe introuvable";
 
 /**
  * The scope of a request, once its access is checked for this right: the
- * board's id, or nothing for Support. Throws when access is refused.
+ * list widget that owns the groups (ListScope). Throws when access is
+ * refused, or when no widget of the board holds the key.
  */
-export type ScopeOf = (req: Request, boardId: unknown, right: Right) => Id | undefined;
+export type ScopeOf = (req: Request, boardId: unknown, list: unknown, right: Right) => ListScope;
+
+/** The board of a request, once its access is checked for this right. */
+export type BoardOf = (req: Request, boardId: unknown, right: Right) => Id;
 
 /** Announces a change of the groups on their board (lib/notify.ts, `notifyBoard`). */
 export type Announce = (req: Request, boardId: Id | null | undefined, message: string) => void;
@@ -25,23 +30,30 @@ export const mountLabelGroups = (
   routes: Router,
   groups: LabelGroupStore,
   scopeOf: ScopeOf,
+  boardOf: BoardOf,
   announce: Announce,
 ): void => {
+  // Without a list, every group of the board: each carries its list key.
   routes.get("/groups", (req, res) => {
-    res.json(groups.ofScope(scopeOf(req, req.query.board, "view")));
+    const { board, list } = req.query;
+    res.json(
+      list
+        ? groups.ofScope(scopeOf(req, board, list, "view"))
+        : groups.ofBoard(boardOf(req, board, "view")),
+    );
   });
 
   routes.post("/groups", (req, res) => {
-    const scope = scopeOf(req, req.body.board_id, "create");
+    const scope = scopeOf(req, req.body.board_id, req.body.list_key, "create");
     const name = requireText(req.body.name, "Le nom du groupe est requis");
     const created = groups.create(scope, name);
-    announce(req, scope, `a ajouté le groupe d'étiquettes « ${name} »`);
+    announce(req, scope.board, `a ajouté le groupe d'étiquettes « ${name} »`);
     res.status(201).json(groups.byId(created));
   });
 
   routes.put("/groups/:id", (req, res) => {
     const existing = orNotFound(groups.byId(req.params.id), GROUP_NOT_FOUND);
-    scopeOf(req, existing.board_id, "update");
+    scopeOf(req, existing.board_id, existing.list_key, "update");
     const name = requireText(req.body.name, "Le nom du groupe est requis");
     groups.rename(existing.id, name);
     // A board's context group is named: it follows the rename.
@@ -55,7 +67,7 @@ export const mountLabelGroups = (
   // A group goes once emptied: its labels are moved or deleted first.
   routes.delete("/groups/:id", (req, res) => {
     const existing = orNotFound(groups.byId(req.params.id), GROUP_NOT_FOUND);
-    scopeOf(req, existing.board_id, "delete");
+    scopeOf(req, existing.board_id, existing.list_key, "delete");
     const count = groups.labelCount(existing.id);
     if (count > 0) {
       conflict(
@@ -71,9 +83,9 @@ export const mountLabelGroups = (
 
   // The whole arrangement: every group, in order, each with its labels.
   routes.put("/arrange", (req, res) => {
-    const scope = scopeOf(req, req.body.board_id, "update");
+    const scope = scopeOf(req, req.body.board_id, req.body.list_key, "update");
     groups.arrange(scope, groups.receivedLayout(req.body.groups, scope));
-    announce(req, scope, "a réorganisé les étiquettes");
+    announce(req, scope.board, "a réorganisé les étiquettes");
     res.status(204).end();
   });
 };

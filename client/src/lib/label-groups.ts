@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { api, LABEL_GROUPS_EVENT } from "../api";
-import { CopyPasteContext } from "../components/ui/CopyPasteActions";
+import { listRefKey, useListRef } from "./list-ref";
 import { errorMessage, notifyError } from "./errors";
 import type { Id, LabelGroup, LabelsBase, SupportLabel } from "@milo/shared";
 
 // What the lists and indicators share about label groups: reading those of the
-// open board, and keeping the labels of one group in their order.
+// list widget around, and keeping the labels of one group in their order.
 
 /** What a label carries that matters here: its group and its place. */
 interface Placed {
@@ -30,11 +30,24 @@ export const labelRank = (labels: Placed[], group: Id | null | undefined): numbe
   ofGroup(labels, group)[0]?.position ?? null;
 
 /**
- * The title of a labels column: its group's name, or "Étiquette" when it shows
- * them all — or when its group is gone.
+ * The groups while they are first read (useLabelGroups): empty like none, but
+ * told apart so that a column title does not show "Étiquette" before its
+ * group's name.
  */
-export const labelsColumnTitle = (groups: LabelGroup[], group: Id | null | undefined): string =>
-  (group == null ? undefined : groups.find((g) => g.id === group)?.name) ?? "Étiquette";
+const LOADING_GROUPS: LabelGroup[] = [];
+
+/**
+ * The title of a labels column: its group's name, or "Étiquette" when it shows
+ * them all — or when its group is gone. Blank while the groups are read.
+ */
+export const labelsColumnTitle = (groups: LabelGroup[], group: Id | null | undefined): string => {
+  if (group == null) return "Étiquette";
+  if (groups === LOADING_GROUPS) return "";
+  return groups.find((g) => g.id === group)?.name ?? "Étiquette";
+};
+
+/** The groups last read, by kind of labels and list widget: shown at once when a list comes back. */
+const groupsCache = new Map<string, LabelGroup[]>();
 
 /**
  * The groups being edited in a widget drawer (LabelGroupsEditor), by kind of
@@ -70,26 +83,33 @@ export const remapGroups = (
 };
 
 /**
- * The groups of a kind of labels: those of the open board — in a drawer that
- * edits them, its draft.
- * Empty while they are read, or without "base". Re-read when they change —
- * a group renamed, added, removed or moved —: column titles and group
- * choices follow.
+ * The groups of a kind of labels: those of the list widget around
+ * (lib/list-ref.tsx) — in a drawer that edits them, its draft.
+ * Empty while first read, without "base", or outside a list widget; the
+ * last ones read while they are read again.
+ * Re-read when they change — a group renamed, added, removed or moved —:
+ * column titles and group choices follow.
  */
 export function useLabelGroups(base: LabelsBase | undefined): LabelGroup[] {
   const drafts = useContext(LabelGroupDraftsContext)?.drafts;
   const draft = base ? drafts?.[base] : undefined;
-  const board = useContext(CopyPasteContext)?.board ?? null;
-  const boardId = board?.id;
-  const [groups, setGroups] = useState<LabelGroup[]>([]);
+  const list = useListRef();
+  const key = base && list ? `${base}\n${listRefKey(list)}` : null;
+  const [groups, setGroups] = useState<LabelGroup[]>(
+    () => (key ? (groupsCache.get(key) ?? LOADING_GROUPS) : []),
+  );
 
   useEffect(() => {
-    if (!base || boardId === undefined) return;
+    if (!base || !list || !key) return setGroups([]);
     let current = true;
+    setGroups(groupsCache.get(key) ?? LOADING_GROUPS);
     const read = () =>
       api
-        .getLabelGroups(base, boardId)
-        .then((next) => current && setGroups(next))
+        .getLabelGroups(base, list)
+        .then((next) => {
+          groupsCache.set(key, next);
+          if (current) setGroups(next);
+        })
         .catch((e) => notifyError(errorMessage(e)));
     const changed = (e: Event) => (e as CustomEvent<LabelsBase>).detail === base && read();
     read();
@@ -98,23 +118,23 @@ export function useLabelGroups(base: LabelsBase | undefined): LabelGroup[] {
       current = false;
       window.removeEventListener(LABEL_GROUPS_EVENT, changed);
     };
-  }, [base, boardId]);
+  }, [base, list, key]);
 
   return draft ?? groups;
 }
 
-/** The open board's Support labels, in order. Empty while they are read. */
+/** The Support labels of the "Tickets" widget around, in order. Empty while they are read. */
 export function useSupportLabels(): SupportLabel[] {
-  const boardId = useContext(CopyPasteContext)?.board?.id;
+  const list = useListRef();
   const [labels, setLabels] = useState<SupportLabel[]>([]);
 
   useEffect(() => {
-    if (boardId === undefined) return;
+    if (!list) return setLabels([]);
     api
-      .getSupportLabels(boardId)
+      .getSupportLabels(list)
       .then(setLabels)
       .catch((e) => notifyError(errorMessage(e)));
-  }, [boardId]);
+  }, [list]);
 
   return labels;
 }

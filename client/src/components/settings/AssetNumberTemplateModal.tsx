@@ -38,7 +38,9 @@ import type { MjmlEditorHandle } from "./MjmlEditor";
 // (LabelTemplateModal): its variables — a click drops one where the cursor
 // was —, its TypeScript, and a console: what the code wrote, and the number
 // it returned, run in the browser with a label drawn at random in each group.
-// "Exécuter" runs it again, with other labels.
+// "Exécuter" runs it again, with other labels. An order's numbering format
+// opens in it too (OrderNumberTemplateFields): its title, its function and
+// how it runs are given.
 
 interface AssetNumberTemplateModalProps {
   /** The template being edited; "null" closes the modal. */
@@ -48,6 +50,12 @@ interface AssetNumberTemplateModalProps {
   /** Writes the template on the server: the window closes once it is done. */
   onSave: (code: string) => Promise<unknown>;
   canEdit: boolean;
+  /** The window's title, before the template's name. */
+  title?: string;
+  /** The function the code declares. */
+  functionName?: string;
+  /** Runs the code with the values drawn — by variable, in lower case. */
+  run?: (code: string, values: Map<string, string>) => Promise<AssetNumberRun>;
 }
 
 // The code runs once typing has paused.
@@ -75,6 +83,9 @@ export default function AssetNumberTemplateModal({
   onClose,
   onSave,
   canEdit,
+  title = "Format de numéro d'asset",
+  functionName = ASSET_NUMBER_FUNCTION,
+  run: runCode = runAssetNumberCode,
 }: AssetNumberTemplateModalProps) {
   const [code, setCode] = useState("");
   const [typed] = useDebouncedValue(code, RUN_DELAY_MS);
@@ -96,7 +107,7 @@ export default function AssetNumberTemplateModal({
     let current = true;
     const values = drawValues(variables);
     setRunning(true);
-    runAssetNumberCode(typed, values)
+    runCode(typed, values)
       .then((outcome) => {
         if (!current) return;
         setRun({
@@ -112,6 +123,7 @@ export default function AssetNumberTemplateModal({
     return () => {
       current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [template, typed, runs, variables]);
 
   const save = async () => {
@@ -158,7 +170,7 @@ export default function AssetNumberTemplateModal({
       closeOnEscape={false}
       title={
         <Group component="span" justify="space-between" wrap="nowrap">
-          {template ? `Format de numéro d'asset — ${template.name}` : "Format de numéro d'asset"}
+          {template ? `${title} — ${template.name}` : title}
           <ActionIcon
             variant="transparent"
             c={templateIconColor(full)}
@@ -210,7 +222,7 @@ export default function AssetNumberTemplateModal({
 
           <Splitter.Pane defaultSize={PANE_SIZES.preview} min={PANE_MINS.preview} collapsible style={paneStyle(full ? undefined : "right", panes.folded(2))}>
             <FoldablePane label="Console" folded={panes.folded(2)} onUnfold={() => panes.unfold(2)}>
-              <Console run={run} running={running} />
+              <Console run={run} running={running} functionName={functionName} />
             </FoldablePane>
           </Splitter.Pane>
         </Splitter>
@@ -270,13 +282,21 @@ function ConsoleLine({ children, color }: { children: string; color?: string }) 
  * the code wrote, then the number it returned, in green — or what went wrong,
  * in red.
  */
-function Console({ run, running }: { run: ConsoleRun | null; running: boolean }) {
+function Console({
+  run,
+  running,
+  functionName,
+}: {
+  run: ConsoleRun | null;
+  running: boolean;
+  functionName: string;
+}) {
   return (
     <Box h="100%" style={{ backgroundColor: "var(--mantine-color-body)" }}>
       <ScrollArea h="100%" scrollbarSize={SCROLLBAR_SIZE} p={CONSOLE_INSET} style={{ opacity: running ? 0.5 : 1 }}>
         {!run ? (
           <Text size="sm" c="dimmed">
-            {`Le résultat de ${ASSET_NUMBER_FUNCTION}() s'affiche ici.`}
+            {`Le résultat de ${functionName}() s'affiche ici.`}
           </Text>
         ) : (
           <Stack gap={2}>
@@ -296,7 +316,7 @@ function Console({ run, running }: { run: ConsoleRun | null; running: boolean })
                 ))}
               </>
             )}
-            <ConsoleHeading>{`${ASSET_NUMBER_FUNCTION}()`}</ConsoleHeading>
+            <ConsoleHeading>{`${functionName}()`}</ConsoleHeading>
             {run.error !== null ? (
               <ConsoleLine color={RED}>{run.error}</ConsoleLine>
             ) : (

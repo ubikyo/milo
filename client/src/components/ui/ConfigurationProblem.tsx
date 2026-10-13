@@ -8,5 +8,5 @@ import EmptyPanel from "./EmptyPanel";
  * settings reopen through its menu, as usual.
  */
 export default function ConfigurationProblem({ widget }: { widget: string }) {
-  return <EmptyPanel icon={IconAlertTriangle} message={widget} warning size="md" />;
+  return <EmptyPanel icon={IconAlertTriangle} message={widget} warning />;
 }

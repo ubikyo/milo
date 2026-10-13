@@ -23,7 +23,7 @@ import type {
   NotificationKind,
   NotificationScope,
 } from "@milo/shared";
-import { can, itemLink, supportTicketRef } from "@milo/shared";
+import { accessIncludes, can, itemLink, supportTicketRef } from "@milo/shared";
 import type { Area } from "@milo/shared";
 import type { UserRow } from "../db/rows.js";
 import { selection } from "../db/query.js";
@@ -36,7 +36,7 @@ import { notificationSettings } from "./notification-settings.js";
 import { placesView, template, updatesView } from "./mail-template.js";
 import type { ElementView, PlacedElement, Row } from "./mail-template.js";
 import { notifications } from "../repositories/notifications.js";
-import { companyRights, notificationRights, users } from "../repositories/users.js";
+import { companyRights, notificationRights, users, widgetRights } from "../repositories/users.js";
 import { now } from "./time.js";
 
 // --- Settings (each person's preferences › Notifications) -----------------
@@ -347,11 +347,20 @@ const enqueue = (recipient: UserRow, occurrence: Entry, link: string, sender: st
 // --- Who is notified -------------------------------------------------------
 
 /** The mode the followed item belongs to. */
-const domains: Record<Occurrence["kind"], Area> = {
+const domains: Record<Exclude<Occurrence["kind"], "order">, Area> = {
   project: "projects",
   card: "tasks",
   support: "support",
 };
+
+/**
+ * Whether a person still sees an item of this kind: an area's right; an
+ * order, its widget type's — "Logistique".
+ */
+const sees = (person: UserRow, kind: Occurrence["kind"]): boolean =>
+  kind === "order"
+    ? accessIncludes(widgetRights(person).logistics, "view")
+    : can(companyRights(person), domains[kind], "view");
 
 /**
  * The actors of an item, except the one who has just acted: those of a
@@ -374,6 +383,10 @@ const actors: Record<Occurrence["kind"], ReturnType<typeof selection<UserRow>>> 
      JOIN support_requests r ON r.id = a.request_id
      WHERE a.request_id = ? AND a.user_id != ?
        AND (r.sender_email = '' OR lower(users.email) != lower(r.sender_email))`,
+  ),
+  order: selection(
+    `SELECT users.* FROM order_actors a JOIN users ON users.id = a.user_id
+     WHERE a.order_id = ? AND a.user_id != ?`,
   ),
 };
 
@@ -410,7 +423,7 @@ const toNotify = (occurrence: Occurrence): UserRow[] => {
   for (const id of occurrence.except ?? []) byId.delete(id);
   // Whoever can no longer see the item — their permissions changed since they
   // started following it — is no longer notified of it.
-  return [...byId.values()].filter((p) => can(companyRights(p), domains[occurrence.kind], "view"));
+  return [...byId.values()].filter((p) => sees(p, occurrence.kind));
 };
 
 /**
@@ -509,7 +522,7 @@ const placeOf = (from: string, where: string) =>
     LEFT JOIN workspaces ws ON ws.id = v.workspace_id
     WHERE ${where}`);
 /** An item that sits in a list widget: a project, a card, a request. */
-type PlacedKind = "project" | "card" | "support";
+type PlacedKind = "project" | "card" | "support" | "order";
 
 /** Where a board sits: its workspace and its view. */
 const boardPlace = selection<Place>(`
@@ -524,6 +537,7 @@ const places: Record<PlacedKind, ReturnType<typeof placeOf>> = {
   project: placeOf("projects item", "item.id = ?"),
   card: placeOf("task_cards c JOIN task_lists item ON item.id = c.list_id", "c.id = ?"),
   support: placeOf("support_requests item", "item.id = ?"),
+  order: placeOf("orders item", "item.id = ?"),
 };
 
 /** A board's list widgets of a type: shared ones before personal copies. */
@@ -539,6 +553,7 @@ const WIDGETS: Record<PlacedKind, { type: string; label: string }> = {
   project: { type: "project.list", label: "Projets" },
   card: { type: "task.list", label: "Tâches" },
   support: { type: "support.list", label: "Tickets" },
+  order: { type: "order.list", label: "Commandes" },
 };
 
 /**
@@ -591,7 +606,7 @@ export const notifyLinked = (r: Linkage): Id[] => {
       if (!person || person.system) continue;
       const open = channels(person, r.author.id);
       if (!open.screen && !open.email) continue;
-      if (!can(companyRights(person), domains[r.kind], "view")) continue;
+      if (!sees(person, r.kind)) continue;
 
       if (open.screen)
         notifications.emit(person.id, {
@@ -837,6 +852,11 @@ export const concerned = {
       WHERE kind = 'card' AND target_id IN (
         SELECT t.id FROM task_cards t JOIN task_lists l ON l.id = t.list_id WHERE l.board_id = @id
       )`,
+  ),
+  /** The order's actors and those who follow it. */
+  order: idsOf(
+    `SELECT user_id FROM order_actors WHERE order_id = @id
+     UNION SELECT user_id FROM follows WHERE kind = 'order' AND target_id = @id`,
   ),
   /** The actors of the board's projects, and those who follow one. */
   projectBoard: idsOf(

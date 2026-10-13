@@ -58,6 +58,7 @@ const ORIGIN_LABELS: Record<SourceTask["kind"], string> = {
   support: "la demande",
   managed_device_asset: "le poste",
   access: "l'accès",
+  order: "la commande",
 };
 
 const escape = (text: string): string =>
@@ -90,6 +91,8 @@ export const descriptionOf = (source: SourceTask): string => {
 export interface Destination {
   boardId: string | null;
   listId: string | null;
+  /** The chosen list's "Tâches" widget (LIST_KEY): its labels are the card's. */
+  listKey: string | null;
 }
 
 interface TaskDestinationProps {
@@ -111,8 +114,9 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
   const [listId, setListId] = useState<string | null>(null);
 
   useEffect(() => {
-    onChange({ boardId, listId });
-  }, [boardId, listId]);
+    const listKey = lists?.find((l) => String(l.id) === listId)?.list_key ?? null;
+    onChange({ boardId, listId, listKey });
+  }, [boardId, listId, lists]);
 
   // The views: the tasks one is picked by default — the one whose name
   // says so —, otherwise the first: there is always a first choice.

@@ -903,19 +903,31 @@ export default function SectionsBoard<S extends BoardSection>({
     sections !== null &&
     (sections.length === 0 || (locked && sections.every((s) => widgetIds(s).length === 0)));
   const content = !sections ? null : empty ? (
-    <EmptyPanel
-      icon={IconColumns}
-      message="Aucune section"
-      actionLabel={canAdd ? "Créer une section" : undefined}
-      onAction={
-        canAdd
-          ? async () => {
-              if (locked) await onUnlock?.();
-              if (sections.length === 0) onAddSection();
-            }
-          : undefined
-      }
-    />
+    // The columns' foot band, kept here too: the prompt centers where a
+    // widget's own does, not lower by half the band.
+    <Box
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        paddingBottom: GRIP_ZONE + FRAME_PADDING,
+      }}
+    >
+      <EmptyPanel
+        icon={IconColumns}
+        message="Aucune section"
+        actionLabel={canAdd ? "Créer une section" : undefined}
+        onAction={
+          canAdd
+            ? async () => {
+                if (locked) await onUnlock?.();
+                if (sections.length === 0) onAddSection();
+              }
+            : undefined
+        }
+      />
+    </Box>
   ) : (
     <ScrollArea
       viewportRef={setViewportEl}

@@ -71,6 +71,13 @@ const RELOAD_INTERVAL = 15 * 60_000;
 /** The height of a forecast chart. */
 const CHART_HEIGHT = 110;
 
+/**
+ * The width the forecasts take at least: aligned left, center or right, the
+ * content keeps its own width (widgets/alignment.ts), and a chart has none of
+ * its own — it would shrink to the pictogram's and the temperature's.
+ */
+const FORECASTS_MIN_WIDTH = 260;
+
 /** The height of the week's forecasts: the day, the pictogram, the high and the low. */
 const WEEK_HEIGHT = 84;
 
@@ -305,7 +312,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
     const showsIcon = isChecked(config, SHOW_ICON, true);
     const showsTemperature = isChecked(config, SHOW_TEMPERATURE, true);
     return (
-      <Stack gap="xs">
+      <Stack gap="xs" style={forecasts !== "none" ? { minWidth: `min(${FORECASTS_MIN_WIDTH}px, 100%)` } : undefined}>
         {(showsIcon || showsTemperature || caption.length > 0) && (
           <Group gap="sm" wrap="nowrap" justify="center">
             {showsIcon && (

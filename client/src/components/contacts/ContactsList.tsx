@@ -42,6 +42,7 @@ import { useWidgetAccess } from "../../lib/rights";
 import { clearRequest, useRequestedItem } from "../../lib/searchSources";
 import { useContacts } from "../../lib/contacts";
 import { STRONG_TEXT } from "../../themes/colors";
+import { NewShortcut } from "../../lib/newShortcut";
 
 // The list of a Contact widget (widgets/contact): the people and companies
 // entered by hand. The same grid as the declared assets'
@@ -460,7 +461,8 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
   if (boardId === undefined || !contacts || !all) return null;
 
   return (
-    <>
+    // "N" adds one, as "Ajouter" does (lib/newShortcut).
+    <NewShortcut action={"Nouveau contact"} run={canAdd ? () => setDrawer({ contact: null }) : undefined}>
       {contacts.length === 0 ? (
         // With nothing to show, only the empty state, which offers to add.
         <EmptyPanel
@@ -468,7 +470,6 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
           message="Aucun contact"
           actionLabel={canAdd ? "Ajouter un contact" : undefined}
           onAction={canAdd ? () => setDrawer({ contact: null }) : undefined}
-          size="md"
         />
       ) : (
         // A section narrower than the list makes it scroll sideways.
@@ -487,6 +488,6 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
         canSave={accessIncludes(access, "update")}
         canDelete={accessIncludes(access, "delete")}
       />
-    </>
+    </NewShortcut>
   );
 }

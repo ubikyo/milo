@@ -3,7 +3,7 @@ import { notifications } from "@mantine/notifications";
 import { IconMaximize, IconMinimize, IconPrinter } from "@tabler/icons-react";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useEffect, useRef, useState } from "react";
-import type { Id, LabelTemplate, LabelTemplateKind, MailTemplateVariable, PaperFormat } from "@milo/shared";
+import type { LabelTemplate, ListRef, LabelTemplateKind, MailTemplateVariable, PaperFormat } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { MODAL_PADDING } from "../../themes/modals";
@@ -41,7 +41,7 @@ interface LabelTemplateModalProps {
   /** The template being edited; "null" closes the modal. */
   template: LabelTemplate | null;
   kind: LabelTemplateKind;
-  boardId: Id;
+  list: ListRef;
   variables: MailTemplateVariable[];
   /** Its paper format: the printer that draws and prints it. */
   format: PaperFormat | null;
@@ -60,7 +60,7 @@ const LABEL_INSET = 20;
 export default function LabelTemplateModal({
   template,
   kind,
-  boardId,
+  list,
   variables,
   format,
   onClose,
@@ -92,7 +92,7 @@ export default function LabelTemplateModal({
     }
     let current = true;
     setDrawing(true);
-    api.previewLabelTemplate(kind, boardId, { paper_format_id: formatId, zpl: typed }).then(
+    api.previewLabelTemplate(kind, list, { paper_format_id: formatId, zpl: typed }).then(
       (p) => {
         if (!current) return;
         setImage(p.image);
@@ -103,13 +103,13 @@ export default function LabelTemplateModal({
     return () => {
       current = false;
     };
-  }, [template, typed, kind, boardId, formatId]);
+  }, [template, typed, kind, list, formatId]);
 
   const print = async () => {
     if (formatId === null) return notifyError("Choisissez d'abord le format d'étiquette du modèle.");
     setPrinting(true);
     try {
-      const sent = await api.printLabelTemplate(kind, boardId, { paper_format_id: formatId, zpl });
+      const sent = await api.printLabelTemplate(kind, list, { paper_format_id: formatId, zpl });
       notifications.show({
         color: "teal",
         title: "Étiquette de test envoyée",

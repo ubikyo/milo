@@ -6,29 +6,32 @@ import { Fragment } from "react";
 import alignment from "../../assets/styles/Alignment.module.css";
 import EmptyPanel from "../../components/ui/EmptyPanel";
 import { isSized } from "../height";
-import type { WidgetRender } from "../../components/ui/IndicatorsPanel";
+import type { IndicatorWidgetBase, WidgetRender } from "../../components/ui/IndicatorsPanel";
+import type { ComponentType } from "react";
 import { NameField, NAME, Nothing, IndicatorTitle, IndicatorValue } from "../support/common";
 import type { IndicatorConfigProps } from "../support/types";
 import { text, withField } from "../types";
-import { CALENDAR_SOURCE, shownCalendarsOf } from "@milo/shared";
+import { shownCalendarsOf } from "@milo/shared";
+import { SourcesField } from "../../lib/sources";
 import type { Id } from "@milo/shared";
-import type { MailCountWidget } from "./mail-counts";
 import {
   appointmentKey,
   appointmentsIn,
-  calendarLabel,
   ownerName,
-  useCalendarSource,
   useCalendarSources,
-  useCalendarWidgets,
   useLastChosenDay,
   useFollowedAgenda,
 } from "./agenda";
 import type { AgendaState } from "./agenda";
 
-// The calendar widgets that follow the Calendar widgets of their board — all
-// of them, unless their drawer names one (CALENDAR_SOURCE) — and read what
-// they read, under their consent: "Rendez-vous", which lists the appointments of
+/** The appointment widgets, as the board's registry takes them (widgets/index.tsx). */
+export interface AppointmentWidget extends IndicatorWidgetBase<string> {
+  Display: ComponentType<{ config: unknown } & WidgetRender>;
+}
+
+// The calendar widgets that follow the Calendar widgets their drawer names
+// (SOURCES), on any board one sees, and read what they read, under their
+// consent: "Rendez-vous", which lists the appointments of
 // a period — by default the day chosen on that calendar —, and its
 // "Indicateur", which counts them.
 
@@ -83,28 +86,9 @@ const usePeriod = (config: unknown, offered: readonly Period[]) => {
   return { period, first, last };
 };
 
-/** The value of the "all the board's Calendar widgets" option. */
-const ALL = "all";
-
-/** The drawer's "Widget associé" field: all the board's Calendar widgets, or one of them. */
+/** The drawer's "Widgets associés" field: the Calendar widgets one sees. */
 function SourceField({ config, onChange }: IndicatorConfigProps) {
-  const calendars = useCalendarWidgets();
-  const source = useCalendarSource(config);
-  return (
-    <Select
-      label="Widget associé"
-      data={[
-        { value: ALL, label: "Tous les widgets" },
-        ...calendars.map((w, rank) => ({ value: String(w.id), label: calendarLabel(w, rank) })),
-      ]}
-      value={source ? String(source.id) : ALL}
-      onChange={(value) =>
-        value && onChange(withField(config, CALENDAR_SOURCE, value === ALL ? null : Number(value)))
-      }
-      allowDeselect={false}
-      w={180}
-    />
-  );
+  return <SourcesField type="calendar" config={config} onChange={onChange} />;
 }
 
 /** The drawer's "Période" field, among the periods the widget offers. */
@@ -126,7 +110,7 @@ function PeriodField({
 
 /** What an appointment widget shows while it has nothing to read, or cannot. */
 function Pending({ state }: { state: AgendaState & { orphan: boolean; empty: boolean } }) {
-  if (state.orphan) return <Nothing>Aucun widget Calendrier sur le tableau</Nothing>;
+  if (state.orphan) return <Nothing>Aucun widget Calendrier associé</Nothing>;
   if (state.empty) return <Nothing>Aucun calendrier</Nothing>;
   if (state.phase === "error") {
     return (
@@ -241,7 +225,7 @@ function Appointments({ config, id }: { config: unknown; id: Id }) {
           }}
         >
           {listed.length === 0 && (
-            <EmptyPanel icon={IconCalendarOff} message="Aucun rendez-vous" size="md" fill={sized} />
+            <EmptyPanel icon={IconCalendarOff} message="Aucun rendez-vous" fill={sized} />
           )}
         </Box>
       )}
@@ -249,7 +233,7 @@ function Appointments({ config, id }: { config: unknown; id: Id }) {
   );
 }
 
-export const appointmentsWidget: MailCountWidget = {
+export const appointmentsWidget: AppointmentWidget = {
   type: "appointments",
   kind: "m365",
   label: "Rendez-vous",
@@ -290,7 +274,7 @@ function AppointmentCount({ config, id }: { config: unknown } & WidgetRender) {
   );
 }
 
-export const appointmentCountWidget: MailCountWidget = {
+export const appointmentCountWidget: AppointmentWidget = {
   type: "appointment_count",
   kind: "m365",
   label: "Indicateur rendez-vous",
@@ -310,4 +294,4 @@ export const appointmentCountWidget: MailCountWidget = {
 };
 
 /** In the order the widgets drawer presents them, after the mail counts. */
-export const APPOINTMENT_WIDGETS: MailCountWidget[] = [appointmentsWidget, appointmentCountWidget];
+export const APPOINTMENT_WIDGETS: AppointmentWidget[] = [appointmentsWidget, appointmentCountWidget];

@@ -4,7 +4,7 @@
 
 import cors from "cors";
 import express from "express";
-import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, PRODUCT_ROUTES, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, PRODUCT_ROUTES, ORDER_ROUTES, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS, LOCATION_ROUTES, WAREHOUSE_ROUTES } from "@milo/shared";
 import { env } from "./env.js";
 import { countWrites, feed, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
@@ -39,15 +39,20 @@ import { cardChecklistRoutes, checklistItemRoutes, checklistRoutes } from "./rou
 import { commentRoutes, projectCommentRoutes } from "./routes/comments.js";
 import { boardContextRoutes } from "./routes/contexts.js";
 import { searchRoutes } from "./routes/search.js";
+import { sourceWidgetRoutes } from "./routes/source-widgets.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { supportSettingsRoutes } from "./routes/support-settings.js";
 import { supportContentRoutes } from "./routes/support-contents.js";
+import { orderContentRoutes } from "./routes/order-contents.js";
 import { supportReplyRoutes } from "./routes/support-replies.js";
 import { managedDeviceAssetSettingsRoutes } from "./routes/managed-device-asset-settings.js";
 import { declaredAssetSettingsRoutes } from "./routes/declared-asset-settings.js";
 import { declaredAssetRoutes } from "./routes/declared-assets.js";
 import { contactRoutes, contactSettingsRoutes } from "./routes/contacts.js";
 import { productRoutes, productSettingsRoutes } from "./routes/products.js";
+import { warehouseRoutes, warehouseSettingsRoutes } from "./routes/warehouses.js";
+import { locationRoutes } from "./routes/locations.js";
+import { orderNumberRoutes, orderRoutes } from "./routes/orders.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
 import {
@@ -55,6 +60,9 @@ import {
   declaredAssetLabelRoutes,
   contactLabelRoutes,
   productLabelRoutes,
+  warehouseLabelRoutes,
+  locationLabelRoutes,
+  orderLabelRoutes,
   labelRoutes,
   projectLabelRoutes,
   supportLabelRoutes,
@@ -108,6 +116,9 @@ export const createApp = (): express.Express => {
   // A JSON body has no reason to exceed this size: descriptions are text.
   // Files do not go through here: their routes take the raw body, with their
   // own limit (routes/attachments.ts).
+  // An order's e-mail carries its attachments, encoded: up to Graph's 3 MB,
+  // a third more once in base 64.
+  app.use(/^\/api\/orders\/\d+\/mail$/, express.json({ limit: "5mb" }));
   app.use(express.json({ limit: "1mb" }));
 
   // The version counters go up after every successful write, and the stream
@@ -146,10 +157,9 @@ export const createApp = (): express.Express => {
   app.get("/api/events", feed);
 
   app.use("/api/users", settingsNotice("les comptes", /^\/favorites\//), userRoutes);
-  // What Settings controls requires its rights (View, Edit). Companies and
-  // milestone types are read everywhere in the application: only writing them
-  // requires them.
-  app.use("/api/milestone-types", requireSettingsToWrite, settingsNotice("les types de jalons"), milestoneTypeRoutes);
+  // A "Projets" widget's milestone types follow the Projects mode's rights on
+  // its board, like its labels.
+  app.use("/api/milestone-types", milestoneTypeRoutes);
   // A workspace's access, set by whoever manages the workspaces;
   // administration — Settings, workspace management — by Settings
   // (routes/assignments.ts).
@@ -246,6 +256,26 @@ export const createApp = (): express.Express => {
     settingsNotice("les réglages des produits"),
     productSettingsRoutes,
   );
+  // The orders of the "Commandes" widgets (Logistique), their labels, their
+  // numbering formats.
+  app.use(`/api${ORDER_ROUTES.orders}`, orderRoutes);
+  app.use(`/api${ORDER_ROUTES.labels}`, orderLabelRoutes);
+  app.use(
+    `/api${ORDER_ROUTES.numbers}`,
+    settingsNotice("les formats de numérotation des commandes"),
+    orderNumberRoutes,
+  );
+  // The warehouses of the "Entrepôts" widgets (Logistique), their labels.
+  app.use(`/api${WAREHOUSE_ROUTES.warehouses}`, warehouseRoutes);
+  app.use(`/api${WAREHOUSE_ROUTES.labels}`, warehouseLabelRoutes);
+  app.use(
+    `/api${WAREHOUSE_ROUTES.settings}`,
+    settingsNotice("les réglages des entrepôts"),
+    warehouseSettingsRoutes,
+  );
+  // The locations of the "Emplacements" widgets (Logistique), their labels.
+  app.use(`/api${LOCATION_ROUTES.locations}`, locationRoutes);
+  app.use(`/api${LOCATION_ROUTES.labels}`, locationLabelRoutes);
 
 
   app.use("/api/support-requests", supportRequestRoutes);
@@ -259,8 +289,11 @@ export const createApp = (): express.Express => {
   app.use("/api/support-replies", requireSettingsToWrite, settingsNotice("les réponses du Support"), supportReplyRoutes);
   // Read by a request's page, which puts them in its reply.
   app.use("/api/support-contents", requireSettingsToWrite, settingsNotice("les contenus du Support"), supportContentRoutes);
+  app.use("/api/order-contents", requireSettingsToWrite, settingsNotice("les contenus des commandes"), orderContentRoutes);
 
   app.use("/api/search", searchRoutes);
+  // The widgets an indicator or a chart can read, on every board one sees.
+  app.use("/api/source-widgets", sourceWidgetRoutes);
   // Read by everyone — they set everyone's interface —, written from
   // Settings only.
   app.use("/api/mail-templates", requireTemplatesToWrite, settingsNotice("les modèles d'e-mail", /preview$/), mailTemplateRoutes);

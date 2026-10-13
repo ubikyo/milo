@@ -1,0 +1,88 @@
+/* The e-mail's template around the reply being written (MailFrame), as the
+   previews show it: white in the light theme, as a light mail client; in the
+   dark theme, as "Aperçu sombre" (MailPreview). It scrolls past the reply
+   field's height — fifteen lines, as the field alone. */
+.frame {
+  --milo-rich-line: calc(var(--mantine-font-size-sm) * var(--mantine-line-height-md));
+
+  color-scheme: light;
+  background-color: #ffffff;
+  max-height: calc(var(--milo-rich-lines, 15) * var(--milo-rich-line) + 2 * var(--mantine-spacing-md));
+  overflow-y: auto;
+}
+
+/* The dark theme: what the dark preview does — the e-mail inverted, hues
+   kept; images and what is already dark turned back; a note in the gray
+   mail clients give it (MAIL_NOTE_DARK_BG). */
+.frame.dark {
+  color-scheme: dark;
+  /* The dark preview's (PREVIEW_DARK_BG): the fields' gray. */
+  background-color: var(--mantine-color-default);
+}
+
+.dark .body,
+.dark .body img,
+.dark .body :global(.milo-dark),
+.dark .body :global(.milo-note) {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.dark .body :global(.milo-note) {
+  background-color: #545759 !important;
+  color: #ffffff !important;
+}
+
+/* A table of the text (VariableBlock) steps out of the inversion: its
+   dashed frame keeps the editor's border color, and the block colors its
+   table itself, as the dark preview does. */
+.dark .body [data-variable-block-view] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* The logo's dark-background variant, as the dark preview shows it
+   (logoFor): the light one, written visible, gives way. */
+.dark .body :global(.logo-light) {
+  display: none !important;
+}
+
+.dark .body :global(.logo-dark) {
+  display: inline-block !important;
+}
+
+/* Only the text written takes the pointer: the template is only shown. */
+.body {
+  pointer-events: none;
+  user-select: none;
+}
+
+.body [data-milo-mail-slot] {
+  pointer-events: auto;
+  user-select: text;
+}
+
+/* The editor's area, in the template's place for the text: as the e-mail
+   writes it — its font, size and color, no padding, no background of its
+   own. The selectors go through the tiptap content to beat Mantine's. */
+.content.content {
+  background-color: transparent;
+  border-radius: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/* With typography styles, Mantine puts the class on a wrapper: the area
+   inside carries the field's background, set inline. */
+.content > * {
+  background-color: transparent !important;
+  border-radius: 0 !important;
+  color: inherit;
+}
+
+.content :global(.ProseMirror) {
+  padding: 0;
+  min-height: 1.5em;
+}
+
+.content :global(.ProseMirror) p {
+  margin: 0;
+}

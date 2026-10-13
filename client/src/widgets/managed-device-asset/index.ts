@@ -2,11 +2,7 @@
 // knows them: the widgets drawer, the panel and the settings one
 // pick what they need from it.
 
-import { complianceIndicator } from "./compliance";
-import { disksIndicator } from "./disks";
 import { managedDeviceAssetListIndicator } from "./list";
-import { workstationsIndicator } from "./workstations";
-import { systemsIndicator } from "./systems";
 import { accessWidgets } from "../in-section";
 import type {
   ManagedDeviceAssetIndicatorDisplayProps,
@@ -14,14 +10,10 @@ import type {
 } from "./types";
 import type { ManagedDeviceAssetIndicatorType } from "@milo/shared";
 
-/** In the order the widgets drawer presents them. */
+/** In the order the widgets drawer presents them; their figures are the "Indicateurs" widgets' (widgets/indicators). */
 export const MANAGED_DEVICE_ASSET_INDICATORS: ManagedDeviceAssetIndicatorWidget[] = [
   managedDeviceAssetListIndicator,
   ...accessWidgets<ManagedDeviceAssetIndicatorType, ManagedDeviceAssetIndicatorDisplayProps>(),
-  workstationsIndicator,
-  complianceIndicator,
-  systemsIndicator,
-  disksIndicator,
 ];
 
 const BY_TYPE = new Map<ManagedDeviceAssetIndicatorType, ManagedDeviceAssetIndicatorWidget>(

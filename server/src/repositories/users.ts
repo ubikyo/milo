@@ -22,6 +22,7 @@ import type {
   StructureRights,
 } from "@milo/shared";
 import {
+  isReplyEditorView,
   ALL_COMPANIES,
   grantsAnything,
   fullAdminPermissions,
@@ -79,6 +80,8 @@ export const users = {
   setWorkspace: mutation("UPDATE users SET workspace_id = ? WHERE id = ?"),
   /** Their notification settings, as JSON, chosen in the preferences. */
   setNotificationSettings: mutation("UPDATE users SET notification_settings = ? WHERE id = ?"),
+  /** How an e-mail being written first shows, chosen in the preferences. */
+  setReplyEditor: mutation("UPDATE users SET reply_editor = ? WHERE id = ?"),
   /** True if this id designates a person. Used to filter the attachments. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
 };
@@ -374,6 +377,7 @@ export const publicUser = (account: UserRow): PublicUser => {
     default_view: user.default_view ?? "",
     default_board: user.default_board ?? "",
     notification_settings: notificationSettings(user),
+    reply_editor: isReplyEditorView(user.reply_editor) ? user.reply_editor : "layout",
     workspace: user.workspace_id,
     workspaces: workspacesOf(user),
     workspace_rights: workspaceRights(user),

@@ -31,10 +31,27 @@ export interface ProductCategory {
   name: string;
 }
 
+/** A tax a supplier's price is given: its rate, in percent. */
+export interface ProductTax {
+  rate: number;
+}
+
 /** The lists of a board's Produits widgets, shared by all of them. */
 export interface ProductSettings {
   categories: ProductCategory[];
+  /** In their order: the first is a new price's. */
+  taxes: ProductTax[];
 }
+
+/** A widget's taxes until it records its own. */
+export const PRODUCT_TAX_DEFAULTS: ProductTax[] = [{ rate: 20 }, { rate: 0 }];
+
+/** How many taxes a widget has at most, and the largest rate. */
+export const PRODUCT_TAXES_MAX = 50;
+export const PRODUCT_TAX_MAX = 100;
+
+/** A rate as it reads: "20 %", "5,5 %". */
+export const taxLabel = (rate: number): string => `${rate.toLocaleString("fr-FR")} %`;
 
 /** How a product's stock is tracked: by default, it is not. */
 export const PRODUCT_TRACKINGS = [
@@ -51,11 +68,53 @@ export const isProductTracking = (value: unknown): value is ProductTracking =>
 export const productTrackingLabel = (tracking: ProductTracking): string =>
   PRODUCT_TRACKINGS.find((t) => t.value === tracking)?.label ?? tracking;
 
-/** A value of a variant: its name, its color — a label's. */
+/** A value of a variant: its name, its color — a label's —, its SKU. */
 export interface ProductVariantValue {
   name: string;
   color: string;
+  /** Its own reference — "BLK" —; empty, none. */
+  sku: string;
 }
+
+/**
+ * A price of a product at a supplier: a company of a Contact widget — of any
+ * board —, in its currency. Without a minimum quantity, it holds for any
+ * quantity, and may be left out (null); from a minimum, it is required. A
+ * supplier may have several, one per minimum — one without. An order's line
+ * takes the one its quantity reaches (supplierPrice, orders.ts).
+ */
+export interface ProductSupplier {
+  contact_id: Id;
+  min_quantity: number | null;
+  price: number | null;
+  /** Its tax's rate, in percent — one of the widget's taxes —; null, none chosen. */
+  tax: number | null;
+}
+
+/**
+ * The price of a product at a supplier for a quantity: that of the largest
+ * minimum it reaches — none counting as the smallest —, the smallest one's
+ * below them all. Null without one.
+ */
+export const supplierPrice = (
+  suppliers: ProductSupplier[],
+  contactId: Id,
+  quantity: number,
+): number | null => supplierTier(suppliers, contactId, quantity)?.price ?? null;
+
+/** The tier of a product's prices at a supplier a quantity reaches, as supplierPrice; none without a price. */
+export const supplierTier = (
+  suppliers: ProductSupplier[],
+  contactId: Id,
+  quantity: number,
+): ProductSupplier | null => {
+  const tiers = suppliers
+    .filter((s) => s.contact_id === contactId && s.price !== null)
+    .sort((a, b) => (a.min_quantity ?? 0) - (b.min_quantity ?? 0));
+  if (!tiers.length) return null;
+  const reached = tiers.filter((t) => (t.min_quantity ?? 0) <= quantity);
+  return reached.at(-1) ?? tiers[0]!;
+};
 
 /** A variant: an attribute, and its values in their order. */
 export interface ProductVariant {
@@ -63,29 +122,59 @@ export interface ProductVariant {
   values: ProductVariantValue[];
 }
 
+/**
+ * A product's reference for a variant: its SKU, then each value's, in the
+ * order of its attributes, joined by "-" — "TSH-BLK-M". A SKU left empty
+ * adds nothing, not even its "-".
+ */
+export const productReference = (
+  product: Pick<Product, "sku" | "variants">,
+  /** A value per attribute, by name, in their order; empty without variants. */
+  variant: string[],
+): string =>
+  [
+    product.sku,
+    ...product.variants.map((v, i) => v.values.find((x) => x.name === variant[i])?.sku ?? ""),
+  ]
+    .map((sku) => sku.trim())
+    .filter(Boolean)
+    .join("-");
+
 export interface Product {
   id: Id;
   board_id: Id;
   list_key: string;
+  /** Its reference — Stock Keeping Unit —; empty, none. */
+  sku: string;
   name: string;
+  /**
+   * Archived: kept, no longer offered to an order. A product an order cites
+   * is archived, never deleted ("used").
+   */
+  archived: boolean;
+  /** Cited by a quote or an order: it can no longer be deleted. */
+  used: boolean;
   favorite: boolean;
   notes: string;
   tracking: ProductTracking;
   /** A category of its board's tree, by its id; empty, none. */
   category: string;
   variants: ProductVariant[];
+  suppliers: ProductSupplier[];
   labels: Label[];
   created_at: string;
   updated_at: string;
 }
 
 export interface ProductInput {
+  sku: string;
   name: string;
   favorite: boolean;
   notes: string;
   tracking: ProductTracking;
   category: string;
   variants: ProductVariant[];
+  suppliers: ProductSupplier[];
   label_ids: Id[];
 }
 
@@ -130,8 +219,13 @@ export interface ProductComment {
 // --- Limits ------------------------------------------------------------------
 
 export const PRODUCT_NAME_MAX = 200;
+export const PRODUCT_SKU_MAX = 100;
 export const PRODUCT_NOTES_MAX = 4000;
 export const PRODUCT_FIELD_MAX = 200;
 /** How many variants a product has at most, and how many values each. */
 export const PRODUCT_VARIANTS_MAX = 50;
 export const PRODUCT_VALUES_MAX = 100;
+/** How many suppliers a product has at most, and the largest price. */
+export const PRODUCT_SUPPLIERS_MAX = 200;
+export const PRODUCT_QUANTITY_MAX = 1_000_000;
+export const PRODUCT_PRICE_MAX = 100_000_000;

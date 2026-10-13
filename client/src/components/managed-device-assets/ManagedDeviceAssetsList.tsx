@@ -531,7 +531,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   // is added from here, everything comes from the agents.
   if (assets.length === 0) {
     return list.loading ? null : (
-      <EmptyPanel icon={IconDeviceDesktop} message="Aucun poste" size="md" />
+      <EmptyPanel icon={IconDeviceDesktop} message="Aucun poste" />
     );
   }
 

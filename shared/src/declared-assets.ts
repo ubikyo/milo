@@ -134,15 +134,15 @@ export const DECLARED_ASSET_WORDS: Record<DeclaredAssetKind, DeclaredAssetWords>
   application_asset: {
     label: "Applications",
     category: noun(
-      "Type de logiciel",
-      "Types de logiciel",
+      "Type d'application",
+      "Types d'application",
       "type",
       {
-        a: "un type de logiciel",
-        the: "le type de logiciel",
-        of: "de type de logiciel",
-        ofThe: "du type de logiciel",
-        none: "Aucun type de logiciel",
+        a: "un type d'application",
+        the: "le type d'application",
+        of: "de type d'application",
+        ofThe: "du type d'application",
+        none: "Aucun type d'application",
       },
       false,
     ),
@@ -181,8 +181,8 @@ export interface DeclaredAssetEntry {
 
 /**
  * A product — a model, an application —, its category — a device type, a
- * software type — and its maker — a brand, a publisher —: names from the
- * board's lists.
+ * software type: a node of the board's categories tree, by its id — and its
+ * maker — a brand, a publisher —, by its name.
  */
 export interface DeclaredAssetProduct {
   category: string;
@@ -190,7 +190,6 @@ export interface DeclaredAssetProduct {
   name: string;
 }
 
-/** The lists of a board's widgets of one kind, shared by all of them. */
 /**
  * A place of the board's locations tree — a company, a building, a rack, a
  * position —: its parent's id, none at the root. The tree is stored flat, a
@@ -201,10 +200,20 @@ export interface DeclaredAssetLocation {
   id: string;
   parent: string | null;
   name: string;
+  /**
+   * A root place may be tied to one of the widget's labels — a company —:
+   * an asset that carries a label tied to a root is offered only the places
+   * under those roots, and under the roots tied to none. Absent elsewhere.
+   */
+  label?: Id | null;
 }
 
+/**
+ * The lists of a board's widgets of one kind, shared by all of them. The
+ * categories are a tree, stored as the locations: "Écran > Moniteur".
+ */
 export interface DeclaredAssetSettings extends DeclaredAssetExtraLists {
-  categories: DeclaredAssetEntry[];
+  categories: DeclaredAssetLocation[];
   suppliers: DeclaredAssetEntry[];
   makers: DeclaredAssetEntry[];
   products: DeclaredAssetProduct[];
@@ -356,14 +365,17 @@ export interface DeclaredAsset extends DeclaredAssetExtras {
   actors: Actor[];
   /** Those of its board, in their order. */
   labels: Label[];
-  /** Names from the board's lists; empty when not chosen. */
+  /** A node of the board's categories tree, by its id; empty, none. */
   category: string;
+  /** Names from the board's lists; empty when not chosen. */
   supplier: string;
   maker: string;
   product: string;
   quantity: number;
   /** Null when not given. */
   price: number | null;
+  /** "2026-10-12"; empty when not given. */
+  purchase_date: string;
   description: string;
   notes: string;
   created_at: string;
@@ -383,6 +395,7 @@ export interface DeclaredAssetInput extends DeclaredAssetExtras {
   product: string;
   quantity: number;
   price: number | null;
+  purchase_date: string;
   description: string;
   notes: string;
 }

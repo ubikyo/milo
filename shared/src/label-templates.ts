@@ -1,16 +1,18 @@
 // The label templates of a board's asset widgets — supervised devices,
-// declared devices, applications —: each names a paper format, and holds the
-// ZPL its printer takes. Like the asset lists, they are the board's, not a
+// declared devices, applications — and of its Emplacements widgets
+// (locations.ts): each names a paper format, and holds the ZPL its printer
+// takes. Like the asset lists, they are the board's, not a
 // widget's: every widget of the kind on the board shares them.
 
 import type { Id } from "./domain.js";
 import type { MailTemplateVariable } from "./mail-templates.js";
 
-/** The asset kinds that print labels. */
+/** The kinds that print labels: the assets', and the locations' places. */
 export const LABEL_TEMPLATE_KINDS = [
   "managed_device_asset",
   "unmanaged_device_asset",
   "application_asset",
+  "location",
 ] as const;
 
 export type LabelTemplateKind = (typeof LABEL_TEMPLATE_KINDS)[number];
@@ -36,6 +38,14 @@ export interface LabelTemplates {
 
 /** The asset's number, in a template. */
 export const ASSET_NUMBER_VARIABLE = "{{asset.number}}";
+
+/** A location's place, in a template: its code, its name, its type, its path from the root. */
+export const LOCATION_LABEL_VARIABLES = {
+  code: "{{location.code}}",
+  name: "{{location.name}}",
+  type: "{{location.type}}",
+  path: "{{location.path}}",
+} as const;
 
 /** A label group's name, in a template: "{{label.Site}}". */
 export const labelGroupVariable = (group: string): string => `{{label.${group}}}`;
@@ -66,8 +76,21 @@ export const DEFAULT_LABEL_ZPL = `^XA
 ^FB160,2,0,L,0^FDNE PAS ENLEVER^FS
 ^XZ`;
 
-/** True when a template's ZPL is no longer the one a new template starts from. */
-export const isCustomLabelZpl = (zpl: string): boolean => zpl.trim() !== DEFAULT_LABEL_ZPL.trim();
+/**
+ * What a new template of a kind starts from: a location's, the same label,
+ * its place's code for the number, its name for the company.
+ */
+export const defaultLabelZpl = (kind: LabelTemplateKind): string =>
+  kind === "location"
+    ? DEFAULT_LABEL_ZPL.replaceAll(ASSET_NUMBER_VARIABLE, LOCATION_LABEL_VARIABLES.code).replace(
+        "^FDSociété^FS",
+        `^FD${LOCATION_LABEL_VARIABLES.name}^FS`,
+      )
+    : DEFAULT_LABEL_ZPL;
+
+/** True when a template's ZPL is no longer the one a new template of its kind starts from. */
+export const isCustomLabelZpl = (zpl: string, kind: LabelTemplateKind): boolean =>
+  zpl.trim() !== defaultLabelZpl(kind).trim();
 
 /** What the printer drew of a template: a PNG, as a data URL. */
 export interface LabelPreview {

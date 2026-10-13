@@ -2,25 +2,15 @@
 // knows them: the widgets drawer, the panel and the settings one take from it
 // what they need.
 
-import { projectActorsIndicator } from "./actors";
-import { categoriesIndicator } from "./categories";
-import { projectLabelsIndicator } from "./labels";
 import { projectsListIndicator } from "./list";
-import { progressIndicator } from "./progress";
-import { projectsIndicator } from "./projects";
 import { accessWidgets } from "../in-section";
 import type { ProjectIndicatorDisplayProps, ProjectIndicatorWidget } from "./types";
 import type { ProjectIndicatorType } from "@milo/shared";
 
-/** In the order in which the widgets drawer presents them. */
+/** In the order in which the widgets drawer presents them; their figures are the "Indicateurs" widgets' (widgets/indicators). */
 export const PROJECT_INDICATORS: ProjectIndicatorWidget[] = [
   projectsListIndicator,
   ...accessWidgets<ProjectIndicatorType, ProjectIndicatorDisplayProps>(),
-  projectsIndicator,
-  progressIndicator,
-  categoriesIndicator,
-  projectActorsIndicator,
-  projectLabelsIndicator,
 ];
 
 const BY_TYPE = new Map<ProjectIndicatorType, ProjectIndicatorWidget>(
