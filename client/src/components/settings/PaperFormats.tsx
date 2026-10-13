@@ -11,10 +11,11 @@ import {
   EmptyList,
   INPUT_STYLE,
   ListFooter,
+  FIRST_FIELD_MARGIN,
   NAME_INSET,
+  NAME_MIN_WIDTH,
   ROUNDING,
   RowCheckbox,
-  RowCheckboxSpace,
   RowField,
   editKeys,
   pickKeys,
@@ -222,9 +223,19 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
   const formatRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
-  const nameSlot = (field: ReactNode) =>
+  const nameSlot = (field: ReactNode, added = false) =>
     canEdit ? (
-      <Box style={{ flex: 1, minWidth: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+      <Box
+        style={{
+          flex: 1,
+          minWidth: NAME_MIN_WIDTH,
+          display: "flex",
+          // Added, without a checkbox before it: it opens the row.
+          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+        }}
+      >
+        {field}
+      </Box>
     ) : (
       field
     );
@@ -281,8 +292,6 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
           ))}
           {draft && (
             <Group gap="sm" wrap="nowrap" style={formatRowStyle(total - 1)}>
-              {/* Not created yet: nothing to delete. */}
-              <RowCheckboxSpace />
               {nameSlot(
                 <RowField
                   name={draft.name}
@@ -292,6 +301,7 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
                   // Left empty with nothing else entered, the row disappears.
                   onValidate={(name) => void changeDraft({ name })}
                 />,
+                true,
               )}
               <RowSelect
                 data={printerChoices}

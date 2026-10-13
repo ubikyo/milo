@@ -11,11 +11,12 @@ import {
   move,
   RowField,
   RowCheckbox,
-  RowCheckboxSpace,
   ListFooter,
   useRowSelection,
   EmptyList,
+  FIRST_FIELD_MARGIN,
   NAME_INSET,
+  NAME_MIN_WIDTH,
   INPUT_STYLE,
   pluralize,
   rowStyle,
@@ -213,9 +214,19 @@ export default function SupportTemplates<E extends string>({
    * A row's name field: with a checkbox in front (canEdit), it moves back to
    * align with it, as in the drawer lists.
    */
-  const nameSlot = (field: ReactNode) =>
+  const nameSlot = (field: ReactNode, added = false) =>
     canEdit ? (
-      <Box style={{ flex: 1, minWidth: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+      <Box
+        style={{
+          flex: 1,
+          minWidth: NAME_MIN_WIDTH,
+          display: "flex",
+          // Added, without a checkbox before it: it opens the row.
+          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+        }}
+      >
+        {field}
+      </Box>
     ) : (
       field
     );
@@ -299,7 +310,6 @@ export default function SupportTemplates<E extends string>({
                     onDragEnd={() => {}}
                   />
                 )}
-                {canEdit && <RowCheckboxSpace afterHandle={draggable} />}
                 {nameSlot(
                   <RowField
                     name=""
@@ -314,6 +324,7 @@ export default function SupportTemplates<E extends string>({
                       if (name) void write(() => create(name, null));
                     }}
                   />,
+                  true,
                 )}
               </Group>
             )}

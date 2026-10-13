@@ -26,7 +26,8 @@ import {
   IconFileExport,
   IconFileImport,
   IconLayoutDashboard,
-  IconSettings,
+  IconLogout,
+  IconPlus,
   IconStack2,
   IconTrash,
 } from "@tabler/icons-react";
@@ -61,6 +62,7 @@ import { announceLocations } from "./lib/locations";
 import { announceOrders } from "./lib/orders";
 import { announceProxies } from "./lib/proxies";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
+import CloseButton from "./components/ui/CloseButton";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import { CopyPasteContext } from "./components/ui/CopyPasteActions";
 import type { Clipboard } from "./components/ui/CopyPasteActions";
@@ -1394,7 +1396,7 @@ export default function App() {
   if (user.workspaces.length === 0) {
     const canManage = user.settings.view && user.workspace_rights.view;
     return (
-      <Stack h="100vh" align="center" justify="center" gap="md">
+      <Stack h="100vh" align="center" justify="center" gap="md" pos="relative">
         <EmptyPanel
           icon={IconStack2}
           fill={false}
@@ -1405,15 +1407,20 @@ export default function App() {
           }
           {...(canManage
             ? {
-                actionLabel: "Ouvrir le paramétrage",
-                actionIcon: IconSettings,
+                actionLabel: "Ajouter un workspace",
+                actionIcon: IconPlus,
                 onAction: () => setSettingsOpened(true),
               }
             : null)}
         />
-        <Anchor size="sm" c="dimmed" onClick={() => void handleLogout()}>
+        {/* Out of the way, top right, where the account usually is. */}
+        <CloseButton
+          leftSection={<IconLogout size={16} />}
+          onClick={() => void handleLogout()}
+          style={{ position: "absolute", top: "var(--mantine-spacing-md)", right: "var(--mantine-spacing-md)" }}
+        >
           Se déconnecter
-        </Anchor>
+        </CloseButton>
         <SettingsModal
           opened={settingsOpened}
           onClose={() => setSettingsOpened(false)}

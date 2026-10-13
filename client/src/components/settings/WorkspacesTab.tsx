@@ -1,9 +1,9 @@
-import { Button, Checkbox, Group, Menu, Modal, ScrollArea, Stack } from "@mantine/core";
-import { IconStack2, IconTrash, IconUsers } from "@tabler/icons-react";
+import { Box, Button, Checkbox, Group, Modal, ScrollArea, Stack } from "@mantine/core";
+import { IconStack2, IconUsers } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { RED } from "../../themes/colors";
 import {
   SETTINGS_HEIGHT_MAX,
   SETTINGS_OWN_HEIGHT,
@@ -13,17 +13,23 @@ import {
   modalHeaderStyles,
 } from "../../themes/modals";
 import settingsClasses from "../../assets/styles/SettingsModal.module.css";
-import AddButton from "../ui/AddButton";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
+  ListFooter,
+  ADDED_ROW_PADDING_RIGHT,
+  FIRST_FIELD_MARGIN,
+  NAME_INSET,
+  NAME_MIN_WIDTH,
   RowButton,
+  RowCheckbox,
   RowField,
   EmptyList,
+  pluralize,
   rowStyle,
+  useRowSelection,
 } from "../ui/DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import WorkspaceAccess from "./WorkspaceAccess";
 import { grantsAnything } from "@milo/shared";
 import type { Workspace, WorkspaceRights } from "@milo/shared";
@@ -47,8 +53,9 @@ interface WorkspacesTabProps {
  * The workspaces: one team each, with its views, boards and
  * contexts, isolated from the others'. They look like the drawer
  * lists (ColumnFields): one row per workspace, its name inline in the
- * row. Right-click opens its access or deletes it — the last one too;
- * "Ajouter" adds an empty row at the end, created as soon as it has a name.
+ * row, its access on its button. Checked rows are deleted together — the last
+ * one too; "Ajouter" adds an empty row at the end, created as soon as it has
+ * a name.
  */
 export default function WorkspacesTab({
   rights,
@@ -58,10 +65,8 @@ export default function WorkspacesTab({
 }: WorkspacesTabProps) {
   // The workspace whose access modal is open.
   const [accessOf, setAccessOf] = useState<Workspace | null>(null);
-  const [toDelete, setToDelete] = useState<Workspace | null>(null);
-  const [menu, setMenu] = useState<{ workspace: Workspace; position: PointMenuPosition } | null>(
-    null,
-  );
+  const [toDelete, setToDelete] = useState<Workspace[]>([]);
+  const selection = useRowSelection(workspaces.map((w) => w.id));
   // The added row, waiting for its name.
   const [adding, setAdding] = useState(false);
   // The number of accesses of each workspace: the users and groups
@@ -125,6 +130,28 @@ export default function WorkspacesTab({
   };
 
   const total = workspaces.length + (adding ? 1 : 0);
+  // The boxes only serve deleting.
+  const checkable = rights.delete;
+  const workspaceRowStyle = (rank: number) =>
+    rowStyle(rank, total, false, checkable ? "checkbox" : "simple");
+
+  /** The name field: behind a checkbox, it moves back to align with it. */
+  const nameSlot = (field: ReactNode, added = false) =>
+    checkable ? (
+      <Box
+        style={{
+          flex: 1,
+          minWidth: NAME_MIN_WIDTH,
+          display: "flex",
+          // Added, without a checkbox before it: it opens the row.
+          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+        }}
+      >
+        {field}
+      </Box>
+    ) : (
+      field
+    );
 
   return (
     <Stack gap="sm">
@@ -147,18 +174,26 @@ export default function WorkspacesTab({
                 key={w.id}
                 gap="sm"
                 wrap="nowrap"
-                onContextMenu={(e) => setMenu({ workspace: w, position: menuPosition(e) })}
-                style={rowStyle(rank, total, false, "simple")}
+                style={workspaceRowStyle(rank)}
               >
-                <RowField
-                  name={w.name}
-                  placeholder="Nom du workspace"
-                  label={`Nom de ${w.name}`}
-                  readOnly={!rights.create}
-                  onValidate={(name) => {
-                    if (name && name !== w.name) void write(() => api.updateWorkspace(w.id, name));
-                  }}
-                />
+                {checkable && (
+                  <RowCheckbox
+                    label={`Sélectionner ${w.name}`}
+                    checked={selection.isChecked(w.id)}
+                    onChange={(on) => selection.toggle(w.id, on)}
+                  />
+                )}
+                {nameSlot(
+                  <RowField
+                    name={w.name}
+                    placeholder="Nom du workspace"
+                    label={`Nom de ${w.name}`}
+                    readOnly={!rights.create}
+                    onValidate={(name) => {
+                      if (name && name !== w.name) void write(() => api.updateWorkspace(w.id, name));
+                    }}
+                  />,
+                )}
                 {/* Its accesses: their number, and their modal on click. */}
                 {access[w.id] !== undefined && (
                   <RowButton
@@ -177,72 +212,64 @@ export default function WorkspacesTab({
               <Group
                 gap="sm"
                 wrap="nowrap"
-                style={rowStyle(total - 1, total, false, "simple")}
+                // Its name alone: as far from both edges.
+                style={{ ...workspaceRowStyle(total - 1), paddingRight: ADDED_ROW_PADDING_RIGHT }}
               >
-                <RowField
-                  name=""
-                  placeholder="Nom du workspace"
-                  label="Nom du nouveau workspace"
-                  autoFocus
-                  // Left without a name, the row disappears; named, it is created.
-                  onValidate={(name) => {
-                    setAdding(false);
-                    if (name) void write(() => api.createWorkspace(name));
-                  }}
-                />
+                {nameSlot(
+                  <RowField
+                    name=""
+                    placeholder="Nom du workspace"
+                    label="Nom du nouveau workspace"
+                    autoFocus
+                    // Left without a name, the row disappears; named, it is created.
+                    onValidate={(name) => {
+                      setAdding(false);
+                      if (name) void write(() => api.createWorkspace(name));
+                    }}
+                  />,
+                  true,
+                )}
               </Group>
             )}
           </Stack>
         )}
         {/* As close as possible to the list it extends. */}
-        {rights.create && (
-          <AddButton label="Ajouter un workspace" onClick={() => setAdding(true)} mt={4} />
-        )}
+        <ListFooter
+          {...(rights.create
+            ? { addLabel: "Ajouter un workspace", onAdd: () => setAdding(true) }
+            : null)}
+          checkedCount={selection.checked.length}
+          onDeleteChecked={() => setToDelete(workspaces.filter((w) => selection.isChecked(w.id)))}
+        />
       </div>
 
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            leftSection={<IconUsers size={16} />}
-            onClick={() => {
-              setAccessOf(menu.workspace);
-              setMenu(null);
-            }}
-          >
-            Accès
-          </Menu.Item>
-          {rights.delete && (
-            <>
-              <Menu.Divider />
-              <Menu.Item
-                color={RED}
-                leftSection={<IconTrash size={16} />}
-                onClick={() => {
-                  setToDelete(menu.workspace);
-                  setMenu(null);
-                }}
-              >
-                Supprimer
-              </Menu.Item>
-            </>
-          )}
-        </PointMenu>
-      )}
-
       <DeleteConfirmModal
-        opened={toDelete !== null}
-        onClose={() => setToDelete(null)}
+        opened={toDelete.length > 0}
+        onClose={() => setToDelete([])}
         onConfirm={async () => {
-          const w = toDelete;
-          setToDelete(null);
-          if (w) await write(() => api.deleteWorkspace(w.id));
+          const list = toDelete;
+          setToDelete([]);
+          selection.reset();
+          await write(() => Promise.all(list.map((w) => api.deleteWorkspace(w.id))));
         }}
-        title="Supprimer le workspace"
+        title={
+          toDelete.length > 1
+            ? `Supprimer ${pluralize(toDelete.length, "workspace")}`
+            : "Supprimer le workspace"
+        }
         message={
-          <>
-            Voulez-vous vraiment supprimer « {toDelete?.name} » ? Toutes ses vues et tout ce
-            qu'elles contiennent seront supprimés. Cette action est irréversible.
-          </>
+          toDelete.length > 1 ? (
+            <>
+              Voulez-vous vraiment supprimer ces {pluralize(toDelete.length, "workspace")} ? Toutes
+              leurs vues et tout ce qu'elles contiennent seront supprimés. Cette action est
+              irréversible.
+            </>
+          ) : (
+            <>
+              Voulez-vous vraiment supprimer « {toDelete[0]?.name} » ? Toutes ses vues et tout ce
+              qu'elles contiennent seront supprimés. Cette action est irréversible.
+            </>
+          )
         }
       />
 

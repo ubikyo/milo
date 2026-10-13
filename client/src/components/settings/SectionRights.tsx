@@ -13,6 +13,8 @@ import {
   nameFieldStyle,
   rowStyle,
   pickKeys,
+  CHECKBOX_SPAN,
+  FIRST_FIELD_MARGIN,
 } from "../ui/DrawerRows";
 
 // The permissions of a user or a group, unfolded under its row
@@ -32,6 +34,27 @@ const PILL_RADIUS = 4;
 
 /** The width of the section's field: enough to read "Gestion des droits d'administration", and room left for the rights. */
 const SECTION_WIDTH = 270;
+
+/**
+ * The section's picker: AFTER_CHECKBOX from the checkbox, like the chevron of
+ * the user's row — its own margin (2 px) and the row's gap (12 px) are taken
+ * back by the difference.
+ */
+const sectionStyle = {
+  width: SECTION_WIDTH,
+  flexShrink: 0,
+  marginLeft: AFTER_CHECKBOX - 2 - 12,
+};
+
+/**
+ * The added row's, without a checkbox before it: it opens the row, and takes
+ * the box's place so that the rights' columns stay aligned.
+ */
+const addedSectionStyle = {
+  width: SECTION_WIDTH + CHECKBOX_SPAN + sectionStyle.marginLeft - FIRST_FIELD_MARGIN,
+  flexShrink: 0,
+  marginLeft: FIRST_FIELD_MARGIN,
+};
 
 /**
  * The choice that adds, at once, every section left with every right the
@@ -258,7 +281,8 @@ export default function SectionRights({
                     : rowStyle(rank, rows.length, false)
                 }
               >
-                {newRow || locked ? (
+                {/* The added row has no checkbox: its section opens it. */}
+                {newRow ? null : locked ? (
                   <RowCheckboxSpace />
                 ) : (
                   <RowCheckbox
@@ -275,11 +299,7 @@ export default function SectionRights({
                     allLabel={multiAdd.allLabel}
                     countLabel={multiAdd.countLabel}
                     onDone={pickSections}
-                    style={{
-                      width: SECTION_WIDTH,
-                      flexShrink: 0,
-                      marginLeft: AFTER_CHECKBOX - 2 - 12,
-                    }}
+                    style={addedSectionStyle}
                     inputStyle={nameFieldStyle(true)}
                     aria-label="Section à ajouter"
                   />
@@ -287,14 +307,7 @@ export default function SectionRights({
                   <Select
                     size="sm"
                     radius={ROUNDING}
-                    // AFTER_CHECKBOX from the checkbox, like the chevron of the
-                    // user's row: its own margin (2 px) and the row's gap
-                    // (12 px) are taken back by the difference.
-                    style={{
-                      width: SECTION_WIDTH,
-                      flexShrink: 0,
-                      marginLeft: AFTER_CHECKBOX - 2 - 12,
-                    }}
+                    style={newRow ? addedSectionStyle : sectionStyle}
                     data={sectionChoice(section)}
                     value={section || null}
                     placeholder="Choisir"

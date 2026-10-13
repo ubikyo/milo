@@ -1,4 +1,4 @@
-import { Group, Input, Select, Stack } from "@mantine/core";
+import { Box, Group, Input, Select, Stack } from "@mantine/core";
 import { IconChevronDown, IconCopy, IconMoon, IconPalette, IconSun } from "@tabler/icons-react";
 import { useState } from "react";
 import type { Theme } from "@milo/shared";
@@ -13,12 +13,13 @@ import {
   EmptyList,
   ROUNDING,
   RowCheckbox,
-  RowCheckboxSpace,
   RowField,
   nameFieldStyle,
   pickKeys,
   rowStyle,
   useRowSelection,
+  ADDED_ROW_PADDING_RIGHT,
+  FIRST_FIELD_MARGIN,
 } from "../ui/DrawerRows";
 
 // The "Thèmes" section of "Paramétrage" > "Affichage": the list of themes,
@@ -107,24 +108,36 @@ export default function ThemeList() {
           {rows.map((theme, rank) => {
             const ThemeIcon = !theme?.system ? IconPalette : theme.scheme === "dark" ? IconMoon : IconSun;
             return (
-              <Group key={theme?.id ?? "new"} gap="sm" wrap="nowrap" style={rowStyle(rank, rows.length, false)}>
+              <Group key={theme?.id ?? "new"} gap="sm" wrap="nowrap" style={{
+                  ...rowStyle(rank, rows.length, false),
+                  // Added, its name alone: as far from both edges.
+                  ...(theme ? null : { paddingRight: ADDED_ROW_PADDING_RIGHT }),
+                }}
+              >
                 {theme ? (
                   <RowCheckbox
                     label={`Sélectionner ${theme.name}`}
                     checked={checks.isChecked(theme.id)}
                     onChange={(on) => checks.toggle(theme.id, on)}
                   />
-                ) : (
-                  // The added row cannot be selected yet: an empty space keeps it aligned.
-                  <RowCheckboxSpace />
-                )}
-                <RowField
-                  name={theme?.name ?? ""}
-                  onValidate={(name) => (theme ? rename(theme, name) : create(name))}
-                  placeholder="Nom du thème"
-                  label={theme ? `Nom de ${theme.name}` : "Nom du thème à ajouter"}
-                  autoFocus={!theme}
-                />
+                ) : null}
+                {/* The added row, without a checkbox: its name opens it. */}
+                <Box
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    marginLeft: theme ? 0 : FIRST_FIELD_MARGIN,
+                  }}
+                >
+                  <RowField
+                    name={theme?.name ?? ""}
+                    onValidate={(name) => (theme ? rename(theme, name) : create(name))}
+                    placeholder="Nom du thème"
+                    label={theme ? `Nom de ${theme.name}` : "Nom du thème à ajouter"}
+                    autoFocus={!theme}
+                  />
+                </Box>
                 {theme && (
                   <>
                     {/* The system's two show the scheme they stand for; the others, the themes' icon. */}

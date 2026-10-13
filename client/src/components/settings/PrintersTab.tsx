@@ -22,10 +22,11 @@ import {
   EmptyList,
   INPUT_STYLE,
   ListFooter,
+  FIRST_FIELD_MARGIN,
   NAME_INSET,
+  NAME_MIN_WIDTH,
   ROUNDING,
   RowCheckbox,
-  RowCheckboxSpace,
   RowField,
   editKeys,
   pickKeys,
@@ -39,7 +40,7 @@ import listClasses from "../../assets/styles/SettingsList.module.css";
 // whole application, drawn like the other editable lists (DrawerRows). A row
 // per printer: its name, its type, its IP address, edited in place, then the
 // model it gives — in red "Hors ligne" when its port 9100 does not answer.
-// Each is reached directly by Milo, or through one of the proxies ("Proxy"
+// Each is reached directly by Milo, or through one of the proxies ("Proxys"
 // tab): its "Connexion".
 // "Ajouter une imprimante" adds a row, created only once it has its name and
 // its IP address; an address cannot be emptied afterwards. Under them,
@@ -287,9 +288,19 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
   const printerRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
-  const nameSlot = (field: ReactNode) =>
+  const nameSlot = (field: ReactNode, added = false) =>
     canEdit ? (
-      <Box style={{ flex: 1, minWidth: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+      <Box
+        style={{
+          flex: 1,
+          minWidth: NAME_MIN_WIDTH,
+          display: "flex",
+          // Added, without a checkbox before it: it opens the row.
+          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+        }}
+      >
+        {field}
+      </Box>
     ) : (
       field
     );
@@ -337,8 +348,6 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
               ))}
               {draft && (
                 <Group gap="sm" wrap="nowrap" style={printerRowStyle(total - 1)}>
-                  {/* Not created yet: nothing to delete. */}
-                  <RowCheckboxSpace />
                   {nameSlot(
                     <RowField
                       name={draft.name}
@@ -348,6 +357,7 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
                       // Left empty with no address, the row disappears.
                       onValidate={(name) => void changeDraft({ name })}
                     />,
+                    true,
                   )}
                   <TypeField value={draft.type} of="de l'imprimante à ajouter" onChange={(type) => void changeDraft({ type })} />
                   {/* Named, the missing address shows in red. */}

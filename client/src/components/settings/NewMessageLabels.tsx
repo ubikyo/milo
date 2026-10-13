@@ -8,7 +8,7 @@ import {
   EmptyList,
   ListFooter,
   RowCheckbox,
-  RowCheckboxSpace,
+  FIRST_FIELD_MARGIN,
   useRowSelection,
   NAME_INSET,
   INPUT_INSET,
@@ -101,12 +101,9 @@ export default function NewMessageLabels({
                 // Read-only, without boxes: a simple list's row.
                 style={rowStyle(rank, rows.length, false, canEdit ? "checkbox" : "simple")}
               >
+                {/* The added row has no checkbox: its label opens it. */}
                 {canEdit &&
-                  (newRow ? (
-                    // The added row cannot be selected yet: an empty space
-                    // keeps it aligned.
-                    <RowCheckboxSpace />
-                  ) : (
+                  (newRow ? null : (
                     <RowCheckbox
                       label={`Sélectionner ${labelOf(id)?.name ?? "l'étiquette"}`}
                       checked={checks.isChecked(id)}
@@ -118,7 +115,11 @@ export default function NewMessageLabels({
                   radius={ROUNDING}
                   // The label aligns with the checkbox, as a column's name
                   // with its handle.
-                  style={{ flex: 1, minWidth: 0, marginLeft: canEdit ? -NAME_INSET : 0 }}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    marginLeft: canEdit ? (newRow ? FIRST_FIELD_MARGIN : -NAME_INSET) : 0,
+                  }}
                   data={options(id)}
                   value={id || null}
                   placeholder="Choisir une étiquette"

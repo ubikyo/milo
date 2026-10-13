@@ -442,9 +442,9 @@ export default function ColumnFields({
                 onDragStart={() => setHeld(rank)}
                 onDragEnd={() => setHeld(null)}
               />
-              {newRow || last ? (
-                // Neither the added row nor the last column can be removed: an
-                // empty space keeps the names aligned.
+              {/* The added row has no checkbox; the last column cannot be
+                  removed: an empty space keeps the names aligned. */}
+              {newRow ? null : last ? (
                 <RowCheckboxSpace afterHandle />
               ) : (
                 <RowCheckbox

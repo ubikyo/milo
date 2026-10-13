@@ -35,10 +35,11 @@ import {
   EmptyList,
   INPUT_STYLE,
   ListFooter,
+  CHECKBOX_SPAN,
+  FIRST_FIELD_MARGIN,
   NAME_INSET,
   ROUNDING,
   RowCheckbox,
-  RowCheckboxSpace,
   RowField,
   pickKeys,
   pluralize,
@@ -427,9 +428,20 @@ export default function ApiTab({
   const tokenRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
-  const nameSlot = (field: ReactNode) =>
+  const nameSlot = (field: ReactNode, added = false) =>
     canEdit ? (
-      <Box w={NAME_WIDTH} style={{ flexShrink: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+      added ? (
+        // Without a checkbox before it, it opens the row and takes the box's
+        // place: the next columns stay aligned.
+        <Box
+          w={NAME_WIDTH + CHECKBOX_SPAN - NAME_INSET - FIRST_FIELD_MARGIN}
+          style={{ flexShrink: 0, display: "flex", marginLeft: FIRST_FIELD_MARGIN }}
+        >
+          {field}
+        </Box>
+      ) : (
+        <Box w={NAME_WIDTH} style={{ flexShrink: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+      )
     ) : (
       <Box w={NAME_WIDTH} style={{ flexShrink: 0 }}>{field}</Box>
     );
@@ -484,8 +496,6 @@ export default function ApiTab({
               ))}
               {draft && (
                 <Group gap="sm" wrap="nowrap" style={tokenRowStyle(total - 1)}>
-                  {/* Not created yet: nothing to revoke. */}
-                  <RowCheckboxSpace />
                   {nameSlot(
                     <RowField
                       name={draft.name}
@@ -495,6 +505,7 @@ export default function ApiTab({
                       // Left empty with nothing chosen, the row disappears.
                       onValidate={(name) => void changeDraft({ name })}
                     />,
+                    true,
                   )}
                   <WorkspacesField
                     value={draft.workspaces}

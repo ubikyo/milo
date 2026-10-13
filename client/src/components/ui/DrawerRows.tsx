@@ -32,6 +32,21 @@ export const NAME_INSET = 10;
 export const INPUT_INSET = NAME_INSET - 3;
 
 /**
+ * The margin of a name field opening its row, with no checkbox before it — a
+ * row being added: its box stands ROW_INSET from the row's left edge.
+ */
+export const FIRST_FIELD_MARGIN = ROW_INSET - NAME_INSET;
+
+/**
+ * The right padding of a row being added whose name field is alone: the
+ * field stands ROW_INSET from both edges.
+ */
+export const ADDED_ROW_PADDING_RIGHT = ROW_INSET;
+
+/** Below this, a name squeezed by its row's fixed columns could not be typed in. */
+export const NAME_MIN_WIDTH = 100;
+
+/**
  * The background of a field being edited — a width with focus, a column in a
  * list: that of the drawer.
  */
@@ -228,6 +243,9 @@ export function RowButton({
 
 /** The width of an "xs" checkbox. */
 const CHECKBOX_SIZE = 16;
+
+/** What a row's checkbox takes up: its box, its margin and the row's usual gap. */
+export const CHECKBOX_SPAN = CHECKBOX_SIZE + 2 + 12;
 
 /**
  * A checkbox's place in its row: pulled closer to a handle, 2 px of air after

@@ -29,9 +29,10 @@ import Footer from "../ui/Footer";
 import {
   EmptyList,
   ListFooter,
+  FIRST_FIELD_MARGIN,
   NAME_INSET,
+  NAME_MIN_WIDTH,
   RowCheckbox,
-  RowCheckboxSpace,
   RowField,
   pluralize,
   rowStyle,
@@ -39,7 +40,7 @@ import {
 } from "../ui/DrawerRows";
 import listClasses from "../../assets/styles/SettingsList.module.css";
 
-// The "Proxy" section of Settings ("Paramétrage"): the Milo Proxy services
+// The "Proxys" section of Settings ("Paramétrage"): the Milo Proxy services
 // running on the sites' networks, through which Milo reaches their printers
 // (shared/proxies.ts). A row per proxy, drawn like the other editable lists
 // (DrawerRows): its name, edited in place, what it said of itself, then where
@@ -202,9 +203,19 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
   const proxyRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
-  const nameSlot = (field: ReactNode) =>
+  const nameSlot = (field: ReactNode, added = false) =>
     canEdit ? (
-      <Box style={{ flex: 1, minWidth: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+      <Box
+        style={{
+          flex: 1,
+          minWidth: NAME_MIN_WIDTH,
+          display: "flex",
+          // Added, without a checkbox before it: it opens the row.
+          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+        }}
+      >
+        {field}
+      </Box>
     ) : (
       field
     );
@@ -258,8 +269,6 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
               ))}
               {draft && (
                 <Group gap="sm" wrap="nowrap" style={proxyRowStyle(total - 1)}>
-                  {/* Not created yet: nothing to delete. */}
-                  <RowCheckboxSpace />
                   {nameSlot(
                     <RowField
                       name=""
@@ -268,6 +277,7 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
                       autoFocus
                       onValidate={(name) => void create(name)}
                     />,
+                    true,
                   )}
                   {/* Not created yet: an empty space keeps the rows' ends aligned. */}
                   <Box w={DETAILS_WIDTH + STATE_WIDTH} style={{ flexShrink: 0 }} />

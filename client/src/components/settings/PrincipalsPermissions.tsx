@@ -16,7 +16,6 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
   ROUNDING,
   RowCheckbox,
-  RowCheckboxSpace,
   ListFooter,
   useRowSelection,
   EmptyList,
@@ -360,18 +359,16 @@ export default function PrincipalsPermissions<T>({
                       ...(open ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : null),
                     }}
                   >
-                    {/* Oneself, or one's group, cannot be removed: an empty
-                        space keeps the row aligned. */}
-                    {!readOnly &&
-                      (locked ? (
-                        <RowCheckboxSpace />
-                      ) : (
-                        <RowCheckbox
-                          label={`Sélectionner ${principal.name || principal.email}`}
-                          checked={selection.isChecked(key(principal))}
-                          onChange={(on) => selection.toggle(key(principal), on)}
-                        />
-                      ))}
+                    {/* Oneself, or one's group, cannot be removed: its box
+                        stays, greyed out. */}
+                    {!readOnly && (
+                      <RowCheckbox
+                        label={`Sélectionner ${principal.name || principal.email}`}
+                        checked={!locked && selection.isChecked(key(principal))}
+                        onChange={(on) => selection.toggle(key(principal), on)}
+                        disabled={locked}
+                      />
+                    )}
                     {/* Unfolds its permissions under the row, and folds them back. */}
                     <ActionIcon
                       variant="subtle"

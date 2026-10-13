@@ -13,10 +13,10 @@ import {
   ROUNDING,
   EmptyList,
   Handle,
+  FIRST_FIELD_MARGIN,
   NAME_INSET,
   ListFooter,
   RowCheckbox,
-  RowCheckboxSpace,
   move,
   nameFieldStyle,
   rowStyle,
@@ -539,13 +539,15 @@ export function ListRows({
                   return ok;
                 }}
                 onAbandon={() => setAdding(false)}
-                // Not saved yet: nothing to delete, nor to move.
+                // Not saved yet: nothing to delete, nor to move — no checkbox.
+                // The first field, which tucks against the checkbox, opens the
+                // row instead: ROW_INSET from its edge (FIRST_FIELD_MARGIN).
                 lead={
                   <>
                     {reorderable && (
                       <Handle label="Déplacer" active={false} onDragStart={() => {}} onDragEnd={() => {}} />
                     )}
-                    <RowCheckboxSpace afterHandle={reorderable} />
+                    <Box style={{ flexShrink: 0, marginRight: FIRST_FIELD_MARGIN }} />
                   </>
                 }
                 leading={leading?.(null, total - 1)}

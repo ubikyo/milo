@@ -72,18 +72,18 @@ const TABS: {
       "Les modèles d’e-mail ci-dessous, au format MJML, sont communs à l’ensemble de l’application. Chaque widget dispose également de modèles spécifiques, modifiables depuis son interface de configuration.",
   },
   {
+    value: "proxy",
+    label: "Proxys",
+    icon: IconTopologyStar3,
+    description:
+      "Les proxys Milo s’installent sur le réseau d’un site pour permettre à Milo, hébergé sur Internet, d’en joindre les périphériques — les imprimantes pour commencer. Chaque proxy se connecte à Milo en HTTPS avec son token, à coller dans /etc/milo.proxy.conf.",
+  },
+  {
     value: "printing",
     label: "Impression",
     icon: IconPrinter,
     description:
       "La liste ci-dessous définit les imprimantes Zebra connectées au réseau Ethernet et les formats d’étiquettes associés. Chacune est jointe directement par Milo, ou au travers d’un proxy.",
-  },
-  {
-    value: "proxy",
-    label: "Proxy",
-    icon: IconTopologyStar3,
-    description:
-      "Les proxys Milo s’installent sur le réseau d’un site pour permettre à Milo, hébergé sur Internet, d’en joindre les périphériques — les imprimantes pour commencer. Chaque proxy se connecte à Milo en HTTPS avec son token, à coller dans /etc/milo.proxy.conf.",
   },
   {
     value: "display",

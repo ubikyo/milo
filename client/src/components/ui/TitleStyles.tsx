@@ -171,7 +171,7 @@ export function TitleStyleField({
           ))}
           {adding && (
             <Group gap="sm" wrap="nowrap" style={rowStyle(total - 1, total, false)}>
-              <RowCheckboxSpace />
+              {/* Not created yet, no checkbox: the radio button's place opens it. */}
               <RowCheckboxSpace />
               <RowField
                 name=""
