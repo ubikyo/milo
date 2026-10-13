@@ -1,8 +1,8 @@
 # CI/CD Milo — build on a GitHub-hosted runner, deployment to the Ubuntu VM
 # via a self-hosted runner installed on it (label "milo-vm").
 #
-# Deployment is triggered on every push to dev and on a version tag
-# (v1.0.0, v1.1.0…). Each deployment waits for a manual approval: the
+# Deployment is triggered on every push to dev, on a version tag
+# (v1.0.0, v1.1.0…) and on demand ("Run workflow" in the Actions tab). Each deployment waits for a manual approval: the
 # "production" environment has required reviewers (Settings → Environments).
 
 name: CI/CD
@@ -11,6 +11,8 @@ on:
   push:
     branches: [dev]
     tags: ["v*"]
+  # "Run workflow" button in the Actions tab: redeploys on demand.
+  workflow_dispatch:
   pull_request:
     branches: [dev]
 
@@ -87,9 +89,10 @@ jobs:
   deploy:
     name: Déploiement sur la VM
     needs: build
-    # On a push to dev or on a version tag, never on a pull request
+    # On a push or a manual run, from dev or a version tag; never on a pull
+    # request
     if: >-
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: [self-hosted, milo-vm]
     # The required reviewers of this environment give the manual approval.
