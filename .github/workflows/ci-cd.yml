@@ -22,6 +22,10 @@ env:
   API_DIR: /opt/milo/server
   WEB_DIR: /var/www/milo
   DB_DIR: /var/lib/milo
+  DB_FILE: data.db
+  # The API's own port (milo-api.service): the health check asks it directly,
+  # without nginx and its HTTPS redirection.
+  API_PORT: "3001"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -62,6 +66,10 @@ jobs:
           set -e
           cd "$RUNNER_TEMP/api"
           npm install --omit=dev --no-audit --no-fund
+          # The migrations on a new database, then again on the database they
+          # have just brought up to date: both must pass.
+          MILO_DB_PATH="/tmp/milo-smoke/smoke.db" node migrate.mjs
+          MILO_DB_PATH="/tmp/milo-smoke/smoke.db" node migrate.mjs
           MILO_DB_PATH="/tmp/milo-smoke/smoke.db" PORT=3999 node server.mjs &
           pid=$!
           code=""
@@ -111,6 +119,33 @@ jobs:
           name: api
           path: ${{ runner.temp }}/api
 
+      - name: dépendances de production
+        run: |
+          set -euo pipefail
+          # better-sqlite3 is compiled here, on the target VM, before anything
+          # is replaced. The artifact manifest pins the exact versions
+          # resolved at build time: "install" is as reproducible here as "ci".
+          cd "$RUNNER_TEMP/api"
+          npm install --omit=dev --no-audit --no-fund
+
+      # The new version's migrations on a copy of the production database:
+      # if they fail, the deployment stops here and the running version keeps
+      # going, its database untouched.
+      - name: migrations sur une copie de la base
+        run: |
+          set -euo pipefail
+          copy="$RUNNER_TEMP/db-copy"
+          rm -rf "$copy"
+          mkdir -p "$copy"
+          trap 'rm -rf "$copy"' EXIT
+          # The database and its WAL journal, which holds the latest writes.
+          # None yet (first installation): the migrations start from nothing.
+          sudo rsync -a --chown="$(id -un):$(id -gn)" \
+            --include "$DB_FILE" --include "$DB_FILE-wal" --exclude '*' \
+            "$DB_DIR/" "$copy/"
+          cd "$RUNNER_TEMP/api"
+          MILO_DB_PATH="$copy/$DB_FILE" node migrate.mjs
+
       - name: copie des fichiers
         run: |
           set -euo pipefail
@@ -120,20 +155,9 @@ jobs:
           # files versioned by hash.
           sudo rsync -a --delete "$RUNNER_TEMP/web/" "$WEB_DIR/"
 
-          # API: replace the code, never the database (it is in $DB_DIR,
-          # outside the deployed folder).
-          sudo rsync -a --delete \
-            --exclude node_modules \
-            "$RUNNER_TEMP/api/" "$API_DIR/"
-
-      - name: dépendances de production
-        run: |
-          set -euo pipefail
-          # better-sqlite3 is compiled here, on the target VM.
-          # The artifact manifest pins the exact versions resolved at build
-          # time: "install" is as reproducible here as "ci".
-          cd "$API_DIR"
-          sudo npm install --omit=dev --no-audit --no-fund
+          # API: replace the code and its dependencies, never the database
+          # (it is in $DB_DIR, outside the deployed folder).
+          sudo rsync -a --delete "$RUNNER_TEMP/api/" "$API_DIR/"
           sudo chown -R milo:milo "$API_DIR" "$DB_DIR"
 
       - name: redémarrage des services
@@ -150,8 +174,12 @@ jobs:
           code=""
           for i in {1..20}; do
             sleep 1
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/auth/setup || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$API_PORT/api/auth/setup" || true)
             [ "$code" = "200" ] && break
           done
-          [ "$code" = "200" ] || { sudo journalctl -u milo-api -n 50 --no-pager; exit 1; }
+          [ "$code" = "200" ] || {
+            echo "L'API ne répond pas (code=$code)"
+            sudo journalctl -u milo-api -n 50 --no-pager
+            exit 1
+          }
           echo "Milo répond (code=$code)"

@@ -71,6 +71,9 @@ cible. Le workflow GitHub Actions (`.github/workflows/ci-cd.yml`) fait cela,
 puis dépose le client statique et l'API sur la VM par un runner auto-hébergé.
 Chaque push sur `dev` et chaque tag `v*` déploient, après approbation manuelle
 (environnement `production`).
+Avant de remplacer quoi que ce soit, le déploiement applique les migrations de
+la nouvelle version à une copie de la base de production (`migrate.mjs`) : si
+elles échouent, il s'arrête et la version en place continue de tourner.
 
 ### Variables d'environnement du serveur
 

@@ -32,18 +32,25 @@ const externes = Object.keys(manifesteServeur.dependencies).filter(
 
 await fs.mkdir(sortie, { recursive: true });
 
-await build({
-  entryPoints: [path.join(racine, "server", "src", "index.ts")],
-  bundle: true,
-  platform: "node",
-  target: "node20",
-  format: "esm",
-  outfile: path.join(sortie, "server.mjs"),
-  external: externes,
-  sourcemap: true,
-  // Messages are in French: the file must remain UTF-8.
-  charset: "utf8",
-});
+// The server, and the migrations alone (migrate.mjs): the deployment runs
+// them on a copy of the production database before replacing the code.
+for (const [entree, fichier] of [
+  ["index.ts", "server.mjs"],
+  ["migrate.ts", "migrate.mjs"],
+]) {
+  await build({
+    entryPoints: [path.join(racine, "server", "src", entree)],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "esm",
+    outfile: path.join(sortie, fichier),
+    external: externes,
+    sourcemap: true,
+    // Messages are in French: the file must remain UTF-8.
+    charset: "utf8",
+  });
+}
 
 /**
  * The version actually installed for a dependency. npm hoists most
