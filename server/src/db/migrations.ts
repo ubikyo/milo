@@ -291,7 +291,6 @@ export const migrate = (db: Database): void => {
   legacyIndicators(db);
   declaredAssetListKeys(db);
   declaredAssetExtras(db);
-  declaredAssetCategoryTree(db);
   declaredAssetPurchaseDate(db);
   sortedCategories(db);
   categoryTree(db);
@@ -448,6 +447,9 @@ export const migrate = (db: Database): void => {
   settingsPerList(db);
   // The counting widgets name the widgets they read by their keys.
   sourcesByKey(db);
+  // The declared assets' categories become a tree, list by list: after
+  // settingsPerList, which gives their settings a list key.
+  declaredAssetCategoryTree(db);
 };
 
 /** Set once workstation lists name their tags with collectors. */
