@@ -1,7 +1,19 @@
-import { Box, Divider, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
+import {
+  Box,
+  Divider,
+  Group,
+  HoverCard,
+  Kbd,
+  Stack,
+  Text,
+  UnstyledButton,
+} from "@mantine/core";
+import { useState } from "react";
 import { useNewShortcutActions } from "../../lib/newShortcut";
 import { PAGE_GUTTER } from "../../themes/layout";
+import classes from "../../assets/styles/ShortcutsHelp.module.css";
 import Logo from "./Logo";
+import { HAS_UPDATES, openUpdates } from "./UpdatesModal";
 
 // Action on the left, shortcut on the right. "when" limits a shortcut to the board
 // where it acts: no next context without contexts, no switching between views
@@ -30,7 +42,7 @@ const CORNER = {
 
 /**
  * The logo in the bottom right corner: the shortcuts show when the mouse is
- * on it, the version under them. What the open board holds: contexts; whether there are views, boards, to go
+ * on it, the line that opens the updates under them. What the open board holds: contexts; whether there are views, boards, to go
  * through — at least two —, and a board at all.
  */
 export default function ShortcutsHelp({
@@ -52,14 +64,22 @@ export default function ShortcutsHelp({
   };
   const news = useNewShortcutActions().map((action) => ({ action, key: "N" }));
   const shown = [...news, ...SHORTCUTS.filter((s) => !s.when || holds[s.when])];
+  // "Mises à jour" closes the bubble as it opens the window: the HoverCard,
+  // which has no "opened" to set, is remounted closed.
+  const [mount, setMount] = useState(0);
+  const showUpdates = () => {
+    setMount((m) => m + 1);
+    openUpdates();
+  };
   return (
-    // No shortcut to show: the logo stays, without its bubble.
+    // Nothing to show: the logo stays, without its bubble.
     <HoverCard
+      key={mount}
       position="top-end"
       withArrow
       shadow="md"
       openDelay={100}
-      disabled={shown.length === 0}
+      disabled={shown.length === 0 && !HAS_UPDATES}
     >
       <HoverCard.Target>
         <Box
@@ -72,11 +92,13 @@ export default function ShortcutsHelp({
           <Logo variant={2} h={LOGO_HEIGHT} />
         </Box>
       </HoverCard.Target>
-      <HoverCard.Dropdown>
+      <HoverCard.Dropdown pb="calc(var(--mantine-spacing-md) - var(--mantine-spacing-xs))">
         <Stack gap={6} miw={220}>
-          <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-            Raccourcis clavier
-          </Text>
+          {shown.length > 0 && (
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed">
+              Raccourcis clavier
+            </Text>
+          )}
           {shown.map(
             ({ action, key }) => (
               <Group key={action} justify="space-between" gap="xl" wrap="nowrap">
@@ -85,10 +107,14 @@ export default function ShortcutsHelp({
               </Group>
             ),
           )}
-          <Divider mt={4} />
-          <Text size="xs" c="dimmed">
-            Version {__APP_VERSION__}
-          </Text>
+          {HAS_UPDATES && (
+            <>
+              {shown.length > 0 && <Divider mt={4} />}
+              <UnstyledButton className={classes.updates} onClick={showUpdates}>
+                <Text size="sm">Mises à jour</Text>
+              </UnstyledButton>
+            </>
+          )}
         </Stack>
       </HoverCard.Dropdown>
     </HoverCard>

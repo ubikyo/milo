@@ -48,8 +48,8 @@ export const supportRequests = {
   ),
   create: mutation(
     `INSERT INTO support_requests
-       (number, board_id, list_key, subject, status, due_date, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (number, board_id, list_key, subject, status, due_date, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   // A request born from an e-mail: it keeps the inbox, the sender and the
   // id. "OR IGNORE": an already imported message — two crossing polls — does
@@ -259,6 +259,12 @@ const requestExchanges = selection<{ request_id: Id; count: number }>(
    GROUP BY request_id`,
 );
 
+/** The accounts that entered requests: their requesters. */
+const requestCreators = selection<{ id: Id; name: string; email: string; first_name: string; last_name: string }>(
+  `SELECT id, name, email, first_name, last_name FROM users
+   WHERE id IN (SELECT value FROM json_each(?))`,
+);
+
 /** A batch of requests, each with its actors, labels and exchanges. */
 export const withRelations = (rows: SupportRequestRow[]): SupportRequest[] => {
   if (rows.length === 0) return [];
@@ -281,9 +287,18 @@ export const withRelations = (rows: SupportRequestRow[]): SupportRequest[] => {
   const exchanges = new Map<Id, number>();
   for (const row of requestExchanges.all(ids)) exchanges.set(row.request_id, row.count);
 
+  const creators = new Map<Id, Actor>();
+  const creatorIds = [...new Set(rows.map((r) => r.created_by).filter((id) => id !== null))];
+  if (creatorIds.length > 0) {
+    for (const row of requestCreators.all(JSON.stringify(creatorIds))) {
+      creators.set(row.id, actorOf(row));
+    }
+  }
+
   // The e-mail id is only used for import: it does not go out.
-  return rows.map(({ mail_id: _mailId, ...request }) => ({
+  return rows.map(({ mail_id: _mailId, created_by: createdBy, ...request }) => ({
     ...request,
+    creator: (createdBy !== null && creators.get(createdBy)) || null,
     actors: actors.get(request.id) ?? [],
     labels: labels.get(request.id) ?? [],
     comment_count: exchanges.get(request.id) ?? 0,

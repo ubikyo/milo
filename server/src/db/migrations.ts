@@ -478,6 +478,31 @@ export const migrate = (db: Database): void => {
   // The declared assets' categories become a tree, list by list: after
   // settingsPerList, which gives their settings a list key.
   declaredAssetCategoryTree(db);
+  // Who entered each request: its requester.
+  supportRequestCreators(db);
+};
+
+/**
+ * Requests entered before we kept who entered them: their creation note,
+ * "Demande créée le … par <nom>", names them.
+ */
+const supportRequestCreators = (db: Database): void => {
+  if (!columns(db, "support_requests").includes("created_by")) {
+    db.transaction(() => {
+      db.exec(
+        "ALTER TABLE support_requests ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL",
+      );
+      db.exec(
+        `UPDATE support_requests SET created_by = (
+           SELECT users.id FROM support_comments
+           JOIN users ON support_comments.text LIKE 'Demande créée le % par ' || COALESCE(NULLIF(users.name, ''), users.email)
+           WHERE support_comments.request_id = support_requests.id AND support_comments.system = 1
+           ORDER BY support_comments.id LIMIT 1
+         )
+         WHERE mail_id = '' AND sender_email = ''`,
+      );
+    })();
+  }
 };
 
 /** Set once workstation lists name their tags with collectors. */

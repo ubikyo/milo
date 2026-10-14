@@ -10,7 +10,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import source from "../../../../updates.md?raw";
 import { SETTINGS_SCROLLBAR_STYLES } from "../../themes/modals";
 import windowClasses from "../../assets/styles/SettingsModal.module.css";
@@ -91,10 +91,21 @@ const seen = () => {
   }
 };
 
+/** Whether updates.md announces anything: without it, nothing to open. */
+export const HAS_UPDATES = source.trim() !== "";
+
+// Elsewhere — the logo's menu (ShortcutsHelp) — opens the window again,
+// through an event on the window.
+const OPEN_EVENT = "milo:open-updates";
+export const openUpdates = () => window.dispatchEvent(new Event(OPEN_EVENT));
+
 export default function UpdatesModal() {
-  const [opened, setOpened] = useState(
-    () => source.trim() !== "" && !seen(),
-  );
+  const [opened, setOpened] = useState(() => HAS_UPDATES && !seen());
+  useEffect(() => {
+    const open = () => setOpened(true);
+    window.addEventListener(OPEN_EVENT, open);
+    return () => window.removeEventListener(OPEN_EVENT, open);
+  }, []);
   const close = () => {
     try {
       localStorage.setItem(STORAGE_KEY, FINGERPRINT);

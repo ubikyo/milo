@@ -21,7 +21,7 @@ import { ALL_OPTION, ChoiceFilter, TextFilter, type FilterOption } from "../ui/C
 import { useLabelFilter } from "../ui/LabelFilter";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar, showsNames } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment, ACTOR_FORMATS } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment, ACTOR_FORMATS, REQUESTER_FORMATS } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
@@ -170,6 +170,43 @@ const senderWithoutAccount = (request: SupportRequest): Actor | null => {
 /** An actor's key in the filter: an account, or an address without an account. */
 const actorKey = (a: Actor): string => (a.id ? `u:${a.id}` : `e:${a.email.toLowerCase()}`);
 
+/**
+ * The requester, at the origin of the request: the sender of the e-mail — under
+ * their account if they are among the actors —, otherwise whoever entered it.
+ */
+const requesterOf = (request: SupportRequest): Actor | null => {
+  const address = request.sender_email.toLowerCase();
+  if (!address) return request.creator;
+  return request.actors.find((a) => a.email.toLowerCase() === address) ?? senderOf(request);
+};
+
+/** The agents: the actors, except the requester. */
+const agentsOf = (request: SupportRequest): Actor[] => {
+  const requester = requesterOf(request);
+  if (!requester) return request.actors;
+  const key = actorKey(requester);
+  return request.actors.filter((a) => actorKey(a) !== key);
+};
+
+/** The requester; received by e-mail, marked with their envelope, as among the actors. */
+function RequesterCell({
+  request,
+  format = REQUESTER_FORMATS[0].value,
+}: {
+  request: SupportRequest;
+  format?: string;
+}) {
+  const requester = requesterOf(request);
+  if (!requester || showsNames(format) || !request.sender_email) {
+    return <ActorAvatars actors={requester ? [requester] : []} format={format} />;
+  }
+  return (
+    <div style={{ display: "inline-flex" }}>
+      <SenderAvatar person={requester} />
+    </div>
+  );
+}
+
 function ActorsCell({ request, format }: { request: SupportRequest; format?: string }) {
   // As names, the sender first like the avatars, without their mark.
   if (showsNames(format)) return <ActorAvatars actors={shownActors(request)} format={format} />;
@@ -235,7 +272,16 @@ const SUBJECT_WIDTH = 600;
 const LABELS_MIN_WIDTH = 260;
 /** Width of the date columns: "Reçu le" and "Échéance". */
 const DATE_WIDTH = 130;
-export type ColumnKey = "ticket" | "subject" | "actors" | "labels" | "due" | "status" | "received";
+export type ColumnKey =
+  | "ticket"
+  | "subject"
+  | "actors"
+  | "requester"
+  | "agents"
+  | "labels"
+  | "due"
+  | "status"
+  | "received";
 
 /** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
@@ -260,6 +306,11 @@ const VALUES: Record<ColumnKey, (d: SupportRequest) => string | number | null> =
   subject: (d) => d.subject || null,
   actors: (d) => {
     const a = shownActors(d);
+    return a.length ? a.map((x) => x.name).join(", ") : null;
+  },
+  requester: (d) => requesterOf(d)?.name || null,
+  agents: (d) => {
+    const a = agentsOf(d);
     return a.length ? a.map((x) => x.name).join(", ") : null;
   },
   // By the first label, in the labels' order — group after group: the one the
@@ -289,6 +340,8 @@ interface Filters {
   ticket: string;
   subject: string;
   actor: string;
+  requester: string;
+  agent: string;
   due: string;
   status: string;
   received: string;
@@ -298,6 +351,8 @@ const NO_FILTER: Filters = {
   ticket: "",
   subject: "",
   actor: ALL_OPTION,
+  requester: ALL_OPTION,
+  agent: ALL_OPTION,
   due: ALL_OPTION,
   status: ALL_OPTION,
   received: ALL_OPTION,
@@ -308,6 +363,11 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
     return false;
   if (f.subject && !d.subject.toLowerCase().includes(f.subject.trim().toLowerCase())) return false;
   if (f.actor !== ALL_OPTION && !shownActors(d).some((a) => actorKey(a) === f.actor)) return false;
+  if (f.requester !== ALL_OPTION) {
+    const requester = requesterOf(d);
+    if (!requester || actorKey(requester) !== f.requester) return false;
+  }
+  if (f.agent !== ALL_OPTION && !agentsOf(d).some((a) => actorKey(a) === f.agent)) return false;
   if (f.due !== ALL_OPTION) {
     if (f.due === "without" ? d.due_date : !d.due_date) return false;
     if ((f.due === "late" || f.due === "soon") && dueState(d.due_date) !== f.due)
@@ -376,13 +436,31 @@ export const MAILBOXES = "mailboxes";
 export const SUPPORT_COLUMNS: ListColumn[] = [
   { key: "ticket", label: "Ticket" },
   { key: "subject", label: "Objet" },
-  { key: "actors", label: "Acteurs", formats: ACTOR_FORMATS },
+  { key: "requester", label: "Demandeur", formats: REQUESTER_FORMATS, defaultWidth: 160 },
+  { key: "agents", label: "Agents", formats: ACTOR_FORMATS, defaultWidth: 120 },
+  // The requester and the agents together: shown once chosen.
+  { key: "actors", label: "Acteurs", formats: ACTOR_FORMATS, byDefault: false },
   // It picks the group it shows.
   { key: "labels", label: "Étiquettes", labelGroups: "/support-labels" },
   { key: "status", label: "Statut" },
   { key: "received", label: "Reçu le", formats: DATE_FORMATS },
   { key: "due", label: "Échéance" },
 ];
+
+/** A people filter's choices: those the requests show, by name. */
+const personOptions = (
+  requests: SupportRequest[],
+  people: (d: SupportRequest) => Actor[],
+): FilterOption[] => {
+  const seen = new Map<string, string>();
+  for (const d of requests) for (const a of people(d)) seen.set(actorKey(a), a.name);
+  return [
+    { value: ALL_OPTION, label: "Tous" },
+    ...[...seen]
+      .sort((a, b) => a[1].localeCompare(b[1], "fr"))
+      .map(([value, label]) => ({ value, label })),
+  ];
+};
 
 /**
  * The list's state, held by the page: what is seen in the open tab,
@@ -409,16 +487,12 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
   );
 
   // What the funnels offer: what is in the tab, nothing more.
-  const actorOptions = useMemo<FilterOption[]>(() => {
-    const seen = new Map<string, string>();
-    for (const d of inTab) for (const a of shownActors(d)) seen.set(actorKey(a), a.name);
-    return [
-      { value: ALL_OPTION, label: "Tous" },
-      ...[...seen]
-        .sort((a, b) => a[1].localeCompare(b[1], "fr"))
-        .map(([value, label]) => ({ value, label })),
-    ];
-  }, [inTab]);
+  const actorOptions = useMemo(() => personOptions(inTab, shownActors), [inTab]);
+  const requesterOptions = useMemo(
+    () => personOptions(inTab, (d) => [requesterOf(d)].filter((a) => a !== null)),
+    [inTab],
+  );
+  const agentOptions = useMemo(() => personOptions(inTab, agentsOf), [inTab]);
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(inTab, labelsOf);
 
@@ -461,6 +535,8 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
     shown,
     selection,
     actorOptions,
+    requesterOptions,
+    agentOptions,
     labelFilter,
   };
 };
@@ -511,6 +587,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     shown: allShown,
     inTab: allInTab,
     actorOptions,
+    requesterOptions,
+    agentOptions,
     labelFilter,
     loading,
     onOpenRequest,
@@ -572,7 +650,9 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         : {
             key,
             group,
-            direction: key === "subject" || key === "actors" || key === "labels" ? "asc" : "desc",
+            direction: ["subject", "actors", "requester", "agents", "labels"].includes(key)
+              ? "asc"
+              : "desc",
           },
     );
 
@@ -626,6 +706,32 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
           options={actorOptions}
           value={filters.actor}
           onChange={filter("actor")}
+        />,
+        { width: 1, whiteSpace: "nowrap" },
+      ),
+    requester: (id) =>
+      th(
+        id,
+        "Demandeur",
+        "requester",
+        <ChoiceFilter
+          label="demandeur"
+          options={requesterOptions}
+          value={filters.requester}
+          onChange={filter("requester")}
+        />,
+        { width: 1, whiteSpace: "nowrap" },
+      ),
+    agents: (id) =>
+      th(
+        id,
+        "Agents",
+        "agents",
+        <ChoiceFilter
+          label="agent"
+          options={agentOptions}
+          value={filters.agent}
+          onChange={filter("agent")}
         />,
         { width: 1, whiteSpace: "nowrap" },
       ),
@@ -705,6 +811,16 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     actors: (request, _group, format) => (
       <Table.Td key="actors">
         <ActorsCell request={request} format={format} />
+      </Table.Td>
+    ),
+    requester: (request, _group, format) => (
+      <Table.Td key="requester">
+        <RequesterCell request={request} format={format} />
+      </Table.Td>
+    ),
+    agents: (request, _group, format) => (
+      <Table.Td key="agents">
+        <ActorAvatars actors={agentsOf(request)} format={format} />
       </Table.Td>
     ),
     // Limited to a group, the column shows only its labels.

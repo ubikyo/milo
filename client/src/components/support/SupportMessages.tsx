@@ -641,7 +641,43 @@ const takeCursor = (editor: Editor): number | null => {
   // From the last: the positions before it stay right.
   for (const range of [...found].reverse()) chain.deleteRange(range);
   chain.setTextSelection(first.from).run();
-  return first.from;
+  return collapseAroundCursor(editor, first.from);
+};
+
+/**
+ * The cursor's paragraph, left empty, is the only blank line where it stands:
+ * the empty paragraphs just before and after it — the template's, the joins'
+ * between contents — go. Returns where the cursor ends up.
+ */
+const collapseAroundCursor = (editor: Editor, at: number): number => {
+  const { doc } = editor.state;
+  const $at = doc.resolve(at);
+  const block = $at.parent;
+  if (block.type.name !== "paragraph" || block.content.size > 0) return at;
+  const container = $at.node($at.depth - 1);
+  const index = $at.index($at.depth - 1);
+  const isBlank = (i: number) => {
+    const node = container.maybeChild(i);
+    return node?.type.name === "paragraph" && node.content.size === 0;
+  };
+  let first = index;
+  while (first > 0 && isBlank(first - 1)) first--;
+  let last = index;
+  while (last < container.childCount - 1 && isBlank(last + 1)) last++;
+  if (first === index && last === index) return at;
+  const start = $at.posAtIndex(first, $at.depth - 1);
+  // The empty paragraphs, the cursor's kept: each is two positions.
+  const before = (index - first) * 2;
+  const after = (last - index) * 2;
+  const blockStart = $at.before();
+  const blockEnd = $at.after();
+  editor
+    .chain()
+    .deleteRange({ from: blockEnd, to: blockEnd + after })
+    .deleteRange({ from: start, to: blockStart })
+    .setTextSelection(at - before)
+    .run();
+  return at - before;
 };
 
 /**

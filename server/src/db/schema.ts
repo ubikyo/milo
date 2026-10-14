@@ -1095,6 +1095,9 @@ ${DECLARED_ASSET_SCHEMA}
     -- La conversation de Graph où l'e-mail est arrivé : une réponse de
     -- l'expéditeur y arrive aussi, et rejoint la demande.
     conversation_id TEXT NOT NULL DEFAULT '',
+    -- Qui l'a saisie : le demandeur d'une demande saisie. NULL pour une
+    -- demande reçue par e-mail, dont le demandeur est l'expéditeur.
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );

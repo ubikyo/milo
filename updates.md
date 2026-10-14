@@ -1,3 +1,21 @@
+# 14 octobre 2026 #2
+
+## Corrections de dernières minutes
+
+### Evolutions
+
+- Ajout colonne Demandeur et Agents dans support.
+- Dans le menu de Milo en bas à droite, ajout d'un lien vers les versions
+- Dans la configuration des widgets, la liste des colonnes a un entête (Colonne, Largeur)
+- Ajout de l'entête sur les colonnes
+
+### Corrections
+
+- Le bouton enregistrer ferme le détail dans support
+- Dans l'éditeur des connexions de widgets, les widgets incompatibles avec ceux déjà placés sont grisés et ne peuvent plus être glissés
+- Dans support, la ligne du `{{cursor}}` d'une réponse pré-définie remplace les lignes vides qui l'entourent
+- Suppression d'un texte inutile dans catégorie.
+
 # 14 octobre 2026
 
 ## Les derniers évolutions de Milo

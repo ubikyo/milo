@@ -29,9 +29,6 @@ export const CATEGORY_WORDS: TreeWords = {
   plural: "catégories",
 };
 
-export const CATEGORY_DESCRIPTION =
-  "Chacune peut en contenir d'autres : Interne > Informatique > Réseau.";
-
 type Node = DeclaredAssetLocation;
 
 /**
@@ -107,7 +104,6 @@ export default function ProjectCategoriesFields() {
   return (
     <EditableTree
       title="Catégories"
-      description={CATEGORY_DESCRIPTION}
       nodes={nodes}
       onChange={change}
       words={CATEGORY_WORDS}

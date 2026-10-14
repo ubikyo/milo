@@ -334,6 +334,7 @@ supportRequestRoutes.post("/", (req, res) => {
     String(req.body.subject ?? "").trim(),
     status,
     dueDate,
+    req.user.id,
     timestamp,
     timestamp,
   );

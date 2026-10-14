@@ -443,7 +443,16 @@ export interface ListColumn {
  * rows counting it (rowStyle: their first one square at the top). Shown only
  * while the list has rows.
  */
-export function ListHeader({ columns, kind = "checkbox" }: { columns: ListColumn[]; kind?: RowKind }) {
+export function ListHeader({
+  columns,
+  kind = "checkbox",
+  handle = false,
+}: {
+  columns: ListColumn[];
+  kind?: RowKind;
+  /** Its rows open on a handle (Handle): the header keeps its room. */
+  handle?: boolean;
+}) {
   return (
     <Group
       wrap="nowrap"
@@ -460,7 +469,8 @@ export function ListHeader({ columns, kind = "checkbox" }: { columns: ListColumn
         borderTopRightRadius: RADIUS,
       }}
     >
-      {kind === "checkbox" && <Box style={{ ...checkboxStyle(false), width: CHECKBOX_SIZE }} />}
+      {handle && <Box w={16} style={{ flexShrink: 0 }} />}
+      {kind === "checkbox" && <Box style={{ ...checkboxStyle(handle), width: CHECKBOX_SIZE }} />}
       {columns.map(({ label, style, end = false, inset = FIELD_INSET }, i) => (
         <Box
           key={i}

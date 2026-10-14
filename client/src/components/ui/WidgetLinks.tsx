@@ -658,11 +658,31 @@ function LinksBoard({
   const drop = (e: DragEvent) => {
     setDropAt(null);
     const key = e.dataTransfer.getData(MIME);
-    if (!key || !byKey.has(key) || layout.nodes[key]) return;
+    if (!key || !byKey.has(key) || layout.nodes[key] || !compatible(byKey.get(key)!.type)) return;
     e.preventDefault();
     const place = landing(e);
     setLayout((before) => ({ ...before, nodes: { ...before.nodes, [key]: place } }));
   };
+
+  /**
+   * The type each input of one type is bound to: that of the widgets it reads,
+   * else of the first widget placed it could read.
+   */
+  const boundType = (input: WidgetLinkInput): string | undefined => {
+    if (!input.sameType) return undefined;
+    const linkedKey = links.find((l) => l.field === input.field)?.key;
+    if (linkedKey) return typeOf(byKey, linkedKey);
+    return Object.keys(layout.nodes)
+      .map((k) => typeOf(byKey, k))
+      .find((t) => !!t && input.types.includes(t));
+  };
+  /** True when a widget of this type could plug into some input, beside the widgets placed. */
+  const compatible = (type: string) =>
+    inputs.some((i) => {
+      if (!i.types.includes(type)) return false;
+      const bound = boundType(i);
+      return !bound || bound === type;
+    });
 
   // The list: the widgets one may associate, by view, then board.
   const groups = useMemo(() => {
@@ -762,12 +782,16 @@ function LinksBoard({
                       {board.widgets.map((w) => {
                         const looks = looksOf(w.type);
                         const isPlaced = !!layout.nodes[w.key];
+                        // Of another type than the widgets placed for an input of one type.
+                        const blocked = !isPlaced && !compatible(w.type);
                         return (
                           <Group
                             key={w.key}
                             className={`${inset.inset} ${classes.row}`}
                             data-placed={isPlaced || undefined}
-                            draggable={!isPlaced}
+                            data-blocked={blocked || undefined}
+                            title={blocked ? "Incompatible avec les widgets déjà placés" : undefined}
+                            draggable={!isPlaced && !blocked}
                             onDragStart={(e) => {
                               e.dataTransfer.setData(MIME, w.key);
                               e.dataTransfer.effectAllowed = "copy";

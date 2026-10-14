@@ -89,6 +89,11 @@
   cursor: default;
 }
 
+.row[data-blocked] {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
 .grip {
   flex-shrink: 0;
   color: var(--mantine-color-dimmed);

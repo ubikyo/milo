@@ -395,9 +395,8 @@ export default function SupportRequestDrawer({
         }
       }
       await onSaved();
-      // "Enregistrer" leaves the request open; a creation, on the other hand,
-      // closes the drawer.
-      if (!request) onClose();
+      // Saved, the request is done with: the drawer closes.
+      onClose();
     } catch (e) {
       notifyError(errorMessage(e));
     } finally {

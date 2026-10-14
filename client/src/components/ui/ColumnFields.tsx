@@ -16,6 +16,7 @@ import {
   INPUT_BACKGROUND,
   Handle,
   ListFooter,
+  ListHeader,
   RowCheckbox,
   RowCheckboxSpace,
   useRowSelection,
@@ -62,6 +63,10 @@ export interface ListColumn {
    * (PATH_FORMATS), a date's (DATE_FORMATS). Chosen beside its width.
    */
   formats?: readonly ColumnFormat[];
+  /** False when it is only shown once chosen: a list without a setting leaves it out. */
+  byDefault?: false;
+  /** Its width, in pixels, when shown by default or just chosen; absent, that of its content. */
+  defaultWidth?: number;
 }
 
 /** A way a column shows its value. */
@@ -96,6 +101,14 @@ const DATE_PATTERNS: Record<string, string> = {
   date: "DD/MM/YYYY",
   time: "HH:mm",
 };
+
+/** A requester: their whole name by default, or their avatar, first or last name. */
+export const REQUESTER_FORMATS = [
+  { value: "full_name", label: "Nom complet" },
+  { value: "avatar", label: "Avatar" },
+  { value: "first_name", label: "Prénom" },
+  { value: "last_name", label: "Nom" },
+] as const;
 
 /** A moment as a date column shows it, in its format: "Date et heure" by default. */
 export const formatMoment = (value: string, format?: string): string =>
@@ -185,6 +198,10 @@ const formatOf = (columns: ListColumn[], key: string, format: unknown): string |
 const minOf = (columns: ListColumn[], key: string): number =>
   columns.find((c) => c.key === key)?.minWidth ?? WIDTH_MIN;
 
+/** A column as it first shows: at its default width, if it has one. */
+const initialEntry = (c: ListColumn): Entry =>
+  c.defaultWidth !== undefined ? { key: c.key, width: c.defaultWidth } : { key: c.key };
+
 /** The entries from before the list existed: the non-hidden columns, in the configured order. */
 const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
   const raw = field(config, COLUMNS_ORDER);
@@ -197,8 +214,8 @@ const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
   const widths = subject(config, COLUMN_WIDTHS);
   return [...columns]
     .sort((a, b) => rank(a) - rank(b))
-    .filter((c) => hiddenItems[c.key] !== false)
-    .map((c) => ({ key: c.key, width: readWidth(widths[c.key], c.minWidth) }));
+    .filter((c) => (c.key in hiddenItems ? hiddenItems[c.key] !== false : c.byDefault !== false))
+    .map((c) => ({ key: c.key, width: readWidth(widths[c.key], c.minWidth) ?? c.defaultWidth }));
 };
 
 /**
@@ -225,7 +242,9 @@ const entries = (columns: ListColumn[], config: unknown): Entry[] => {
           };
         })
     : legacyEntries(columns, config);
-  return readItems.length > 0 ? readItems : columns.map((c) => ({ key: c.key }));
+  return readItems.length > 0
+    ? readItems
+    : columns.filter((c) => c.byDefault !== false).map(initialEntry);
 };
 
 /** The identifier of each entry: its key, followed by its rank for a duplicate. */
@@ -363,14 +382,16 @@ export default function ColumnFields({
   // without a choice, it disappears.
   const add = () => setAdding(true);
 
-  // Another column in the same place: its width starts over from zero. On the
-  // added row, the chosen column joins the list.
+  // Another column in the same place: its width starts over from its default. On
+  // the added row, the chosen column joins the list.
   const replaceExisting = (rank: number, key: string | null) => {
     setAdding(false);
     if (!key) return;
-    if (rank === list.length) return store([...list, { key }]);
+    const column = columnOf(key);
+    const entry = column ? initialEntry(column) : { key };
+    if (rank === list.length) return store([...list, entry]);
     if (key === list[rank]?.key) return;
-    store(list.map((e, i) => (i === rank ? { key } : e)));
+    store(list.map((e, i) => (i === rank ? entry : e)));
   };
 
   // The width keeps its unit: typed in pixels, or in percent once set so.
@@ -429,6 +450,15 @@ export default function ColumnFields({
     <Input.Wrapper label="Colonnes">
       {/* The same gap under the label as the other fields have. */}
       <Stack gap={1}>
+        {/* The columns' titles, as in the Settings' lists: the name, its
+            width at the end. A group or format select stays under the name's. */}
+        <ListHeader
+          handle
+          columns={[
+            { label: "Colonne", style: { flex: 1, marginLeft: -NAME_INSET }, inset: INPUT_INSET },
+            { label: "Largeur", style: { width: 100, marginLeft: -6 } },
+          ]}
+        />
         {rows.map((entry, rank) => {
           // The added row has no column yet.
           const column = columnOf(entry.key) ?? { key: "", label: "" };
@@ -440,7 +470,8 @@ export default function ColumnFields({
               wrap="nowrap"
               onDragOver={(e) => dragHover(e, rank)}
               onDrop={(e) => e.preventDefault()}
-              style={rowStyle(rank, rows.length, held === rank)}
+              // The header opens the stack (ListHeader).
+              style={rowStyle(rank + 1, rows.length + 1, held === rank)}
             >
               <Handle
                 label={`Déplacer la colonne ${column.label}`}

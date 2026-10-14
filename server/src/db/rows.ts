@@ -362,6 +362,8 @@ export interface SupportRequestRow {
   /** The Internet id of the original e-mail; empty for a request entered by hand. */
   mail_id: string;
   conversation_id: string;
+  /** Who entered it; null for a request received by e-mail. */
+  created_by: Id | null;
   created_at: string;
   updated_at: string;
 }

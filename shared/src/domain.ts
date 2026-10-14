@@ -895,6 +895,12 @@ export interface SupportRequest {
    */
   sender_name: string;
   sender_email: string;
+  /**
+   * Who entered it: the requester of an entered request. "null" for a
+   * request received by email — its requester is the sender — or whose
+   * account was deleted.
+   */
+  creator: Actor | null;
 }
 
 export interface SupportComment {
