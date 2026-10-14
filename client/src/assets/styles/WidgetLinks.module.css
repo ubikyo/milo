@@ -1,0 +1,318 @@
+/* The "Widgets associés" field and the screen it opens
+   (components/ui/WidgetLinks.tsx): a board of 100 px widgets, their
+   connectors round on their edges, the cables hanging between them. */
+
+/* The field: a prompt, dashed as a drop zone. */
+.prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 18px 12px;
+  border: 1px dashed var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-default);
+  background-color: var(--milo-sunken-bg);
+  color: var(--mantine-color-dimmed);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.prompt:hover {
+  border-color: var(--milo-links-green);
+  color: var(--milo-links-green);
+}
+
+/* Once widgets are connected: how many, in green — text, border, background. */
+.prompt[data-linked] {
+  border-style: solid;
+  color: var(--milo-links-green);
+  border-color: color-mix(in srgb, var(--milo-links-green) 40%, transparent);
+  background-color: color-mix(in srgb, var(--milo-links-green) 14%, transparent);
+}
+
+.prompt[data-linked]:hover {
+  border-color: var(--milo-links-green);
+}
+
+/* The window's body: no padding, over the windows' own (SettingsModal.module.css). */
+.modalBody.modalBody.modalBody {
+  flex: 1;
+  min-height: 0;
+  padding: 0 !important;
+}
+
+/* The screen: the list on the left, the board over the whole rest. */
+.screen {
+  position: relative;
+  display: flex;
+  height: 100%;
+}
+
+/* The ghost of a widget dragged from the list: painted, but behind the list
+   and the board; room around it for its output's label and its board. */
+.ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 240px;
+  height: 160px;
+  pointer-events: none;
+}
+
+.ghost .node {
+  top: 0;
+  left: 0;
+}
+
+/* The widgets one may associate: the widgets drawer's panel (WidgetDrawer),
+   on the interface's background. */
+.list {
+  width: 370px;
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--mantine-color-body);
+}
+
+/* A row as the drawer's: the inset, without its line. */
+.row.row {
+  padding: 10px;
+  border: none;
+  background-color: var(--milo-widgets-drawer-item-bg);
+  cursor: grab;
+  user-select: none;
+}
+
+.row[data-placed] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.grip {
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+}
+
+/* The board. */
+/* The board: the editable lists' background ("Formulaire" > "Liste"). */
+.canvas {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  background-color: var(--milo-settings-list-bg);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.canvas[data-grid] {
+  --grid-line: color-mix(in srgb, var(--mantine-color-default-border) 40%, transparent);
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 25px 25px;
+}
+
+.gridSwitch {
+  position: absolute;
+  top: 50px;
+  right: 50px;
+  z-index: 1;
+}
+
+/* Where a widget dragged from the list would land: its frame and its
+   reference, 125 px. */
+.dropFrame {
+  position: absolute;
+  width: 100px;
+  height: 125px;
+  border: 2px dashed var(--milo-links-green);
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--milo-links-green) 10%, transparent);
+  pointer-events: none;
+}
+
+.canvas[data-holding] {
+  cursor: grabbing;
+}
+
+.cables {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.cable,
+.cableShadow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cable {
+  stroke: var(--milo-links-green);
+  stroke-width: 2;
+}
+
+.cableShadow {
+  stroke: rgba(0, 0, 0, 0.18);
+  stroke-width: 4;
+  transform: translateY(1.5px);
+}
+
+g[data-held] .cable {
+  opacity: 0.8;
+}
+
+/* A widget: its icon and its name in the middle. */
+.node {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  /* No border: its background sets it off from the board. */
+  border-radius: 12px;
+  background-color: var(--mantine-color-body);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: grab;
+}
+
+/* A widget read: its reference under it, square bottom corners against it. */
+.node[data-referenced] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.node:active {
+  cursor: grabbing;
+}
+
+.remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+  color: var(--mantine-color-dimmed);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.node:hover .remove {
+  opacity: 1;
+}
+
+.remove:hover {
+  background-color: var(--milo-sunken-bg);
+}
+
+/* Under a widget read: its reference and its board. */
+.caption {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+/* 25 px: with its frame, 125 px — five steps of the grid. */
+.reference {
+  width: 100%;
+  height: 25px;
+  line-height: 25px;
+  text-align: center;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: #fff;
+  background-color: var(--milo-links-green);
+  /* The frame's rounding, carried on under it. */
+  border-radius: 0 0 12px 12px;
+}
+
+/* A connector, centered on the widget's edge, its label outside. */
+.port {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translateY(-50%);
+}
+
+.port[data-side="in"] {
+  right: calc(100% - 7px);
+}
+
+.port[data-side="out"] {
+  left: calc(100% - 7px);
+}
+
+.portLabel {
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--mantine-color-dimmed);
+  pointer-events: none;
+}
+
+.connector {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  /* The interface's background, bordered as the widgets' frame. */
+  border: 2px solid var(--mantine-color-default-border);
+  background-color: var(--mantine-color-body);
+  cursor: crosshair;
+  transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.connector:hover {
+  transform: scale(1.2);
+}
+
+/* Connected: a green border, a green dot in the middle. */
+.connector[data-linked] {
+  border-color: var(--milo-links-green);
+  background: radial-gradient(circle, var(--milo-links-green) 0 2.5px, var(--mantine-color-body) 3px);
+}
+
+.connector[data-candidate] {
+  border-color: var(--milo-links-green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--milo-links-green) 25%, transparent);
+}
+
+.connector[data-target] {
+  border-color: var(--milo-links-green);
+  transform: scale(1.35);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--milo-links-green) 30%, transparent);
+}
+
+.connector[data-muted] {
+  opacity: 0.3;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 80px;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.footer {
+  position: absolute;
+}

@@ -237,8 +237,15 @@ const requestLabels = selection<LinkedLabelRow>(
    ORDER BY support_labels.position, support_labels.id`,
 );
 
-const requestActors = selection<{ request_id: Id; id: Id; name: string; email: string }>(
-  `SELECT support_request_actors.request_id, users.id, users.name, users.email
+const requestActors = selection<{
+  request_id: Id;
+  id: Id;
+  name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+}>(
+  `SELECT support_request_actors.request_id, users.id, users.name, users.first_name, users.last_name, users.email
    FROM support_request_actors
    JOIN users ON users.id = support_request_actors.user_id
    WHERE support_request_actors.request_id IN (SELECT value FROM json_each(?))

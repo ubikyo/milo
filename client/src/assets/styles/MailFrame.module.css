@@ -8,6 +8,10 @@
   color-scheme: light;
   background-color: #ffffff;
   max-height: calc(var(--milo-rich-lines, 15) * var(--milo-rich-line) + 2 * var(--mantine-spacing-md));
+  /* As high as the text alone when the field sets its lines even empty
+     ("--milo-rich-min-lines"): switching views keeps the height. Without
+     the variable, the calc is invalid and the rule falls away. */
+  min-height: calc(var(--milo-rich-min-lines) * var(--milo-rich-line) + 2 * var(--mantine-spacing-md));
   overflow-y: auto;
 }
 

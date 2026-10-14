@@ -5,6 +5,7 @@
 import { Stack } from "@mantine/core";
 import { IconReceipt, IconSignature } from "@tabler/icons-react";
 import {
+  CURSOR_VARIABLE,
   ORDERS_MAIL_TEMPLATE_KEYS,
   ORDER_CONTENT_EVENTS,
   ORDER_CONTENT_VARIABLES,
@@ -24,8 +25,12 @@ import OrdersList, { ORDER_COLUMNS } from "../../components/orders/OrdersList";
 import ColumnFields from "../../components/ui/ColumnFields";
 import type { IndicatorWidgetBase } from "../../components/ui/IndicatorsPanel";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
-import { SourcesField } from "../../lib/sources";
+import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import type { IndicatorConfigProps } from "../support/types";
+import { PERCENT_HEIGHT } from "../height";
+
+/** A predefined reply's variables: the order's, then where the cursor goes. */
+const CONTENT_VARIABLES = [...ORDER_CONTENT_VARIABLES, CURSOR_VARIABLE];
 
 export interface OrderDisplayProps {
   config: unknown;
@@ -53,24 +58,12 @@ function ListFields(props: IndicatorConfigProps) {
   const canEditTemplates = useTemplatesAccess();
   return (
     <Stack gap="xl">
-      <SourcesField
-        type="contact.list"
-        field={ORDER_SUPPLIER_SOURCES}
-        label="Widget fournisseurs"
-        config={props.config}
-        onChange={props.onChange}
-      />
-      <SourcesField
-        type="product.list"
-        field={ORDER_PRODUCT_SOURCES}
-        label="Widget produits"
-        config={props.config}
-        onChange={props.onChange}
-      />
-      <SourcesField
-        type="warehouse.list"
-        field={ORDER_WAREHOUSE_SOURCES}
-        label="Widget entrepôt associé"
+      <WidgetLinksField
+        inputs={[
+          { field: ORDER_SUPPLIER_SOURCES, label: "Fournisseurs", types: ["contact.list"] },
+          { field: ORDER_PRODUCT_SOURCES, label: "Produits", types: ["product.list"] },
+          { field: ORDER_WAREHOUSE_SOURCES, label: "Entrepôt", types: ["warehouse.list"] },
+        ]}
         config={props.config}
         onChange={props.onChange}
       />
@@ -99,8 +92,9 @@ function ListFields(props: IndicatorConfigProps) {
             variableGroups={["Utilisateur"]}
             // Dropped into a quote request, as the other e-mails.
             previewTemplate="order_quote_request"
-            // The supplier's, and its contact's the e-mail goes to.
-            extraVariables={ORDER_CONTENT_VARIABLES}
+            // The supplier's, and its contact's the e-mail goes to; and where
+            // the cursor goes, once dropped in.
+            extraVariables={CONTENT_VARIABLES}
             // Several contents per e-mail, placed in the list's order.
             uniqueEvents={false}
             reorder={api.reorderOrderContents}
@@ -117,7 +111,7 @@ export const orderListWidget: OrderWidget = {
   kind: "logistics",
   label: "Commandes",
   icon: IconReceipt,
-  defaultConfig: {},
+  defaultConfig: { ...PERCENT_HEIGHT },
   ownClicks: true,
   fill: true,
   Display: ({ config, id, userId }) => <OrdersList config={config} blockId={id} userId={userId} />,

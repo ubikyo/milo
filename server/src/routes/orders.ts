@@ -285,8 +285,15 @@ const ofBoard = selection<OrderRow & { warehouse_name: string }>(
    WHERE o.board_id = ? ORDER BY o.created_at DESC, o.id DESC`,
 );
 const byId = selection<OrderRow>("SELECT * FROM orders WHERE id = ?");
-const actorsOfBoard = selection<{ order_id: Id; id: Id; name: string; email: string }>(
-  `SELECT a.order_id, u.id, u.name, u.email FROM order_actors a
+const actorsOfBoard = selection<{
+  order_id: Id;
+  id: Id;
+  name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+}>(
+  `SELECT a.order_id, u.id, u.name, u.first_name, u.last_name, u.email FROM order_actors a
    JOIN users u ON u.id = a.user_id
    JOIN orders o ON o.id = a.order_id
    WHERE o.board_id = ? ORDER BY u.name`,

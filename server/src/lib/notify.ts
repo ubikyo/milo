@@ -23,9 +23,9 @@ import type {
   NotificationKind,
   NotificationScope,
 } from "@milo/shared";
-import { accessIncludes, can, itemLink, supportTicketRef } from "@milo/shared";
+import { accessIncludes, can, itemLink, supportStatusLabel, supportTicketRef } from "@milo/shared";
 import type { Area } from "@milo/shared";
-import type { UserRow } from "../db/rows.js";
+import type { SupportRequestRow, UserRow } from "../db/rows.js";
 import { selection } from "../db/query.js";
 import { follows } from "../repositories/follows.js";
 import { taskCards } from "../repositories/tasks.js";
@@ -33,8 +33,9 @@ import { sendingAddress } from "./entra.js";
 import { miloUrl } from "./milo-url.js";
 import { sendMail, mailboxConfigured } from "./mail.js";
 import { notificationSettings } from "./notification-settings.js";
-import { placesView, template, updatesView } from "./mail-template.js";
-import type { ElementView, PlacedElement, Row } from "./mail-template.js";
+import { assignedView, placesView, template, updatesView } from "./mail-template.js";
+import type { ElementView, PlacedElement, Row, RequesterView, TicketView } from "./mail-template.js";
+import { accountPerson, senderPerson } from "./support-variables.js";
 import { notifications } from "../repositories/notifications.js";
 import { companyRights, notificationRights, users, widgetRights } from "../repositories/users.js";
 import { now } from "./time.js";
@@ -439,6 +440,12 @@ export const notify = (occurrence: Occurrence): void => {
     const link = `${occurrence.base}/${itemLink(occurrence.kind, occurrence.targetId)}`;
     const whenLabel = now();
     const sender = occurrence.base ? sendingMailbox() : "";
+    // A ticket's assigned actors receive its own e-mail ("Mise à jour d'un
+    // ticket"), right away; its followers, the changes' summary.
+    const assigned =
+      occurrence.kind === "support"
+        ? new Set(actors.support.all(occurrence.targetId, 0).map((p) => p.id))
+        : new Set<Id>();
 
     for (const person of recipients) {
       const open = channels(person, occurrence.author.id);
@@ -455,11 +462,32 @@ export const notify = (occurrence: Occurrence): void => {
         } satisfies Notification);
 
       // By e-mail only for whoever has the right to it, and wants it.
-      if (open.email && sender && wantsEmail(person)) enqueue(person, occurrence, link, sender);
+      if (!open.email || !sender || !wantsEmail(person)) continue;
+      if (assigned.has(person.id)) sendTicketUpdate(person, occurrence, link, sender);
+      else enqueue(person, occurrence, link, sender);
     }
   } catch (error) {
     console.error("Follow-up notification abandoned:", error);
   }
+};
+
+/** A ticket's change, to one of its assigned actors: its own e-mail, sent at once. */
+const sendTicketUpdate = (person: UserRow, occurrence: Occurrence, link: string, sender: string): void => {
+  const request = ticketById.get(occurrence.targetId);
+  (request ? requesterView(request) : Promise.resolve(undefined))
+    .then((requester) => template("support_ticket_update", {
+    title: occurrence.title,
+    intro: "Le ticket a été mis à jour :",
+    rows: [{ text: `${occurrence.author.name || occurrence.author.email} ${occurrence.message}`, repetitions: 1 }],
+    action: { url: link, label: "Ouvrir dans Milo" },
+    footer: "Vous recevez ce message parce que vous êtes acteur de ce ticket dans Milo.",
+  }, request ? { ticket: ticketView(request, occurrence.base), requester } : {}))
+    .then((content) =>
+      sendMail({ from: sender, to: person.email, subject: `Milo — ${occurrence.title}`, ...content }),
+    )
+    .catch((error: unknown) => {
+      console.error("Ticket update not delivered:", error);
+    });
 };
 
 /**
@@ -714,11 +742,38 @@ export const notifyReminder = (r: DueReminder): void => {
   }
 };
 
+// --- Tickets' e-mails -------------------------------------------------------
+
+type TicketFields = Pick<SupportRequestRow, "id" | "number" | "subject" | "status">;
+
+/** A ticket as its e-mails cite it ({{ticket.…}}). */
+const ticketView = (request: TicketFields, base: string): TicketView => ({
+  number: supportTicketRef(request.number),
+  subject: request.subject,
+  status: supportStatusLabel(request.status as Parameters<typeof supportStatusLabel>[0]),
+  url: base ? `${base}/${itemLink("support", request.id)}` : "",
+});
+
+/** A ticket's requester as its e-mails cite it ({{requester.…}}): empty when it has none. */
+const requesterView = async (request: Pick<SupportRequestRow, "sender_name" | "sender_email">): Promise<RequesterView> => {
+  const person = await senderPerson(request);
+  return {
+    first_name: person?.first_name ?? "",
+    last_name: person?.last_name ?? "",
+    full_name: person?.full_name ?? "",
+    email: person?.email ?? "",
+  };
+};
+
+const ticketById = selection<TicketFields & Pick<SupportRequestRow, "sender_name" | "sender_email">>(
+  "SELECT id, number, subject, status, sender_name, sender_email FROM support_requests WHERE id = ?",
+);
+
 // --- Ticket assignment ------------------------------------------------------
 
 export interface Assignment {
-  /** The request, its ticket number and its subject. */
-  request: { id: Id; number: number; subject: string };
+  /** The request: its number, subject, status and sender. */
+  request: TicketFields & Pick<SupportRequestRow, "sender_name" | "sender_email">;
   /** The accounts that have just been assigned to it. */
   recipients: UserRow[];
   author: UserRow;
@@ -734,7 +789,10 @@ export interface Assignment {
 export const notifyAssignments = (assignments: Assignment[]): void => {
   try {
     const whenLabel = now();
-    const mails = new Map<string, { person: UserRow; mailbox: string; rows: Row[]; link: string; base: string; author: UserRow }>();
+    const mails = new Map<
+      string,
+      { person: UserRow; mailbox: string; rows: Row[]; requests: Assignment["request"][]; link: string; base: string; author: UserRow }
+    >();
 
     for (const { request, recipients, author, base } of assignments) {
       const title = requestTitle(request);
@@ -758,12 +816,15 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
         if (!open.email || !mailbox || !wantsEmail(person)) continue;
         const sendKey = String(person.id);
         const current = mails.get(sendKey);
-        if (current) current.rows.push({ text: title, repetitions: 1 });
-        else {
+        if (current) {
+          current.rows.push({ text: title, repetitions: 1 });
+          current.requests.push(request);
+        } else {
           mails.set(sendKey, {
             person,
             mailbox,
             rows: [{ text: title, repetitions: 1 }],
+            requests: [request],
             link,
             base,
             author,
@@ -772,10 +833,14 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
       }
     }
 
-    for (const { person, mailbox, rows, link, base, author } of mails.values()) {
+    for (const { person, mailbox, rows, requests, link, base, author } of mails.values()) {
       const who = author.name || author.email;
       const nounPhrase = rows.length === 1;
-      template("assignment", {
+      Promise.all([
+        accountPerson(author),
+        Promise.all(requests.map(async (r) => ({ ticket: ticketView(r, base), requester: await requesterView(r) }))),
+      ])
+        .then(([user, items]) => template("assignment", {
         title: nounPhrase ? "Demande assignée" : "Demandes assignées",
         intro: nounPhrase
           ? `${who} vous a assigné cette demande :`
@@ -785,7 +850,7 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
         // where they wait in Support mode.
         action: { url: nounPhrase ? link : base, label: "Ouvrir dans Milo" },
         footer: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
-      })
+      }, assignedView(user, items)))
         .then((content) =>
           sendMail({
             from: mailbox,
@@ -800,6 +865,78 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
     }
   } catch (error) {
     console.error("Assignment notification abandoned:", error);
+  }
+};
+
+// --- A new ticket ----------------------------------------------------------
+
+export interface NewTicket {
+  request: TicketFields & Pick<SupportRequestRow, "sender_name" | "sender_email" | "mailbox">;
+  /** The accounts the list names (NEW_TICKET_ACTORS). */
+  recipients: Id[];
+  /** Who entered it in Milo; none when it arrived by e-mail. */
+  author?: UserRow;
+  base: string;
+}
+
+/**
+ * A ticket arrives in a list: the actors the list names receive "Réception
+ * d'un nouveau ticket" — an on-screen notification, and the e-mail right
+ * away. Whoever entered it is not told. Never throws: the ticket is already
+ * saved.
+ */
+export const notifyNewTicket = ({ request, recipients, author, base }: NewTicket): void => {
+  try {
+    if (recipients.length === 0) return;
+    const title = requestTitle(request);
+    const link = `${base}/${itemLink("support", request.id)}`;
+    const mailbox = base ? sendingMailbox() : "";
+    const from = request.sender_email
+      ? `${request.sender_name || request.sender_email} <${request.sender_email}>`
+      : "";
+    const rows: Row[] = [
+      ...(from ? [{ text: `De ${from}`, repetitions: 1 }] : []),
+      ...(author ? [{ text: `Saisi par ${author.name || author.email}`, repetitions: 1 }] : []),
+      ...(request.mailbox ? [{ text: `Boîte ${request.mailbox}`, repetitions: 1 }] : []),
+    ];
+    const whenLabel = now();
+    // Its requester, read once for every recipient.
+    const extra = requesterView(request).then((requester) => ({ ticket: ticketView(request, base), requester }));
+
+    for (const id of new Set(recipients)) {
+      if (id === author?.id) continue;
+      const person = users.byId.get(id);
+      if (!person || person.system) continue;
+
+      if (sees(person, "support") && notificationRights(person).screen)
+        notifications.emit(person.id, {
+          id: crypto.randomBytes(8).toString("hex"),
+          kind: "support",
+          target_id: request.id,
+          title,
+          message: "a ouvert un nouveau ticket",
+          author: author ? author.name || author.email : request.sender_name || request.sender_email || "Milo",
+          deleted: false,
+          created_at: whenLabel,
+        } satisfies Notification);
+
+      if (!mailbox || !wantsEmail(person)) continue;
+      extra.then((view) => template("support_new_ticket", {
+        title,
+        intro: "Un nouveau ticket est arrivé dans Support :",
+        rows,
+        action: { url: link, label: "Ouvrir dans Milo" },
+        footer: "Vous recevez ce message parce que vous êtes désigné comme acteur des nouveaux tickets de cette liste.",
+      }, view))
+        .then((content) =>
+          sendMail({ from: mailbox, to: person.email, subject: `Milo — Nouveau ticket ${title}`, ...content }),
+        )
+        .catch((error: unknown) => {
+          console.error("New ticket notification not delivered:", error);
+        });
+    }
+  } catch (error) {
+    console.error("New ticket notification abandoned:", error);
   }
 };
 

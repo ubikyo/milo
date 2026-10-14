@@ -17,6 +17,7 @@ import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./Indicators
 import { widgetReference } from "@milo/shared";
 import type { Id, LabelGroup, LabelsBase } from "@milo/shared";
 import { ReferenceTag } from "./ReferenceTag";
+import { DrawerWidgetContext } from "../../lib/drawer-widget";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { rememberDeletion } from "../../lib/undo";
 
@@ -106,6 +107,14 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
   // The identifier of a widget that owns its key — the lists, the calendar,
   // the mail —, once saved.
   const reference = indicator ? widgetReference(indicator.type, indicator.config) : "";
+  // What its "Widgets associés" screen shows of it and of the widgets it reads.
+  const drawerWidget = useMemo(
+    () =>
+      widget
+        ? { label: widget.label, icon: widget.icon, reference, widgetOf: (type: string) => widgetOf(type as Type) }
+        : null,
+    [widget, widgetOf, reference],
+  );
 
   useEffect(() => {
     if (!opened) return;
@@ -187,7 +196,9 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
                     <DrawerActionsContext.Provider value={actions}>
                       <DrawerRegistrationsContext.Provider value={register}>
                         <LabelGroupDraftsContext.Provider value={labelGroupDrafts}>
-                          <widget.Config config={config} onChange={setConfig} neighbors={neighbors} />
+                          <DrawerWidgetContext.Provider value={drawerWidget}>
+                            <widget.Config config={config} onChange={setConfig} neighbors={neighbors} />
+                          </DrawerWidgetContext.Provider>
                         </LabelGroupDraftsContext.Provider>
                       </DrawerRegistrationsContext.Provider>
                     </DrawerActionsContext.Provider>

@@ -1,0 +1,5 @@
+/* An unfolded update's header, in the "Mise à jour" window (UpdatesModal):
+   a gray background, over the item's transparent one. */
+.control[data-active] {
+  background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
+}

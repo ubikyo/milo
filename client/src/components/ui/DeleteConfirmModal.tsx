@@ -16,11 +16,15 @@ interface DeleteConfirmModalProps {
   /** "Fermer" by default; change it when the action itself is named so. */
   cancelLabel?: string;
   confirmColor?: string;
+  /** Nothing to delete: the confirmation is greyed out. */
+  confirmDisabled?: boolean;
   /**
    * Opened from a dropdown list that stays open (a Popover, above the default
    * windows): it needs to go in front.
    */
   zIndex?: number;
+  /** Options shown under the message, such as a switch. */
+  children?: ReactNode;
 }
 
 export default function DeleteConfirmModal({
@@ -32,7 +36,9 @@ export default function DeleteConfirmModal({
   confirmLabel = "Supprimer",
   cancelLabel = "Fermer",
   confirmColor = RED,
+  confirmDisabled = false,
   zIndex,
+  children,
 }: DeleteConfirmModalProps) {
   return (
     <Modal
@@ -49,11 +55,12 @@ export default function DeleteConfirmModal({
       <Text size="sm">
         {message}
       </Text>
+      {children}
       <Footer>
         <CloseButton onClick={onClose}>
           {cancelLabel}
         </CloseButton>
-        <Button color={confirmColor} onClick={onConfirm}>
+        <Button color={confirmColor} onClick={onConfirm} disabled={confirmDisabled}>
           {confirmLabel}
         </Button>
       </Footer>

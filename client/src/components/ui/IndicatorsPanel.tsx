@@ -47,7 +47,7 @@ export const GAP = 20;
 export const CARD_PADDING = 15;
 
 /** An indicator's height: its name at the top, the quantity at the bottom. */
-const HEIGHT = 120;
+export const CARD_HEIGHT = 120;
 
 /** A stored indicator, whatever its panel. */
 export interface Indicator<Type extends string> {
@@ -67,6 +67,11 @@ const titleOf = (indicator: { config: Record<string, unknown> }, defaultValue: s
 export interface IndicatorWidgetBase<Type extends string> {
   /** What the database stores: it never changes. */
   type: Type;
+  /**
+   * Its usual height in pixels, padding and title included: where "Hauteur"
+   * starts in px (widgets/height.ts). Failing that, the unit's own default.
+   */
+  defaultHeight?: (config: unknown) => number;
   /** Its type: the group where the widget drawer files it (widgets/kinds.ts). */
   kind: WidgetKind;
   /** Its name in the widget drawer, and as the title of its own drawer. */
@@ -87,6 +92,15 @@ export interface IndicatorWidgetBase<Type extends string> {
    * only opens through a right click, outside its rows.
    */
   ownClicks?: boolean;
+  /**
+   * Its parts' groups of its drawer, in place of the common alignment and
+   * texts — a figure's "Nom" and "Valeur" —: it places its content itself, the
+   * panel only gives it its place (widgets/alignment.ts).
+   */
+  ownAlignment?: (
+    config: unknown,
+    onChange: (config: Record<string, unknown>) => void,
+  ) => { label: string; rows: SettingRow[] }[];
   /**
    * True when a widget that counts places its "Widgets associés" field itself
    * (lib/sources.tsx) — the logistics' indicator, whose lists follow its data.
@@ -715,7 +729,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
           locked: !writable,
         };
         const dragProps = { ...propsOf(indicator.id, index), ...(frozen ? { draggable: false } : {}) };
-        const alignment = alignmentProps(indicator.config);
+        const alignment = alignmentProps(indicator.config, widget.ownAlignment !== undefined);
         // The right-click menu: always in edit mode — every widget copies —;
         // otherwise only for widgets that have other actions to offer.
         const menuOf = (e: React.MouseEvent<HTMLElement>) => {
@@ -747,7 +761,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                 : {}),
               // A height of its own: what it holds fills it (widgets/alignment.ts).
               ...(isSized(indicator.config)
-                ? { display: "flex", flexDirection: "column", ...heightStyle(indicator.config) }
+                ? { display: "flex", flexDirection: "column", ...heightStyle(indicator.config, widget.defaultHeight?.(indicator.config)) }
                 : {}),
             }}
           >
@@ -802,7 +816,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    minHeight: HEIGHT,
+                    minHeight: CARD_HEIGHT,
                     ...paddingStyle(
                       indicator.config,
                       isFramed(indicator.config, true) ? CARD_PADDING : 0,

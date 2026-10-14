@@ -33,6 +33,10 @@ export const INDICATOR_DIMENSION = "dimension";
 export const INDICATOR_LIMIT = "limit";
 /** True: the slices that weigh nothing show too. */
 export const INDICATOR_ZEROS = "zeros";
+/** The order the slices show in: INDICATOR_ORDERS, "default" while none is chosen. */
+export const INDICATOR_ORDER = "order";
+export const INDICATOR_ORDERS = ["default", "desc", "asc", "name"] as const;
+export type IndicatorOrder = (typeof INDICATOR_ORDERS)[number];
 export const INDICATOR_DATE = "date";
 export const INDICATOR_PERIOD = "days";
 

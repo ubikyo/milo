@@ -9,6 +9,7 @@ export const displaySettingsRoutes = Router();
 
 const displaySettings = (): DisplaySettings => ({
   showGravatars: readSetting("display_show_gravatars", true),
+  labThemes: readSetting("lab_themes", false),
 });
 
 displaySettingsRoutes.get("/", (_req, res) => {
@@ -19,5 +20,6 @@ displaySettingsRoutes.put("/", (req, res) => {
   const body = (req.body ?? {}) as Partial<DisplaySettings>;
   if (body.showGravatars !== undefined)
     writeSetting("display_show_gravatars", Boolean(body.showGravatars));
+  if (body.labThemes !== undefined) writeSetting("lab_themes", Boolean(body.labThemes));
   res.json(displaySettings());
 });

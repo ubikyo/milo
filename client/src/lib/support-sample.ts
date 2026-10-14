@@ -1,4 +1,4 @@
-import { supportReplyValues } from "@milo/shared";
+import { itemLink, supportReplyValues } from "@milo/shared";
 import type { SupportPerson, SupportStatus } from "@milo/shared";
 
 // What a support template's preview fills its variables with: the signed-in
@@ -65,6 +65,10 @@ export interface SupportSample {
   /** The request, for the e-mail template that lays the reply out. */
   ticket: string;
   subject: string;
+  status: string;
+  /** The link that would open it in Milo. */
+  url: string;
+  sender: SupportPerson;
 }
 
 /**
@@ -100,5 +104,12 @@ export const supportSample = (
     status: statusFor(event),
   };
   const values = supportReplyValues({ user, sender, request });
-  return { values, ticket: values["ticket.number"] ?? "", subject: request.subject };
+  return {
+    values,
+    ticket: values["ticket.number"] ?? "",
+    subject: request.subject,
+    status: values["ticket.status"] ?? "",
+    url: `${window.location.origin}/${itemLink("support", request.number)}`,
+    sender,
+  };
 };

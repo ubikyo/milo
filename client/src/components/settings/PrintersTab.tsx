@@ -9,9 +9,8 @@ import {
 } from "@mantine/core";
 import { IconPrinter } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
-import { PRINTER_TYPES, PRINTER_TYPE_LABELS } from "@milo/shared";
-import type { Id, MiloProxy, Printer, PrinterInfo, PrinterInfos, PrinterInput, PrinterType } from "@milo/shared";
+import type { FocusEvent, ReactNode } from "react";
+import type { Id, MiloProxy, Printer, PrinterInfo, PrinterInfos, PrinterInput } from "@milo/shared";
 import { api } from "../../api";
 import { useProxies } from "../../lib/proxies";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -20,8 +19,10 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PaperFormats from "./PaperFormats";
 import {
   EmptyList,
+  INPUT_INSET,
   INPUT_STYLE,
   ListFooter,
+  ListHeader,
   FIRST_FIELD_MARGIN,
   NAME_INSET,
   NAME_MIN_WIDTH,
@@ -38,10 +39,11 @@ import listClasses from "../../assets/styles/SettingsList.module.css";
 
 // The "Impression" section of Settings ("Paramétrage"): the printers, for the
 // whole application, drawn like the other editable lists (DrawerRows). A row
-// per printer: its name, its type, its IP address, edited in place, then the
+// per printer: its name, its IP address, edited in place, then the
 // model it gives — in red "Hors ligne" when its port 9100 does not answer.
-// Each is reached directly by Milo, or through one of the proxies ("Proxys"
-// tab): its "Connexion".
+// Each is reached directly by Milo, or through one of the proxies ("Proxies"
+// tab): its "Connexion", against the row's end. Their type is Zebra only, for
+// now: it is not shown.
 // "Ajouter une imprimante" adds a row, created only once it has its name and
 // its IP address; an address cannot be emptied afterwards. Under them,
 // the paper formats (PaperFormats). Like the other tabs, each change is sent
@@ -50,15 +52,15 @@ import listClasses from "../../assets/styles/SettingsList.module.css";
 /** How often the printers are asked again while the tab is open. */
 const INFO_INTERVAL = 30_000;
 
-// Their sum gives the paper formats' printer column (PaperFormats), so the
-// names of both lists have the same width.
-const TYPE_WIDTH = 100;
-const HOST_WIDTH = 150;
+/** The names' share of a row, the same as the paper formats' (PaperFormats). */
+const NAME_SHARE = "25%";
+/** Wide enough for "192.168.100.100". */
+const HOST_WIDTH = 120;
 const CONNECTION_WIDTH = 140;
 /** Wide enough for "ZD421 203dpi", so the rows' ends stay aligned. */
 const MODEL_WIDTH = 120;
-
-const TYPES = PRINTER_TYPES.map((t) => ({ value: t, label: PRINTER_TYPE_LABELS[t] }));
+/** The room of a select's arrow, at its end: its text stops before it. */
+const CHEVRON_WIDTH = 30;
 
 const onError = (e: unknown) => notifyError(errorMessage(e));
 
@@ -119,33 +121,6 @@ function HostField({ value: saved, onChange, of, missing = false }: FieldProps<s
   );
 }
 
-/** Its type: Zebra only, for now. */
-function TypeField({ value, onChange, of }: FieldProps<PrinterType>) {
-  const [entered, setEntered] = useState(false);
-  return (
-    <Select
-      size="xs"
-      radius={ROUNDING}
-      w={TYPE_WIDTH}
-      style={{ flexShrink: 0 }}
-      data={TYPES}
-      value={value}
-      onChange={(v) => {
-        const type = PRINTER_TYPES.find((t) => t === v);
-        if (type && type !== value) onChange(type);
-      }}
-      allowDeselect={false}
-      {...pickKeys}
-      comboboxProps={{ withinPortal: true }}
-      classNames={{ dropdown: listClasses.dropdown, option: listClasses.option }}
-      onFocus={() => setEntered(true)}
-      onBlur={() => setEntered(false)}
-      styles={fieldStyles(entered)}
-      aria-label={`Type ${of}`}
-    />
-  );
-}
-
 /** How Milo reaches it: "Directe", or one of the proxies. */
 function ConnectionField({ value, onChange, of, proxies }: FieldProps<Id | null> & { proxies: MiloProxy[] }) {
   const [entered, setEntered] = useState(false);
@@ -158,6 +133,8 @@ function ConnectionField({ value, onChange, of, proxies }: FieldProps<Id | null>
       size="xs"
       radius={ROUNDING}
       w={CONNECTION_WIDTH}
+      // Against the row's end, its text too.
+      ml="auto"
       style={{ flexShrink: 0 }}
       data={data}
       value={value === null ? DIRECT : String(value)}
@@ -167,11 +144,12 @@ function ConnectionField({ value, onChange, of, proxies }: FieldProps<Id | null>
       }}
       allowDeselect={false}
       {...pickKeys}
-      comboboxProps={{ withinPortal: true }}
+      // Its list as wide as its longest name, under the field's end.
+      comboboxProps={{ withinPortal: true, width: "max-content", position: "bottom-end" }}
       classNames={{ dropdown: listClasses.dropdown, option: listClasses.option }}
       onFocus={() => setEntered(true)}
       onBlur={() => setEntered(false)}
-      styles={fieldStyles(entered)}
+      styles={{ input: { ...fieldStyles(entered).input, textAlign: "right" } }}
       aria-label={`Connexion ${of}`}
     />
   );
@@ -261,15 +239,11 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
 
   /**
    * The added row, changed: created once complete — kept as it is if the
-   * server refuses it —, gone once emptied.
+   * server refuses it.
    */
   const changeDraft = async (change: Partial<Draft>) => {
     if (!draft) return;
     const next = { ...draft, ...change };
-    if (!next.name && !next.host) {
-      setDraft(null);
-      return;
-    }
     setDraft(next);
     if (!next.name || !next.host) return;
     try {
@@ -282,28 +256,57 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
     void askInfos();
   };
 
+  /**
+   * The focus leaving the added row, not one of its fields for another: still
+   * without a name or an address, the row disappears. Asked once the field
+   * left has given its value (changeDraft) and the next one has the focus.
+   */
+  const leaveDraft = (e: FocusEvent<HTMLElement>) => {
+    const row = e.currentTarget;
+    setTimeout(() => {
+      if (row.contains(document.activeElement)) return;
+      setDraft((d) => (d && !d.name && !d.host ? null : d));
+    });
+  };
+
   const total = printers.length + (draft ? 1 : 0);
 
-  /** A row's style: without its checkbox, read only, a simple list's. */
-  const printerRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
+  /**
+   * A row's style: without its checkbox, read only, a simple list's. The
+   * columns' header opens the stack (ListHeader).
+   */
+  const printerRowStyle = (rank: number) => rowStyle(rank + 1, total + 1, false, canEdit ? "checkbox" : "simple");
 
-  /** The name field: behind a checkbox, it moves back to align with it. */
-  const nameSlot = (field: ReactNode, added = false) =>
-    canEdit ? (
-      <Box
-        style={{
-          flex: 1,
-          minWidth: NAME_MIN_WIDTH,
-          display: "flex",
-          // Added, without a checkbox before it: it opens the row.
-          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
-        }}
-      >
-        {field}
-      </Box>
-    ) : (
-      field
-    );
+  /**
+   * The name field, a quarter of the row: behind a checkbox, it moves back to
+   * align with it.
+   */
+  const nameSlot = (field: ReactNode, added = false) => (
+    <Box
+      style={{
+        // Shrinking first, so the state's tag stays against the row's end.
+        flex: `0 1 ${NAME_SHARE}`,
+        minWidth: NAME_MIN_WIDTH,
+        display: "flex",
+        // Added, without a checkbox before it: it opens the row.
+        marginLeft: !canEdit ? 0 : added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+      }}
+    >
+      {field}
+    </Box>
+  );
+
+  /** The columns' titles, over the fields of the rows. */
+  const columns = [
+    {
+      label: "Nom",
+      style: { flex: `0 1 ${NAME_SHARE}`, minWidth: NAME_MIN_WIDTH, marginLeft: canEdit ? -NAME_INSET : 0 },
+      inset: INPUT_INSET,
+    },
+    { label: "Adresse IP", style: { width: HOST_WIDTH } },
+    { label: "Connexion", style: { width: CONNECTION_WIDTH, marginLeft: "auto" }, end: true, inset: CHEVRON_WIDTH },
+    { label: "État", style: { width: MODEL_WIDTH }, end: true, inset: 0 },
+  ];
 
   return (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -315,6 +318,7 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
             <EmptyList icon={IconPrinter} message="Aucune imprimante" />
           ) : (
             <Stack gap={1}>
+              <ListHeader columns={columns} kind={canEdit ? "checkbox" : "simple"} />
               {printers.map((printer, rank) => (
                 <Group key={printer.id} gap="sm" wrap="nowrap" style={printerRowStyle(rank)}>
                   {canEdit && (
@@ -335,7 +339,6 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
                       }}
                     />,
                   )}
-                  <TypeField value={printer.type} of={`de ${printer.name}`} onChange={(type) => change(printer, { type })} />
                   <HostField value={printer.host} of={`de ${printer.name}`} onChange={(host) => change(printer, { host })} />
                   <ConnectionField
                     value={printer.proxy_id}
@@ -347,19 +350,18 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
                 </Group>
               ))}
               {draft && (
-                <Group gap="sm" wrap="nowrap" style={printerRowStyle(total - 1)}>
+                <Group gap="sm" wrap="nowrap" style={printerRowStyle(total - 1)} onBlur={leaveDraft}>
                   {nameSlot(
                     <RowField
                       name={draft.name}
                       placeholder="Nom de l'imprimante"
                       label="Nom de l'imprimante à ajouter"
                       autoFocus
-                      // Left empty with no address, the row disappears.
+                      // Left empty with no address, the row disappears (leaveDraft).
                       onValidate={(name) => void changeDraft({ name })}
                     />,
                     true,
                   )}
-                  <TypeField value={draft.type} of="de l'imprimante à ajouter" onChange={(type) => void changeDraft({ type })} />
                   {/* Named, the missing address shows in red. */}
                   <HostField
                     value={draft.host}

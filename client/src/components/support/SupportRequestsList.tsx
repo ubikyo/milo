@@ -3,6 +3,8 @@ import {
   Center,
   Checkbox,
   Group,
+  ScrollArea,
+  Stack,
   Table,
   Text,
   UnstyledButton,
@@ -17,9 +19,9 @@ import dayjs from "dayjs";
 import { Fragment, createContext, useContext, useMemo, useState } from "react";
 import { ALL_OPTION, ChoiceFilter, TextFilter, type FilterOption } from "../ui/ColumnFilters";
 import { useLabelFilter } from "../ui/LabelFilter";
-import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/ActorAvatars";
+import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar, showsNames } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment, ACTOR_FORMATS } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
@@ -36,11 +38,14 @@ import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib
 import type { CSSProperties, ReactNode } from "react";
 import type { Actor, Id, SupportRequest, SupportStatus } from "@milo/shared";
 import { NewShortcut } from "../../lib/newShortcut";
+import { isSized } from "../../widgets/height";
+import scroll from "../../assets/styles/ListScroll.module.css";
+import { SupportBulkMenu, type BulkAction } from "./SupportActions";
 
 // The Support mode's request list: a section widget, like the
 // indicators (widgets/support/list.tsx). What it shows and what can be done in it —
 // the open tab, sorting, filters, checked boxes, the right-click
-// menu — belongs to the page: the "Actions" menu in the tab row
+// menu — belongs to the page: "Actions multiples", under the list,
 // acts on the requests checked here. The page provides it through
 // "SupportListContext"; the widget only chooses its columns.
 
@@ -50,6 +55,17 @@ export const ALL = "all";
 // Rows' vertical padding, as in the projects table: the height
 // includes the padding (box-sizing).
 const ROW_PADDING_Y = 5;
+
+// Height of the links under the list: that of their text line, so that
+// "Ajouter un ticket" and "Actions multiples" stack with the gap of "Ajouter
+// une étiquette" and "Ajouter un groupe" (LabelGroupsEditor). The padding
+// gives back the height of a row.
+const LINK_HEIGHT = 20;
+const LINKS_PADDING_Y = (ACTOR_AVATAR_SIZE + 2 * ROW_PADDING_Y - LINK_HEIGHT) / 2;
+
+// The checkbox column: its box and the cell's padding. It never takes the
+// room left — that goes to a column of the widget (useResizableColumns).
+const CHECKBOX_WIDTH = 40;
 
 // A request's labels, on a single line: beyond two, the
 // count of the others replaces the list.
@@ -65,12 +81,22 @@ const REFERENCE_TEMPLATE = supportTicketRef(9999);
  * the green of what is settled.
  */
 const STATUS_COLOR: Record<SupportStatus, string> = {
-  new: "red.6",
-  open: "orange.6",
-  pending: "orange.6",
-  resolved: "green.6",
-  closed: "green.6",
+  // Shade 8: that of the application's red, orange and green (labelHex).
+  new: "red.8",
+  open: "orange.8",
+  pending: "orange.8",
+  resolved: "green.8",
+  closed: "green.8",
 };
+
+/** The status filter's choice of what still waits for something: neither resolved nor closed. */
+const UNRESOLVED = "unresolved";
+
+const STATUS_OPTIONS: FilterOption[] = [
+  { value: UNRESOLVED, label: "Non résolu", divider: true },
+  { value: ALL_OPTION, label: "Tous" },
+  ...SUPPORT_STATUSES,
+];
 
 /** A missing value reads the same everywhere: a discreet dash. */
 function Empty() {
@@ -144,7 +170,9 @@ const senderWithoutAccount = (request: SupportRequest): Actor | null => {
 /** An actor's key in the filter: an account, or an address without an account. */
 const actorKey = (a: Actor): string => (a.id ? `u:${a.id}` : `e:${a.email.toLowerCase()}`);
 
-function ActorsCell({ request }: { request: SupportRequest }) {
+function ActorsCell({ request, format }: { request: SupportRequest; format?: string }) {
+  // As names, the sender first like the avatars, without their mark.
+  if (showsNames(format)) return <ActorAvatars actors={shownActors(request)} format={format} />;
   // The sender comes first, marked with their envelope — whether or not they have an
   // account. With an account, they are already among the actors: they are taken out of
   // there to be shown only once, but with their mark, as in the drawer.
@@ -285,7 +313,9 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
     if ((f.due === "late" || f.due === "soon") && dueState(d.due_date) !== f.due)
       return false;
   }
-  if (f.status !== ALL_OPTION && d.status !== f.status) return false;
+  if (f.status === UNRESOLVED) {
+    if (d.status === "resolved" || d.status === "closed") return false;
+  } else if (f.status !== ALL_OPTION && d.status !== f.status) return false;
   if (f.received !== ALL_OPTION) {
     const since = dayjs()
       .startOf("day")
@@ -346,7 +376,7 @@ export const MAILBOXES = "mailboxes";
 export const SUPPORT_COLUMNS: ListColumn[] = [
   { key: "ticket", label: "Ticket" },
   { key: "subject", label: "Objet" },
-  { key: "actors", label: "Acteurs" },
+  { key: "actors", label: "Acteurs", formats: ACTOR_FORMATS },
   // It picks the group it shows.
   { key: "labels", label: "Étiquettes", labelGroups: "/support-labels" },
   { key: "status", label: "Statut" },
@@ -443,6 +473,8 @@ export interface SupportList extends ReturnType<typeof useSupportList> {
    * The list key says which widget it is added from.
    */
   onAddRequest?: (listKey: string) => void;
+  /** "Actions multiples": runs on the checked requests (SupportActions). */
+  onBulkAction?: (action: BulkAction) => void;
 }
 
 /** The list's state, given by the page to the widget. Outside Support mode, there is none. */
@@ -455,9 +487,9 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
   if (!list) return null;
   const { onAddRequest } = list;
   return (
-    // "N" adds one, as "Nouveau ticket" does (lib/newShortcut).
+    // "N" adds one, as "Ajouter un ticket" does (lib/newShortcut).
     <NewShortcut
-      action="Nouvelle demande"
+      action="Ajouter un ticket"
       run={onAddRequest && (() => onAddRequest(listKey(config)))}
     >
       <RequestsList config={config} list={list} />
@@ -483,6 +515,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     loading,
     onOpenRequest,
     onAddRequest: addRequest,
+    onBulkAction,
+    selection,
   } = list;
 
   // The board's requests, of the chosen context, that the page has read — those
@@ -503,13 +537,19 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   const columnCount = columns.length + 1;
   // In edit mode, the widths set above the columns go to the widget.
   const widthEditing = useColumnWidthEditing(SUPPORT_COLUMNS, config, columns.map((c) => c.id));
+  // Given column widths, the checkbox keeps its own: without one, it would be
+  // the column that takes the room left.
+  const configured = defaultWidths(SUPPORT_COLUMNS, config);
   const resize = useResizableColumns(
     "support",
     ["checkbox", ...columns.map((c) => c.id)],
-    defaultWidths(SUPPORT_COLUMNS, config),
+    configured && { checkbox: CHECKBOX_WIDTH, ...configured },
     undefined,
     widthEditing,
   );
+  // A height of its own: the grid fills it and scrolls, the actions stay
+  // at the bottom of the widget.
+  const sized = isSized(config);
 
   const isFiltered =
     labelFilter.active ||
@@ -607,7 +647,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         tab === ALL ? (
           <ChoiceFilter
             label="statut"
-            options={[{ value: ALL_OPTION, label: "Tous" }, ...SUPPORT_STATUSES]}
+            options={STATUS_OPTIONS}
             value={filters.status}
             onChange={filter("status")}
           />
@@ -662,9 +702,9 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         )}
       </Table.Td>
     ),
-    actors: (request) => (
+    actors: (request, _group, format) => (
       <Table.Td key="actors">
-        <ActorsCell request={request} />
+        <ActorsCell request={request} format={format} />
       </Table.Td>
     ),
     // Limited to a group, the column shows only its labels.
@@ -707,13 +747,13 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
       <EmptyPanel
         icon={IconLifebuoy}
         message="Aucune demande"
-        actionLabel="Nouveau ticket"
+        actionLabel="Ajouter un ticket"
         onAction={onAddRequest}
       />
     );
   }
 
-  return (
+  const grid = (
     // A section narrower than the list makes it scroll sideways, rather
     // than squash its columns.
     <GridScroll>
@@ -804,18 +844,44 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
               </Table.Td>
             </Table.Tr>
           )}
-
-          {/* Last row: adding happens where the list ends. The explicit background
-              neutralizes the hover — this row is not a request. */}
-          {onAddRequest && (
-            <Table.Tr style={{ backgroundColor: "transparent" }}>
-              <Table.Td colSpan={columnCount}>
-                <AddButton label="Nouveau ticket" onClick={onAddRequest} />
-              </Table.Td>
-            </Table.Tr>
-          )}
         </Table.Tbody>
       </Table>
     </GridScroll>
+  );
+
+  // Under the grid, where the list ends: adding, then what is done with the
+  // checked requests — once there are some.
+  const withBulk = onBulkAction && selection.length > 0;
+  const actions = (onAddRequest || withBulk) && (
+    <Stack gap={0} align="flex-start" px="xs" py={LINKS_PADDING_Y} style={{ flexShrink: 0 }}>
+      {onAddRequest && (
+        <AddButton label="Ajouter un ticket" onClick={onAddRequest} h={LINK_HEIGHT} />
+      )}
+      {withBulk && (
+        <SupportBulkMenu selected={selection} onAction={onBulkAction} height={LINK_HEIGHT} />
+      )}
+    </Stack>
+  );
+
+  if (!sized) {
+    return (
+      <>
+        {grid}
+        {actions}
+      </>
+    );
+  }
+  return (
+    <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
+      <ScrollArea
+        type="auto"
+        scrollbars="y"
+        classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
+        style={{ flex: 1, minHeight: 0 }}
+      >
+        {grid}
+      </ScrollArea>
+      {actions}
+    </Stack>
   );
 }

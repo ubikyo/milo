@@ -8,11 +8,10 @@ import {
   Input,
   Modal,
   Stack,
-  Text,
   Textarea,
   Tooltip,
 } from "@mantine/core";
-import { IconCheck, IconCopy, IconInfoCircle, IconRefresh, IconTopologyStar3 } from "@tabler/icons-react";
+import { IconCheck, IconCopy, IconInfoCircle, IconTopologyStar3 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -28,7 +27,9 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import Footer from "../ui/Footer";
 import {
   EmptyList,
+  INPUT_INSET,
   ListFooter,
+  ListHeader,
   FIRST_FIELD_MARGIN,
   NAME_INSET,
   NAME_MIN_WIDTH,
@@ -40,19 +41,17 @@ import {
 } from "../ui/DrawerRows";
 import listClasses from "../../assets/styles/SettingsList.module.css";
 
-// The "Proxys" section of Settings ("Paramétrage"): the Milo Proxy services
+// The "Proxies" section of Settings ("Paramétrage"): the Milo Proxy services
 // running on the sites' networks, through which Milo reaches their printers
 // (shared/proxies.ts). A row per proxy, drawn like the other editable lists
-// (DrawerRows): its name, edited in place, what it said of itself, then where
-// it stands — green "Connecté", red "Hors connexion" —, kept up to date by
+// (DrawerRows): its name, edited in place, then where it stands — green
+// "Connecté", red "Hors connexion", what it said of itself in its title —, kept up to date by
 // the server as soon as it changes. "Ajouter un proxy" adds a row: once named,
 // the proxy is created and its token shown in a window, once, with the lines
-// to put in its configuration. A token can be regenerated: the old one is
-// refused at once.
+// to put in its configuration.
 
 /** Wide enough for "Hors connexion", so the rows' ends stay aligned. */
 const STATE_WIDTH = 120;
-const DETAILS_WIDTH = 220;
 
 const onError = (e: unknown) => notifyError(errorMessage(e));
 
@@ -62,27 +61,22 @@ const CONFIG_PATH = "/etc/milo.proxy.conf";
 /** The lines of its configuration: this Milo, and its token. */
 const configOf = (token: string) => `server=${window.location.host}\ntoken=${token}`;
 
-/** "srv-print-01 · 1.0.0 · 10.0.0.4": what it said of itself; when it was last seen. */
-function ProxyDetails({ proxy }: { proxy: MiloProxy }) {
+/**
+ * "srv-print-01 · v1.0.0 · 10.0.0.4": what it said of itself; when it was
+ * last seen. Never connected, it has said nothing: empty.
+ */
+const detailsOf = (proxy: MiloProxy) => {
   const said = [proxy.hostname, proxy.version && `v${proxy.version}`, proxy.address].filter(Boolean).join(" · ");
   const seen = proxy.last_seen_at ? dayjs(proxy.last_seen_at).format("DD/MM/YYYY HH:mm") : "";
-  const label = said || "Jamais connecté";
-  return (
-    <Text
-      size="xs"
-      c="dimmed"
-      w={DETAILS_WIDTH}
-      truncate
-      style={{ flexShrink: 0 }}
-      title={seen ? `${label}\n${proxy.connected ? "Connecté depuis" : "Vu pour la dernière fois"} le ${seen}` : label}
-    >
-      {label}
-    </Text>
-  );
-}
+  return seen ? `${said}\n${proxy.connected ? "Connecté depuis" : "Vu pour la dernière fois"} le ${seen}` : said;
+};
 
-/** Green "Connecté", red "Hors connexion", against the row's end. */
-function ProxyState({ connected }: { connected: boolean }) {
+/**
+ * Green "Connecté", red "Hors connexion", against the row's end; what the
+ * proxy said of itself in its title.
+ */
+function ProxyState({ proxy }: { proxy: MiloProxy }) {
+  const { connected } = proxy;
   return (
     <Box w={STATE_WIDTH} style={{ flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
       <Badge
@@ -92,6 +86,7 @@ function ProxyState({ connected }: { connected: boolean }) {
         radius="sm"
         tt="none"
         fw={600}
+        title={detailsOf(proxy) || undefined}
         // In the Settings, their tags' look; connected, its background too.
         data-list-tag={connected ? "filled" : ""}
       >
@@ -169,7 +164,6 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
   // The added row, waiting for its name.
   const [draft, setDraft] = useState(false);
   const [created, setCreated] = useState<CreatedMiloProxy | null>(null);
-  const [toRegenerate, setToRegenerate] = useState<MiloProxy | null>(null);
   const selection = useRowSelection(proxies.map((p) => p.id));
   const [toDelete, setToDelete] = useState<MiloProxy[]>([]);
 
@@ -200,7 +194,8 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
 
   const total = proxies.length + (draft ? 1 : 0);
 
-  const proxyRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
+  /** A row's style: the columns' header opens the stack (ListHeader). */
+  const proxyRowStyle = (rank: number) => rowStyle(rank + 1, total + 1, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
   const nameSlot = (field: ReactNode, added = false) =>
@@ -220,14 +215,25 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
       field
     );
 
+  /** The columns' titles, over the fields of the rows. */
+  const columns = [
+    {
+      label: "Nom",
+      style: { flex: 1, minWidth: NAME_MIN_WIDTH, marginLeft: canEdit ? -NAME_INSET : 0 },
+      inset: INPUT_INSET,
+    },
+    { label: "État", style: { width: STATE_WIDTH }, end: true, inset: 0 },
+  ];
+
   return (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <Stack gap="xl" data-settings-lists>
-        <Input.Wrapper label="Proxys" className={listClasses.list} data-settings-list>
+        <Input.Wrapper label="Proxies" className={listClasses.list} data-settings-list>
           {total === 0 ? (
             <EmptyList icon={IconTopologyStar3} message="Aucun proxy" />
           ) : (
             <Stack gap={1}>
+              <ListHeader columns={columns} kind={canEdit ? "checkbox" : "simple"} />
               {proxies.map((proxy, rank) => (
                 <Group key={proxy.id} gap="sm" wrap="nowrap" style={proxyRowStyle(rank)}>
                   {canEdit && (
@@ -250,21 +256,7 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
                       }}
                     />,
                   )}
-                  <ProxyDetails proxy={proxy} />
-                  {canEdit && (
-                    <Tooltip label="Régénérer le token" withArrow>
-                      <ActionIcon
-                        variant="subtle"
-                        color="gray"
-                        size="sm"
-                        aria-label={`Régénérer le token de ${proxy.name}`}
-                        onClick={() => setToRegenerate(proxy)}
-                      >
-                        <IconRefresh size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
-                  <ProxyState connected={proxy.connected} />
+                  <ProxyState proxy={proxy} />
                 </Group>
               ))}
               {draft && (
@@ -280,7 +272,7 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
                     true,
                   )}
                   {/* Not created yet: an empty space keeps the rows' ends aligned. */}
-                  <Box w={DETAILS_WIDTH + STATE_WIDTH} style={{ flexShrink: 0 }} />
+                  <Box w={STATE_WIDTH} style={{ flexShrink: 0 }} />
                 </Group>
               )}
             </Stack>
@@ -297,24 +289,6 @@ export default function ProxiesTab({ canEdit }: { canEdit: boolean }) {
       </Stack>
 
       <CreatedProxyModal created={created} onClose={() => setCreated(null)} />
-
-      <DeleteConfirmModal
-        opened={toRegenerate !== null}
-        onClose={() => setToRegenerate(null)}
-        onConfirm={async () => {
-          const proxy = toRegenerate;
-          setToRegenerate(null);
-          if (proxy) await write(async () => setCreated(await api.regenerateProxyToken(proxy.id)));
-        }}
-        title="Régénérer le token"
-        confirmLabel="Régénérer"
-        message={
-          <>
-            Le token actuel de « {toRegenerate?.name} » sera refusé immédiatement : le proxy sera
-            déconnecté jusqu'à ce que sa configuration reçoive le nouveau.
-          </>
-        }
-      />
 
       <DeleteConfirmModal
         opened={toDelete.length > 0}

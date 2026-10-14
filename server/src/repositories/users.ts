@@ -407,9 +407,17 @@ export const publicUser = (account: UserRow): PublicUser => {
  * A person as they accompany something else: actor, member, author.
  * The e-mail stands in for the name when it is missing.
  */
-export const actorOf = (row: { id: number; name: string; email: string }) => ({
+export const actorOf = (row: {
+  id: number;
+  name: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+}) => ({
   id: row.id,
   name: row.name || row.email,
+  ...(row.first_name !== undefined ? { first_name: row.first_name } : {}),
+  ...(row.last_name !== undefined ? { last_name: row.last_name } : {}),
   email: row.email,
   gravatar_url: gravatarUrl(row.email),
 });

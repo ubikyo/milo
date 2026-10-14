@@ -5,4 +5,7 @@ export interface DisplaySettings {
   /** Shows people's Gravatar in the actors' avatars and the profile; without
    *  it, only their initials. */
   showGravatars: boolean;
+  /** "Labo" > "Thèmes": the themes, still in development. Off, the themes'
+   *  list, the theme editor and the profile's theme are hidden. */
+  labThemes: boolean;
 }

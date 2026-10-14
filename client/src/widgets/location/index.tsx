@@ -10,7 +10,7 @@ import LocationsList, { LOCATION_COLUMNS } from "../../components/locations/Loca
 import ColumnFields, { LIST_COLUMNS } from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import LabelTemplatesFields from "../../components/ui/LabelTemplatesFields";
-import { SourcesField } from "../../lib/sources";
+import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import type { ContactWidget } from "../contact";
 import type { IndicatorConfigProps } from "../support/types";
 
@@ -24,10 +24,8 @@ function ListFields(props: IndicatorConfigProps) {
     <Stack gap="xl">
       {/* The widget's labels: they go to saving. */}
       <LabelGroupFields kind="location-labels" />
-      <SourcesField
-        type="warehouse.list"
-        field={LOCATION_WAREHOUSE_SOURCES}
-        label="Widget entrepôt associé"
+      <WidgetLinksField
+        inputs={[{ field: LOCATION_WAREHOUSE_SOURCES, label: "Entrepôt", types: ["warehouse.list"] }]}
         config={props.config}
         onChange={props.onChange}
       />

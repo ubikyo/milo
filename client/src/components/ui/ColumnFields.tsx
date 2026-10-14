@@ -83,6 +83,14 @@ export const DATE_FORMATS = [
   { value: "time", label: "Heure" },
 ] as const;
 
+/** People: their avatars, or their names — first, last, or whole. */
+export const ACTOR_FORMATS = [
+  { value: "avatar", label: "Avatar" },
+  { value: "first_name", label: "Prénom" },
+  { value: "last_name", label: "Nom" },
+  { value: "full_name", label: "Nom complet" },
+] as const;
+
 const DATE_PATTERNS: Record<string, string> = {
   datetime: "DD/MM/YYYY HH:mm",
   date: "DD/MM/YYYY",

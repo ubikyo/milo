@@ -18,6 +18,8 @@ interface DisplayTabProps {
 export default function DisplayTab({ canEdit, canEditThemes }: DisplayTabProps) {
   const { settings, update } = useDisplaySettings();
   const themeEditor = useThemeEditor();
+  // "Labo" > "Thèmes" off: neither the themes' list nor their editor.
+  const themes = canEditThemes && settings.labThemes;
   const [ongoing, setInProgress] = useState(false);
 
   const change = async (change: Partial<DisplaySettings>) => {
@@ -34,11 +36,11 @@ export default function DisplayTab({ canEdit, canEditThemes }: DisplayTabProps) 
   return (
     // The space between its lists is the themes' ("Formulaire" > "Liste" > "Marge basse").
     <Stack gap="xl" data-settings-lists>
-      {canEditThemes && <ThemeList />}
+      {themes && <ThemeList />}
 
       <Stack gap="sm" data-controls>
         {/* This browser's alone: no saving, the panels open and close at once. */}
-        {canEditThemes && (
+        {themes && (
           <Switch
             label="Activer l'éditeur de thèmes"
             checked={themeEditor}

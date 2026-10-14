@@ -320,6 +320,14 @@ export const migrate = (db: Database): void => {
   if (!columns(db, "order_contents").includes("position")) {
     db.exec("ALTER TABLE order_contents ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
   }
+  // Support contents from before their order: they keep the one they were
+  // shown in, by name.
+  if (!columns(db, "support_contents").includes("position")) {
+    db.exec("ALTER TABLE support_contents ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+    const ids = db.prepare("SELECT id FROM support_contents ORDER BY name").all() as { id: number }[];
+    const place = db.prepare("UPDATE support_contents SET position = ? WHERE id = ?");
+    ids.forEach(({ id }, rank) => place.run(rank + 1, id));
+  }
   // Orders from before their numbers.
   const orderColumns = columns(db, "orders");
   for (const column of ["quote_number", "quote_index", "order_number", "order_index"]) {
@@ -420,6 +428,8 @@ export const migrate = (db: Database): void => {
   labelContexts(db);
   // Then the context group goes from the lists to their board.
   boardContextGroups(db);
+  // After the French variables became English: "{{sender.…}}" becomes "{{requester.…}}".
+  requesterVariables(db);
   subcategoriesAsTitles(db);
   managedDeviceAssetSettingsByBoard(db);
   supportLabelsByBoard(db);
@@ -4036,5 +4046,31 @@ export const boardContextGroups = (db: Database): void => {
       saveConfig.run(JSON.stringify(config), widget.id);
     }
     writeSetting(db, BOARD_CONTEXT_GROUP, true);
+  })();
+};
+
+/** Set once the Support templates cite the requester as "{{requester.…}}". */
+const REQUESTER_VARIABLES = "requester_variables";
+
+/**
+ * The request's sender, cited "{{sender.email}}" by the Support templates,
+ * is now the requester: "{{requester.email}}" (migrateSupportTemplate,
+ * shared). Once.
+ */
+const requesterVariables = (db: Database): void => {
+  if (readSetting(db, REQUESTER_VARIABLES)) return;
+  db.transaction(() => {
+    for (const table of ["support_replies", "support_contents"]) {
+      const rows = db.prepare(`SELECT id, html FROM ${table} WHERE html LIKE '%sender.%'`).all() as {
+        id: number;
+        html: string;
+      }[];
+      const write = db.prepare(`UPDATE ${table} SET html = ? WHERE id = ?`);
+      for (const { id, html } of rows) {
+        const migrated = migrateSupportTemplate(html);
+        if (migrated !== html) write.run(migrated, id);
+      }
+    }
+    writeSetting(db, REQUESTER_VARIABLES, true);
   })();
 };

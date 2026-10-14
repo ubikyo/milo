@@ -14,6 +14,7 @@ import {
   Paper,
   ScrollArea,
   Stack,
+  Switch,
   Text,
   Textarea,
   TextInput,
@@ -1005,7 +1006,8 @@ interface ListCardProps {
   onEditBlur: () => void;
   onPointerDown: (event: ReactPointerEvent) => void;
   onDelete: () => void;
-  onDeleteTasks: () => void;
+  /** Empties the list of all its cards, separators included. */
+  onDeleteCards: () => void;
   onMove: () => void;
   onCopy: () => void;
   onColor: (color: string) => void;
@@ -1038,7 +1040,7 @@ function ListCard({
   onEditBlur,
   onPointerDown,
   onDelete,
-  onDeleteTasks,
+  onDeleteCards,
   onMove,
   onCopy,
   onColor,
@@ -1250,23 +1252,23 @@ function ListCard({
           {rights.canDelete && (
             <>
               <Menu.Divider />
-              {/* Empty the list without deleting it: its separators stay. */}
-              {isLocked ? (
-                <Menu.Item
-                  color={RED}
-                  leftSection={<IconTrashX size={16} />}
-                  onClick={onDeleteTasks}
-                  disabled={tasks === 0}
-                >
-                  Supprimer tâches
-                </Menu.Item>
-              ) : (
+              {/* Empty the list without deleting it; its separators go
+                  only if asked in the dialog. */}
+              <Menu.Item
+                color={RED}
+                leftSection={<IconTrashX size={16} />}
+                onClick={onDeleteCards}
+                disabled={!list.cards?.length}
+              >
+                Supprimer les cartes
+              </Menu.Item>
+              {!isLocked && (
                 <Menu.Item
                   color={RED}
                   leftSection={<IconTrash size={16} />}
                   onClick={onDelete}
                 >
-                  Supprimer
+                  Supprimer la liste
                 </Menu.Item>
               )}
             </>
@@ -1529,8 +1531,10 @@ export default function TaskBoard({
   const cancelled = useRef(false);
 
   const [pendingDelete, setPendingDelete] = useState<TaskList | null>(null);
-  // The list being asked to be emptied of its tasks.
-  const [listToEmpty, setListToEmpty] = useState<TaskList | null>(null);
+  // The list being asked to be emptied of its cards.
+  const [listToClear, setListToClear] = useState<TaskList | null>(null);
+  // Clearing a list keeps its separators unless asked otherwise.
+  const [withSeparators, setWithSeparators] = useState(false);
   // List whose host board is being chosen.
   // The list about to be moved or copied, and which of the two.
   const [targetList, setTargetList] = useState<{ list: TaskList; mode: ListAction } | null>(
@@ -1754,14 +1758,14 @@ export default function TaskBoard({
     }
   };
 
-  const deleteTasks = async (list: TaskList) => {
-    setListToEmpty(null);
-    // The card details open on a task of this list would no longer have a card.
-    if (openCard && openCard.list_id === list.id && !isSeparator(openCard)) {
+  const deleteCards = async (list: TaskList) => {
+    setListToClear(null);
+    // The card details open on a card of this list would no longer have a card.
+    if (openCard && openCard.list_id === list.id && (withSeparators || !isSeparator(openCard))) {
       setOpenedCard(null);
     }
     try {
-      await api.deleteTaskListCards(list.id);
+      await api.deleteTaskListCards(list.id, withSeparators);
       await onListsChanged();
     } catch (e) {
       notifyError(errorMessage(e));
@@ -2414,8 +2418,10 @@ export default function TaskBoard({
 
   // What deleting the targeted list would take with it.
   const deletedCards = pendingDelete?.cards?.length ?? 0;
-  // What emptying the targeted list would take with it.
-  const deletedTasks = (listToEmpty?.cards || []).filter((c) => !isSeparator(c)).length;
+  // What clearing the targeted list would take with it.
+  const clearedCards = (listToClear?.cards || []).filter(
+    (c) => withSeparators || !isSeparator(c),
+  ).length;
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -2500,7 +2506,10 @@ export default function TaskBoard({
                   onEditBlur={() => saveEdit(list)}
                   onPointerDown={onListPointerDown(list, columns.indexOf(list))}
                   onDelete={() => setPendingDelete(list)}
-                  onDeleteTasks={() => setListToEmpty(list)}
+                  onDeleteCards={() => {
+                    setWithSeparators(false);
+                    setListToClear(list);
+                  }}
                   onMove={() => setTargetList({ list, mode: "move" })}
                   onCopy={() => setTargetList({ list, mode: "copy" })}
                   onColor={(color) => setListColor(list, color)}
@@ -2701,23 +2710,36 @@ export default function TaskBoard({
       />
 
       <DeleteConfirmModal
-        opened={listToEmpty !== null}
-        onClose={() => setListToEmpty(null)}
-        onConfirm={() => listToEmpty && deleteTasks(listToEmpty)}
-        title="Supprimer les tâches"
+        opened={listToClear !== null}
+        onClose={() => setListToClear(null)}
+        onConfirm={() => listToClear && deleteCards(listToClear)}
+        title="Supprimer les cartes"
         message={
-          <>
-            Voulez-vous vraiment supprimer{" "}
-            <strong>
-              {deletedTasks > 1
-                ? `les ${deletedTasks} tâches`
-                : "la tâche"}
-            </strong>{" "}
-            de « {listToEmpty?.name} » ? La liste et ses séparateurs restent en
-            place.
-          </>
+          clearedCards === 0 ? (
+            <>
+              « {listToClear?.name} » ne contient aucune tâche : activez la
+              suppression des séparateurs pour la vider.
+            </>
+          ) : (
+            <>
+              Voulez-vous vraiment supprimer{" "}
+              <strong>
+                {clearedCards > 1 ? `les ${clearedCards} cartes` : "la carte"}
+              </strong>{" "}
+              de « {listToClear?.name} » ? La liste reste en place.
+            </>
+          )
         }
-      />
+        confirmDisabled={clearedCards === 0}
+      >
+        <Switch
+          mt="md"
+          color="teal"
+          label="Supprimer les séparateurs"
+          checked={withSeparators}
+          onChange={(e) => setWithSeparators(e.currentTarget.checked)}
+        />
+      </DeleteConfirmModal>
 
       <DeleteConfirmModal
         opened={cardToDelete !== null}

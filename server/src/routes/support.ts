@@ -29,12 +29,14 @@ import { transaction } from "../db/query.js";
 import type { SupportRequestRow, UserRow } from "../db/rows.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
 import { contextLabel } from "../repositories/contexts.js";
+import { newTicketActors } from "../repositories/inboxes.js";
 import { keyInBoard } from "../repositories/lists.js";
 import {
   concerned,
   notify,
   notifyAssignments,
   notifyDeletion,
+  notifyNewTicket,
   root,
   requestTitle,
 } from "../lib/notify.js";
@@ -359,6 +361,12 @@ supportRequestRoutes.post("/", (req, res) => {
   if (label !== null) addSupportLabel(created.id, label);
   // Those just assigned already have theirs.
   updatedRequest(req, created.id, "a créé la demande", assigned);
+  notifyNewTicket({
+    request: created,
+    recipients: newTicketActors(created.board_id, created.list_key),
+    author: req.user,
+    base: root(req),
+  });
 
   res.status(201).json(supportRequestDetail(created));
 });

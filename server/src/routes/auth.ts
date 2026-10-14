@@ -9,7 +9,18 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { randomBytes } from "node:crypto";
-import { isReplyEditorView, isSearchKind, normalizeUsername, passwordIssues, usernameIssues } from "@milo/shared";
+import {
+  QUERY_PARAMS,
+  isReplyEditorView,
+  isSearchKind,
+  normalizeUsername,
+  passwordIssues,
+  usernameIssues,
+} from "@milo/shared";
+import type { Id, LinkTargetKind } from "@milo/shared";
+import { selection } from "../db/query.js";
+import { boards, readableBoard } from "../repositories/boards.js";
+import { views } from "../repositories/views.js";
 import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
@@ -21,7 +32,7 @@ import {
   loginUrl,
   sendingAddress,
 } from "../lib/entra.js";
-import { badRequest, conflict } from "../lib/http.js";
+import { badRequest, conflict, notFound } from "../lib/http.js";
 import { notificationSettings, validNotificationSettings } from "../lib/notification-settings.js";
 import { touch } from "../middleware/events.js";
 import { rateLimit } from "../middleware/rate-limit.js";
@@ -317,6 +328,45 @@ authRoutes.put("/me/workspace", touch("lookups"), (req, res) => {
   if (!workspacesOf(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");
   users.setWorkspace.run(id, req.user.id);
   res.json(publicUser(users.byId.get(req.user.id)!));
+});
+
+/** The board an item of a link sits on, by its kind ("access": the board itself). */
+const LINK_BOARDS: Record<LinkTargetKind, ReturnType<typeof selection<{ board_id: Id }>>> = {
+  support: selection("SELECT board_id FROM support_requests WHERE id = ?"),
+  project: selection("SELECT board_id FROM projects WHERE id = ?"),
+  order: selection("SELECT board_id FROM orders WHERE id = ?"),
+  managed_device_asset: selection("SELECT board_id FROM managed_device_assets WHERE id = ?"),
+  card: selection(
+    "SELECT l.board_id FROM task_cards c JOIN task_lists l ON l.id = c.list_id WHERE c.id = ?",
+  ),
+  access: selection("SELECT id AS board_id FROM boards WHERE id = ?"),
+};
+
+const LINK_NOT_FOUND = "Élément introuvable";
+
+const isLinkKind = (value: unknown): value is LinkTargetKind =>
+  typeof value === "string" && Object.hasOwn(QUERY_PARAMS, value);
+
+/**
+ * The workspace an item of a link — an e-mail's, a notification's — sits in,
+ * when it is one of the account's and the account reads its board there: a
+ * link to another workspace than the current one then switches to it before
+ * opening. Anything else is "not found", whether the item exists or not.
+ */
+authRoutes.get("/me/link-workspace/:kind/:id", (req, res) => {
+  const kind = req.params.kind;
+  if (!isLinkKind(kind)) return notFound(LINK_NOT_FOUND);
+  const board = boards.byId.get(LINK_BOARDS[kind].get(Number(req.params.id))?.board_id);
+  const workspace = board ? views.byId.get(board.view_id)?.workspace_id : undefined;
+  if (
+    !board ||
+    !workspace ||
+    !workspacesOf(req.user).some((w) => w.id === workspace) ||
+    !readableBoard(board, { ...req.user, workspace_id: workspace })
+  ) {
+    return notFound(LINK_NOT_FOUND);
+  }
+  res.json({ workspace });
 });
 
 authRoutes.post("/logout", (req, res) => {

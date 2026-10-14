@@ -27,7 +27,7 @@ import DeclaredAssetDrawer from "./DeclaredAssetDrawer";
 import { DECLARED_ASSET_LOOKS } from "./kinds";
 import ActorAvatars from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths, useColumnWidthEditing, PATH_FORMATS, formatPath } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, PATH_FORMATS, formatPath, ACTOR_FORMATS } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
@@ -36,8 +36,8 @@ import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { useResizableColumns } from "../ui/useResizableColumns";
-import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
 import { useWidgetAccess } from "../../lib/rights";
@@ -171,6 +171,12 @@ const chosen = (f: Filters, a: Row): boolean => {
   );
 };
 
+/** The other columns' filters: a number compared (useColumnFilters). */
+const COLUMN_FILTERS: Record<"quantity" | "price", ColumnFilterSpec<Row>> = {
+  quantity: { kind: "number", label: "quantité", value: (a) => a.quantity },
+  price: { kind: "number", label: "prix", value: (a) => a.price },
+};
+
 /** A price as it reads in France: "1 250,00 €". */
 const PRICE_FORMAT = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
 
@@ -181,7 +187,7 @@ export const declaredAssetColumns = (kind: DeclaredAssetKind): (ListColumn & { k
     { key: "name", label: "Asset" },
     // It picks the group it shows.
     { key: "labels", label: "Étiquettes", labelGroups: DECLARED_ASSET_ROUTES[kind].labels },
-    { key: "actor", label: "Acteurs" },
+    { key: "actor", label: "Acteurs", formats: ACTOR_FORMATS },
     // Each takes its value from the board's list of the same name
     // (DeclaredAssetTablesFields); the category, its whole path or itself alone.
     { key: "category", label: category.title, formats: PATH_FORMATS },
@@ -325,15 +331,15 @@ export default function DeclaredAssetsList({
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(assets, labelsOf);
+  const columnFilter = useColumnFilters(assets, COLUMN_FILTERS);
   const isFiltered =
     labelFilter.active ||
+    columnFilter.active ||
     (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   // A labels column limited to a group takes its name.
   const labelGroups = useLabelGroups(DECLARED_ASSET_ROUTES[kind].labels);
-  const isEditing = useIsEditing();
   const access = useWidgetAccess()(kind);
-  // Adding is for display mode: in edit mode, clicks go to the widget.
-  const canAdd = accessIncludes(access, "update") && !isEditing;
+  const canAdd = accessIncludes(access, "update");
   /** The drawer: closed, adding (null), or showing an asset. */
   const [drawer, setDrawer] = useState<{ asset: DeclaredAsset | null } | null>(null);
 
@@ -352,7 +358,8 @@ export default function DeclaredAssetsList({
         ? (a: Row) => labelRank(a.labels, sort.group)
         : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
-    const kept = (assets ?? []).filter((a) => chosen(filters, a)).filter(labelFilter.keep);
+    const kept = (assets ?? []).filter((a) => chosen(filters, a)).filter(labelFilter.keep)
+      .filter(columnFilter.keep);
     return kept.sort((a, b) => {
       const left = value(a);
       const rightHand = value(b);
@@ -363,7 +370,7 @@ export default function DeclaredAssetsList({
         return (left - rightHand) * factor;
       return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
     });
-  }, [assets, sort, filters, labelFilter.keep]);
+  }, [assets, sort, filters, labelFilter.keep, columnFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the assets carry. */
   const optionsOf = (key: keyof typeof CHOICES, all: string): FilterOption[] => {
@@ -465,8 +472,8 @@ export default function DeclaredAssetsList({
     maker: (id) => th(id, words.maker.title, "maker", nounFilter("maker", words.maker)),
     product: (id) => th(id, words.product.title, "product", nounFilter("product", words.product)),
     location: (id) => th(id, "Emplacement", "location", choiceFilter("location", "emplacement", "Tous")),
-    quantity: (id) => th(id, "Quantité", "quantity", undefined, { whiteSpace: "nowrap" }),
-    price: (id) => th(id, "Prix", "price", undefined, { whiteSpace: "nowrap" }),
+    quantity: (id) => th(id, "Quantité", "quantity", columnFilter.filter("quantity"), { whiteSpace: "nowrap" }),
+    price: (id) => th(id, "Prix", "price", columnFilter.filter("price"), { whiteSpace: "nowrap" }),
   };
 
   /** Each column's cell, for an asset. */
@@ -484,9 +491,9 @@ export default function DeclaredAssetsList({
         <LabelsCell labels={ofGroup(asset.labels, group)} />
       </Table.Td>
     ),
-    actor: (asset) => (
+    actor: (asset, _group, format) => (
       <Table.Td key="actor">
-        <ActorAvatars actors={asset.actors} />
+        <ActorAvatars actors={asset.actors} format={format} />
       </Table.Td>
     ),
     category: (asset, _group, format) => (
@@ -571,6 +578,7 @@ export default function DeclaredAssetsList({
                   onClick={() => {
                     setFilters(NO_FILTER);
                     labelFilter.reset();
+                    columnFilter.reset();
                   }}
                 >
                   <Text size="sm" c="teal">

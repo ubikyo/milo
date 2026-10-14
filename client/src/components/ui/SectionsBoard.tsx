@@ -134,9 +134,9 @@ const LINE_GAP = 2;
 
 // The band the handle occupies at the top of each column, outside the frame —
 // the icon, at its distance from the line —, and that of the foot, at the same
-// height, where the width and gap are set. It is kept even
-// when locked, so the content does not move when switching from editing to
-// reading.
+// height, where the width and gap are set. The top one is kept even when
+// locked, so the content does not move down when switching from editing to
+// reading; the foot one is dropped (FOOT_BAND).
 const GRIP_ZONE = GRIP_SIZE + 2 * LINE_GAP;
 
 // The space between the frame line and the content, at top and bottom.
@@ -147,6 +147,10 @@ const FRAME_PADDING = 8;
 // carries it as overflow, and the scroll zone moves up by as much to
 // show it — sections thus start just under the row's margin.
 const TOP_BAND = GRIP_ZONE + FRAME_PADDING;
+
+// What closes a column while editing: the space under the line and the foot
+// band. Locked, the column has none.
+const FOOT_BAND = GRIP_ZONE + FRAME_PADDING;
 
 /**
  * The CSS variable that carries a column's visible height to its widgets: a
@@ -636,10 +640,10 @@ export default function SectionsBoard<S extends BoardSection>({
           display: "flex",
           flexDirection: "column",
           position: "relative",
-          // The foot band, and the space above the line, kept locked or
-          // not: the content does not move from one mode to the other. The
+          // The foot band, and the space above the line, while editing only:
+          // locked, the widgets go down to the bottom of the board. The
           // handle's overflows above (TOP_BAND).
-          paddingBottom: GRIP_ZONE + FRAME_PADDING,
+          paddingBottom: locked ? 0 : FOOT_BAND,
         }}
       >
         {/* The dotted frame, laid over and not around: it overflows
@@ -729,12 +733,12 @@ export default function SectionsBoard<S extends BoardSection>({
   useLayoutEffect(() => {
     if (!viewportEl) return;
     const measure = () =>
-      setColumnHeight(viewportEl.clientHeight - TOP_BAND - GRIP_ZONE - FRAME_PADDING);
+      setColumnHeight(viewportEl.clientHeight - TOP_BAND - (locked ? 0 : FOOT_BAND));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(viewportEl);
     return () => observer.disconnect();
-  }, [viewportEl]);
+  }, [viewportEl, locked]);
 
   // The gap following each column, its right margin: the last has none.
   // Percentages are read on the row minus their sum.

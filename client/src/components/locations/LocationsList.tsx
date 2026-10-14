@@ -255,8 +255,7 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
   const labelGroups = useLabelGroups(LOCATION_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
-  // Adding is for display mode: in edit mode, clicks go to the widget.
-  const canAdd = accessIncludes(access, "update") && !isEditing;
+  const canAdd = accessIncludes(access, "update");
   const [display, setDisplay] = useState<Display>(() => readDisplay(blockId));
   const chooseDisplay = (value: Display) => {
     setDisplay(value);

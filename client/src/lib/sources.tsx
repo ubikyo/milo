@@ -4,10 +4,7 @@
 // board's when they are its own — already read, in its context —; another
 // board's are read here, and re-read when the server says they changed.
 
-import { Badge, Group, Text, TreeSelect } from "@mantine/core";
-import type { TreeNodeData } from "@mantine/core";
 import { useContext, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import { DECLARED_ASSET_RESOURCES, DECLARED_ASSET_WORDS, SOURCES, sourcesOf } from "@milo/shared";
 import type {
   Contact,
@@ -26,8 +23,6 @@ import type {
   Warehouse,
 } from "@milo/shared";
 import { api } from "../api";
-import sourcesClasses from "../assets/styles/SourcesField.module.css";
-import { GREEN } from "../themes/colors";
 import { CopyPasteContext } from "../components/ui/CopyPasteActions";
 import { errorMessage, notifyError } from "./errors";
 
@@ -126,8 +121,8 @@ export function useSources(type: string | null, config: unknown, field: string =
   );
 }
 
-/** The type of the widgets read, as the field names it at the right of each. */
-const TYPE_LABELS: Record<string, string> = {
+/** The type of the widgets read, as the "Widgets associés" screen names their output. */
+export const TYPE_LABELS: Record<string, string> = {
   "project.list": "Projets",
   "task.list": "Tâches",
   "support.list": "Tickets",
@@ -142,144 +137,6 @@ const TYPE_LABELS: Record<string, string> = {
   mail: "Messages",
   calendar: "Calendrier",
 };
-
-/** The root of the tree: every view. */
-export const ALL_VIEWS = "all";
-
-// The selected values, as in a workspace's access (SectionRights): pills of
-// 22 px, barely rounded.
-const PILL_HEIGHT = 22;
-const PILL_RADIUS = 4;
-
-/** The look of a "Widgets associés" field, which an indicator's shares. */
-export const SOURCES_FIELD_LOOK = {
-  checkedStrategy: "child",
-  defaultExpandedValues: [ALL_VIEWS] as string[],
-  maxDisplayedValues: 0,
-  maxDisplayedValuesContent: (count: number) =>
-    `${count} widget${count > 1 ? "s" : ""} sélectionné${count > 1 ? "s" : ""}`,
-  nothingFoundMessage: "Aucun widget",
-  maxDropdownHeight: 320,
-  comboboxProps: { shadow: "md", withinPortal: true },
-  classNames: { dropdown: sourcesClasses.dropdown },
-  styles: {
-    dropdown: { "--milo-sources-check": GREEN } as CSSProperties,
-    pill: {
-      "--pill-height": `${PILL_HEIGHT}px`,
-      height: PILL_HEIGHT,
-      borderRadius: PILL_RADIUS,
-    } as CSSProperties,
-  },
-} as const;
-
-/**
- * A widget, as the tree shows it: its reference as a green tag, its type right
- * after; faded when it cannot go with those chosen.
- */
-function WidgetLeaf({ widget, faded = false }: { widget: SourceWidget; faded?: boolean }) {
-  return (
-    <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0, opacity: faded ? 0.45 : 1 }}>
-      <Badge variant="filled" color={GREEN} radius={PILL_RADIUS} tt="none">
-        {widget.reference}
-      </Badge>
-      <Text size="xs" c="dimmed" truncate>
-        {TYPE_LABELS[widget.type] ?? widget.type}
-      </Text>
-    </Group>
-  );
-}
-
-/**
- * The tree of the widgets one sees: every view, then each view, its boards,
- * and their widgets. A view or a board is checked whole: all its widgets.
- */
-export const sourcesTreeOf = (
-  widgets: SourceWidget[],
-  faded: (widget: SourceWidget) => boolean = () => false,
-): TreeNodeData[] => {
-  const views = new Map<Id, { label: string; boards: Map<Id, { label: string; widgets: SourceWidget[] }> }>();
-  for (const w of widgets) {
-    const view = views.get(w.view_id) ?? { label: w.view, boards: new Map() };
-    views.set(w.view_id, view);
-    const board = view.boards.get(w.board_id) ?? { label: w.board, widgets: [] };
-    view.boards.set(w.board_id, board);
-    board.widgets.push(w);
-  }
-  return [
-    {
-      value: ALL_VIEWS,
-      label: "Toutes les vues",
-      children: [...views].map(([viewId, view]) => ({
-        value: `view:${viewId}`,
-        label: view.label,
-        children: [...view.boards].map(([boardId, board]) => ({
-          value: `board:${boardId}`,
-          label: board.label,
-          children: board.widgets.map((w) => ({ value: w.key, label: <WidgetLeaf widget={w} faded={faded(w)} /> })),
-        })),
-      })),
-    },
-  ];
-};
-
-/**
- * The drawer's "Widgets associés" field: the widgets of its type, on every
- * board one sees — all of them, a view's, a board's, or one by one. Once
- * chosen, the field says how many. At least one: the last cannot be removed.
- * A widget that reads several kinds names each under its own "field", with
- * its own "label" — a Commandes widget's suppliers and products.
- */
-export function SourcesField({
-  type,
-  config,
-  onChange,
-  field = SOURCES,
-  label = "Widgets associés",
-}: {
-  type: string;
-  config: unknown;
-  onChange: (config: Record<string, unknown>) => void;
-  field?: string;
-  label?: string;
-}) {
-  const widgets = useSourceWidgets(type);
-  const data = useMemo(() => sourcesTreeOf(widgets ?? []), [widgets]);
-  // Only the widgets one sees: a key held by none of them reads nothing.
-  const known = new Set((widgets ?? []).map((w) => w.key));
-  const keys = sourcesOf(config, field).filter((k) => known.has(k));
-  return (
-    <TreeSelect
-      mode="checkbox"
-      label={label}
-      data={data}
-      value={keys}
-      onChange={(next) => {
-        if (next.length === 0) return;
-        onChange({ ...((config ?? {}) as Record<string, unknown>), [field]: next });
-      }}
-      checkedStrategy="child"
-      defaultExpandedValues={[ALL_VIEWS]}
-      maxDisplayedValues={0}
-      maxDisplayedValuesContent={(count) =>
-        `${count} widget${count > 1 ? "s" : ""} sélectionné${count > 1 ? "s" : ""}`
-      }
-      placeholder={widgets === null ? "Lecture…" : keys.length ? undefined : "Choisir des widgets"}
-      error={widgets && keys.length === 0 ? "Choisissez au moins un widget" : undefined}
-      nothingFoundMessage="Aucun widget"
-      maxDropdownHeight={320}
-      comboboxProps={{ shadow: "md", withinPortal: true }}
-      classNames={{ dropdown: sourcesClasses.dropdown }}
-      styles={{
-        dropdown: { "--milo-sources-check": GREEN } as CSSProperties,
-        pill: {
-          "--pill-height": `${PILL_HEIGHT}px`,
-          height: PILL_HEIGHT,
-          borderRadius: PILL_RADIUS,
-        } as CSSProperties,
-      }}
-    />
-  );
-}
 
 // --- Their items -------------------------------------------------------------
 

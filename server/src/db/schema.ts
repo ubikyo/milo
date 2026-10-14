@@ -1150,13 +1150,14 @@ ${DECLARED_ASSET_SCHEMA}
 
   -- Les contenus par défaut du Support : ce qui se pose d'office dans
   -- l'éditeur d'une réponse de l'équipe — une signature… L'évènement dit
-  -- quand (« all », « new »…) ; vide : jamais. Un évènement n'appartient
-  -- qu'à un contenu.
+  -- quand (« all », « new »…) ; vide : jamais. Un évènement peut en poser
+  -- plusieurs : dans l'ordre de la liste.
   CREATE TABLE IF NOT EXISTS support_contents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     html TEXT NOT NULL DEFAULT '',
-    event TEXT NOT NULL DEFAULT ''
+    event TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0
   );
 
   -- Les contenus par défaut des commandes, comme ceux du Support : posés

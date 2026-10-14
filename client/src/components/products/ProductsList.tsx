@@ -41,8 +41,8 @@ import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { useResizableColumns } from "../ui/useResizableColumns";
-import { useIsEditing } from "../../lib/editing";
 import {
   labelRank,
   labelsColumnTitle,
@@ -97,8 +97,8 @@ interface Sort {
 const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
   sort.key === key && (key !== "labels" || sort.group === group);
 
-/** The favorites column: only a star, as narrow as it. */
-const STAR_COLUMN_MIN = 15;
+/** The favorites column: only a star and its funnel, as narrow as them. */
+const STAR_COLUMN_MIN = 40;
 const STAR_CELL: CSSProperties = {
   paddingLeft: 0,
   paddingRight: 0,
@@ -247,6 +247,18 @@ function LabelsCell({ labels }: { labels: Product["labels"] }) {
 /** A product's labels, for the labels filters (useLabelFilter). */
 const labelsOf = (p: Row) => p.labels;
 
+/** The other columns' filters (useColumnFilters). */
+const COLUMN_FILTERS: Record<"favorite" | "sku", ColumnFilterSpec<Row>> = {
+  favorite: {
+    kind: "choice",
+    label: "favoris",
+    all: "Tous",
+    order: ["yes", "no"],
+    options: (p) => [p.favorite ? { value: "yes", label: "Favoris" } : { value: "no", label: "Autres" }],
+  },
+  sku: { kind: "text", label: "SKU", text: (p) => p.sku },
+};
+
 export default function ProductsList({
   config,
   blockId,
@@ -286,14 +298,14 @@ export default function ProductsList({
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(products, labelsOf);
+  const columnFilter = useColumnFilters(products, COLUMN_FILTERS);
   const isFiltered =
     labelFilter.active ||
+    columnFilter.active ||
     (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(PRODUCT_ROUTES.labels);
-  const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
-  // Adding is for display mode: in edit mode, clicks go to the widget.
-  const canAdd = accessIncludes(access, "update") && !isEditing;
+  const canAdd = accessIncludes(access, "update");
   /** The drawer: closed, adding (null), or showing a product. */
   const [drawer, setDrawer] = useState<{ product: Product | null } | null>(
     null,
@@ -318,6 +330,7 @@ export default function ProductsList({
     return (products ?? [])
       .filter((p) => chosen(filters, p))
       .filter(labelFilter.keep)
+      .filter(columnFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -332,7 +345,7 @@ export default function ProductsList({
           }) * factor
         );
       });
-  }, [products, sort, filters, labelFilter.keep]);
+  }, [products, sort, filters, labelFilter.keep, columnFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the products carry. */
   const optionsOf = (
@@ -428,27 +441,30 @@ export default function ProductsList({
         { whiteSpace: "nowrap" },
         group,
       ),
-    // Only the star, which sorts: the column is as narrow as it.
+    // Only the star, which sorts, and its funnel: the column is as narrow as them.
     favorite: (id) => (
       <Table.Th key={id} style={STAR_CELL}>
-        <UnstyledButton
-          onClick={() => sortBy("favorite")}
-          aria-label="Trier par favoris"
-          style={{ display: "inline-flex", verticalAlign: "middle" }}
-        >
-          <IconStar
-            size={14}
-            color={
-              sort.key === "favorite"
-                ? undefined
-                : "var(--mantine-color-dimmed)"
-            }
-          />
-        </UnstyledButton>
+        <Group gap={2} wrap="nowrap" justify="center">
+          <UnstyledButton
+            onClick={() => sortBy("favorite")}
+            aria-label="Trier par favoris"
+            style={{ display: "inline-flex", verticalAlign: "middle" }}
+          >
+            <IconStar
+              size={14}
+              color={
+                sort.key === "favorite"
+                  ? undefined
+                  : "var(--mantine-color-dimmed)"
+              }
+            />
+          </UnstyledButton>
+          {columnFilter.filter("favorite")}
+        </Group>
         {resize.handle(id)}
       </Table.Th>
     ),
-    sku: (id) => th(id, "SKU", "sku", undefined, { whiteSpace: "nowrap" }),
+    sku: (id) => th(id, "SKU", "sku", columnFilter.filter("sku"), { whiteSpace: "nowrap" }),
     name: (id) =>
       th(
         id,
@@ -575,6 +591,7 @@ export default function ProductsList({
                   onClick={() => {
                     setFilters(NO_FILTER);
                     labelFilter.reset();
+                    columnFilter.reset();
                   }}
                 >
                   <Text size="sm" c="teal">

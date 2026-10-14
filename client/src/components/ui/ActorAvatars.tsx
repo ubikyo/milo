@@ -100,12 +100,33 @@ interface ActorAvatarsProps {
   actors: Actor[] | null | undefined;
   size?: number;
   max?: number;
+  /**
+   * How a list column shows them (ACTOR_FORMATS): their avatars by default,
+   * or their names.
+   */
+  format?: string;
 }
+
+/**
+ * An actor's name in a column's format. An account not signed in yet has
+ * neither first nor last name, and a sender without an account no parts: its
+ * whole name stands in for them.
+ */
+export const actorNameOf = (actor: Actor, format: string | undefined): string => {
+  const part =
+    format === "first_name" ? actor.first_name : format === "last_name" ? actor.last_name : "";
+  return part?.trim() || actor.name || actor.email;
+};
+
+/** True when the format shows names instead of avatars. */
+export const showsNames = (format: string | undefined): boolean =>
+  format !== undefined && format !== "avatar";
 
 export default function ActorAvatars({
   actors,
   size = ACTOR_AVATAR_SIZE,
   max = 4,
+  format,
 }: ActorAvatarsProps) {
   const { settings } = useDisplaySettings();
   if (!actors || actors.length === 0) {
@@ -113,6 +134,19 @@ export default function ActorAvatars({
       <Text size="sm" c="dimmed">
         —
       </Text>
+    );
+  }
+
+  // As names: all of them, on one line, at the avatars' height so the row
+  // keeps its own.
+  if (showsNames(format)) {
+    const names = actors.map((a) => actorNameOf(a, format)).join(", ");
+    return (
+      <div style={{ height: size, display: "flex", alignItems: "center", minWidth: 0 }}>
+        <Text size="sm" truncate title={names}>
+          {names}
+        </Text>
+      </div>
     );
   }
 

@@ -26,18 +26,18 @@ import type {
 } from "@milo/shared";
 import {
   MAIL_TEMPLATE_KEYS,
+  SUPPORT_REPLY_VARIABLES,
   PALETTE,
+  emptySupportPerson,
   orderLinesTable,
   orderReferencesTable,
   systemTheme,
   themeColorHex,
 } from "@milo/shared";
-import type { OrderMailView } from "@milo/shared";
+import type { OrderMailView, SupportPerson } from "@milo/shared";
 import {
   LOGO_CID,
   LOGO_DARK_CID,
-  LOGO_HEIGHT_PX,
-  LOGO_WIDTH_PX,
   attachedDarkLogo,
   attachedLogo,
 } from "./mail-logo.js";
@@ -46,15 +46,6 @@ import { badRequest } from "./http.js";
 import { miloUrl } from "./milo-url.js";
 import { themes } from "./theme-colors.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
-
-/** Milo's colors, frozen: see the explanation at the top of the file. */
-const RULE = "#dee2e6";
-const TEXT = "#212529";
-const DIMMED = "#868e96";
-const GREEN = "#099268";
-
-/** The message's inset, the same on all four sides. */
-const INSET = "30px";
 
 /** A reported fact, and the number of times it repeated in a row. */
 export interface Row {
@@ -98,48 +89,103 @@ const toText = (m: Message): string =>
 
 // --- The templates ----------------------------------------------------------
 
-/** A notice's template Milo comes with: its facts and its button only where it has them. */
-const defaultMjml = ({ rows, action }: { rows: boolean; action: boolean }): string => `<mjml lang="fr">
+/** A new ticket: its number, linked to Milo, its subject and its requester. */
+const NEW_TICKET_MJML = `<mjml>
   <mj-head>
-    <mj-title>{{title}}</mj-title>
+    <mj-title>Réception d'un nouveau ticket</mj-title>
+
     <mj-attributes>
-      <mj-all font-family="Helvetica, Arial, sans-serif" />
-      <mj-text font-size="14px" line-height="1.5" color="${TEXT}" padding="0" />
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
     </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
   </mj-head>
+
   <mj-body>
-    <mj-section padding="${INSET}">
+    <mj-section>
       <mj-column>
-        <mj-text font-size="17px" font-weight="600" padding-bottom="4px">{{title}}</mj-text>
-        <mj-text color="${DIMMED}"${rows ? ' padding-bottom="16px"' : ""}>{{intro}}</mj-text>${
-          rows
-            ? `
-        {{#rows}}
-        <mj-text padding-bottom="8px"><span style="color:${GREEN};padding-right:8px">&#8212;</span>{{text}}</mj-text>
-        {{/rows}}`
-            : ""
-        }${
-          action
-            ? `
-        {{#action}}
-        <mj-button href="{{url}}" align="left" padding="24px 0 0 0" inner-padding="12px 22px"
-                   background-color="${GREEN}" border-radius="6px" font-size="14px" font-weight="600">{{label}}</mj-button>
-        {{/action}}`
-            : ""
-        }
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>        
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">Le ticket <a href="{{ticket.url}}" style="color: {{colors.green}}">{{ticket.number}}</a> ({{ticket.subject}}) vient d'être créé par {{requester.full_name}}.</p>
+        </mj-text>
+        <mj-button href="{{ticket.url}}" align="left">Ouvrir dans Milo</mj-button>      
       </mj-column>
     </mj-section>
-    <!-- The footer: a rule, then the logo, a space and the name. -->
-    <mj-section padding="0 ${INSET}">
+  </mj-body>
+</mjml>
+
+`;
+
+/** A ticket's update: its number, linked to Milo, and its subject. */
+const TICKET_UPDATE_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Mise à jour d'un ticket</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
       <mj-column>
-        <mj-divider border-width="1px" border-color="${RULE}" padding="0" />
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>        
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">Le ticket <a href="{{ticket.url}}" style="color: {{colors.green}}">{{ticket.number}}</a> ({{ticket.subject}}) vient d'être mise à jour.</p>
+        </mj-text>
+        <mj-button href="{{ticket.url}}" align="left">Ouvrir dans Milo</mj-button>      
       </mj-column>
     </mj-section>
-    <mj-section padding="16px ${INSET} ${INSET} ${INSET}">
+  </mj-body>
+</mjml>
+`;
+
+/** The tickets assigned at once, each linked to Milo, and who assigned them. */
+const ASSIGNED_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Tickets assignés</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
       <mj-column>
-        <mj-text font-size="12px" color="${DIMMED}">
-          <img src="{{milo.logo}}" alt="" width="${LOGO_WIDTH_PX}" height="${LOGO_HEIGHT_PX}"
-               style="border:0;width:${LOGO_WIDTH_PX}px;height:${LOGO_HEIGHT_PX}px;vertical-align:middle" />&nbsp;<span style="vertical-align:middle">Milo</span>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>        
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">Un ou plusieurs tickets viennent de vous être assignés par {{user.full_name}} :</p>
+        </mj-text>
+        <mj-text>
+          {{#tickets.items}}
+          <span style="color: {{colors.green}};padding-right:8px">&#8212;</span><a href="{{ticket.url}}" style="color: {{colors.green}}">{{ticket.number}}</a> {{ticket.subject}}<br />
+          {{/tickets.items}}
         </mj-text>
       </mj-column>
     </mj-section>
@@ -238,10 +284,10 @@ const CONFIRMATION_MJML = confirmationMjml(
   false,
 );
 
-/** A team reply: the request's subject as its title. */
+/** A team reply: the ticket's subject as its title. */
 const REPLY_MJML = `<mjml>
   <mj-head>
-    <mj-title>Confirmation adresse e-mail</mj-title>
+    <mj-title>Réponse à un ticket</mj-title>
 
     <mj-attributes>
       <mj-all font-family="Arial, sans-serif" font-size="14px" color="#333333" line-height="1.5" />
@@ -257,15 +303,12 @@ const REPLY_MJML = `<mjml>
     <mj-section>
       <mj-column>
         <mj-image src="{{milo.logo}}" align="left" width="80px"/>
-
         <mj-text padding="30px 25px 15px 25px" color="#333333">
           <h1 style="margin: 0;">{{ticket.subject}}</h1>
         </mj-text>
-
         <mj-text padding="0 25px 10px 25px" color="#333333">
           <p style="margin: 0;">{{model.content}}</p>
         </mj-text>
-
       </mj-column>
     </mj-section>
   </mj-body>
@@ -274,7 +317,7 @@ const REPLY_MJML = `<mjml>
 /** An automatic reply: its name as its title. */
 const AUTO_REPLY_MJML = `<mjml>
   <mj-head>
-    <mj-title>Confirmation adresse e-mail</mj-title>
+    <mj-title>Réponse automatique</mj-title>
 
     <mj-attributes>
       <mj-all font-family="Arial, sans-serif" font-size="14px" color="#333333" line-height="1.5" />
@@ -290,15 +333,12 @@ const AUTO_REPLY_MJML = `<mjml>
     <mj-section>
       <mj-column>
         <mj-image src="{{milo.logo}}" width="80px" align="left" />
-
         <mj-text padding="30px 25px 15px 25px" color="#333333">
           <h1 style="margin: 0;">{{model.name}}</h1>
         </mj-text>
-
         <mj-text padding="0 25px 10px 25px" color="#333333">
           <p style="margin: 0;">{{model.content}}</p>
         </mj-text>
-
       </mj-column>
     </mj-section>
   </mj-body>
@@ -334,10 +374,6 @@ const ORDER_MESSAGE_MJML = `<mjml>
   </mj-body>
 </mjml>`;
 
-const COMMON: MailTemplateVariable[] = [
-  { group: "Message", label: "Titre", name: "{{title}}" },
-  { group: "Message", label: "Introduction", name: "{{intro}}" },
-];
 const CONFIRMATION: MailTemplateVariable[] = [
   { group: "Confirmation", label: "Adresse e-mail", name: "{{email}}" },
   { group: "Confirmation", label: "Code", name: "{{code}}" },
@@ -444,11 +480,6 @@ const SHARING_SAMPLE = {
   requester: "Paul Durand",
   board: "Équipe",
 };
-// A block repeats — or shows — what it encloses; its variables live inside.
-const ROWS: MailTemplateVariable[] = [
-  { group: "Lignes", label: "Bloc des lignes", name: "{{#rows}}…{{/rows}}" },
-  { group: "Lignes", label: "Texte", name: "{{text}}" },
-];
 // The changes' own: the list of modifications, and one of them, inside.
 const UPDATES: MailTemplateVariable[] = [
   { group: "Modifications", label: "Liste des modifications", name: "{{#updates.items}}…{{/updates.items}}" },
@@ -524,18 +555,38 @@ export const placesView = (elements: PlacedElement[], from = 0): Record<string, 
   return view;
 };
 
-const ACTION: MailTemplateVariable[] = [
-  { group: "Bouton", label: "Bloc du bouton", name: "{{#action}}…{{/action}}" },
-  { group: "Bouton", label: "Lien", name: "{{url}}" },
-  { group: "Bouton", label: "Libellé", name: "{{label}}" },
-];
 // The message's HTML is kept as is: a reply's values are escaped before
 // Mustache sees them (replyViewOf), which then escapes nothing.
-const REPLY: MailTemplateVariable[] = [
-  { group: "Modèle", label: "Message", name: "{{model.content}}" },
-  { group: "Demande", label: "Numéro", name: "{{ticket.number}}" },
-  { group: "Demande", label: "Objet", name: "{{ticket.subject}}" },
+// A ticket, as its e-mails cite it: its number, its subject, its status, and
+// the link that opens it in Milo.
+const TICKET: MailTemplateVariable[] = [
+  { group: "Ticket", label: "Numéro", name: "{{ticket.number}}" },
+  { group: "Ticket", label: "Objet", name: "{{ticket.subject}}" },
+  { group: "Ticket", label: "Statut", name: "{{ticket.status}}" },
+  { group: "Ticket", label: "Url", name: "{{ticket.url}}" },
 ];
+// The tickets assigned at once, each with its sender, inside the block.
+const TICKETS: MailTemplateVariable[] = [
+  { group: "Tickets", label: "Liste des tickets", name: "{{#tickets.items}}…{{/tickets.items}}" },
+  { group: "Tickets", label: "Numéro", name: "{{ticket.number}}" },
+  { group: "Tickets", label: "Objet", name: "{{ticket.subject}}" },
+  { group: "Tickets", label: "Statut", name: "{{ticket.status}}" },
+  { group: "Tickets", label: "Url", name: "{{ticket.url}}" },
+];
+// Who assigns the tickets: the same fields as the support replies' user.
+const USER: MailTemplateVariable[] = SUPPORT_REPLY_VARIABLES.filter((v) => v.group === "Utilisateur").map((v) => ({
+  group: v.group,
+  label: v.label,
+  name: `{{${v.key}}}`,
+}));
+// A ticket's requester: whoever wrote the e-mail that opened it.
+const REQUESTER: MailTemplateVariable[] = [
+  { group: "Demandeur", label: "Prénom", name: "{{requester.first_name}}" },
+  { group: "Demandeur", label: "Nom", name: "{{requester.last_name}}" },
+  { group: "Demandeur", label: "Nom complet", name: "{{requester.full_name}}" },
+  { group: "Demandeur", label: "Adresse e-mail", name: "{{requester.email}}" },
+];
+const REPLY: MailTemplateVariable[] = [{ group: "Modèle", label: "Message", name: "{{model.content}}" }, ...TICKET];
 const REPLY_NAME: MailTemplateVariable = { group: "Modèle", label: "Nom du modèle", name: "{{model.name}}" };
 
 /**
@@ -550,8 +601,12 @@ const LEGACY_REPLY_VARIABLES: [RegExp, string][] = [
   [/\{\{\s*ticket\s*\}\}/g, "{{ticket.number}}"],
   [/\{\{\s*subject\s*\}\}/g, "{{ticket.subject}}"],
 ];
+/** The requester's variables as first named, "{{sender.…}}", and today's: "{{requester.…}}". */
+const asRequester = (mjml: string): string =>
+  mjml.replace(/\{\{(\s*[#^/]?\s*)sender\./g, "{{$1requester.");
+
 const withCurrentVariables = (mjml: string): string =>
-  LEGACY_REPLY_VARIABLES.reduce((text, [legacy, current]) => text.replace(legacy, current), mjml);
+  asRequester(LEGACY_REPLY_VARIABLES.reduce((text, [legacy, current]) => text.replace(legacy, current), mjml));
 
 // The element a notice is about — a project, a card, a request —, as the
 // assignment's and the changes' templates name it.
@@ -891,7 +946,29 @@ export type ReplyView = {
   ticket: string;
   subject: string;
   name?: string;
+  /** Its status, as the tabs name it. */
+  status?: string;
+  /** The link that opens it in Milo. */
+  url?: string;
+  /** Its requester; empty without one. */
+  requester?: RequesterView;
 };
+
+/** A ticket as its e-mails cite it ({{ticket.…}}). */
+export interface TicketView {
+  number: string;
+  subject: string;
+  status: string;
+  url: string;
+}
+
+/** A ticket's requester as its e-mails cite it ({{requester.…}}). */
+export interface RequesterView {
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string;
+}
 
 export type { OrderMailView } from "@milo/shared";
 
@@ -962,7 +1039,18 @@ const asEdited = (content: string): string =>
 /** A reply's view, escaped — the message's HTML apart. */
 const replyViewOf = (r: ReplyView) => ({
   model: { content: asEdited(r.content), name: Mustache.escape(r.name ?? "") },
-  ticket: { number: Mustache.escape(r.ticket), subject: Mustache.escape(r.subject) },
+  ticket: {
+    number: Mustache.escape(r.ticket),
+    subject: Mustache.escape(r.subject),
+    status: Mustache.escape(r.status ?? ""),
+    url: Mustache.escape(r.url ?? ""),
+  },
+  requester: {
+    first_name: Mustache.escape(r.requester?.first_name ?? ""),
+    last_name: Mustache.escape(r.requester?.last_name ?? ""),
+    full_name: Mustache.escape(r.requester?.full_name ?? ""),
+    email: Mustache.escape(r.requester?.email ?? ""),
+  },
 });
 
 interface Definition {
@@ -990,20 +1078,6 @@ const viewOf = (m: Message) => ({
   footer: m.footer,
 });
 
-/** A notice's template: its facts and its button only where it has them. */
-const notice = (
-  label: string,
-  description: string,
-  { rows, action }: { rows: boolean; action: boolean },
-  sample: Message,
-): Definition => ({
-  label,
-  description,
-  variables: [...COMMON, ...(rows ? ROWS : []), ...(action ? ACTION : [])],
-  mjml: defaultMjml({ rows, action }),
-  sample: viewOf(sample),
-});
-
 /**
  * A support reply's template. Its sample message is written as in the
  * editor: a paragraph per line, an empty one between them; "signer" signs it
@@ -1017,11 +1091,19 @@ const reply = (
   name?: string,
 ): Definition => {
   const sampleOf = (signer: string) =>
-    replyViewOf({ content: content(signer), ticket: "HLP-12", subject: "Imprimante en panne", name });
+    replyViewOf({
+      content: content(signer),
+      ticket: "HLP-12",
+      subject: "Imprimante en panne",
+      name,
+      status: "En cours",
+      url: `${SAMPLE_LINK.url}?support=12`,
+      requester: SAMPLE_REQUESTER,
+    });
   return {
     label,
     description,
-    variables: name === undefined ? REPLY : [...REPLY, REPLY_NAME],
+    variables: name === undefined ? [...REPLY, ...REQUESTER] : [...REPLY, REPLY_NAME, ...REQUESTER],
     mjml: name === undefined ? REPLY_MJML : AUTO_REPLY_MJML,
     sample: sampleOf("Paul Durand"),
     raw: true,
@@ -1035,6 +1117,46 @@ const spaced = (...lines: string[]): string =>
   lines.map((line) => `<p>${Mustache.escape(line)}</p>`).join("<p></p>");
 
 const SAMPLE_LINK = { url: "https://milo.example/", label: "Ouvrir dans Milo" };
+
+const SAMPLE_TICKET: TicketView = {
+  number: "HLP-142",
+  subject: "Imprimante en panne",
+  status: "Nouveau",
+  url: `${SAMPLE_LINK.url}?support=142`,
+};
+
+const SAMPLE_REQUESTER: RequesterView = {
+  first_name: "Claire",
+  last_name: "Martin",
+  full_name: "Claire Martin",
+  email: "claire.martin@exemple.fr",
+};
+
+/**
+ * What the assignment's template is filled with: each ticket and its requester,
+ * inside the block; the first one by itself too — a template written
+ * without the block still reads it.
+ */
+export const assignedView = (user: SupportPerson, items: { ticket: TicketView; requester: RequesterView }[]) => ({
+  user,
+  tickets: { items },
+  ...items[0],
+});
+
+/** Who assigns, in the preview. */
+const SAMPLE_USER: SupportPerson = {
+  ...emptySupportPerson(),
+  first_name: "Paul",
+  last_name: "Durand",
+  full_name: "Paul Durand",
+  email: "paul.durand@exemple.fr",
+  phone: "01 23 45 67 89",
+  job_title: "Technicien support",
+  department: "Informatique",
+  company: "Arco",
+  city: "Paris",
+  country: "France",
+};
 
 /** A sample element of the changes' e-mail, where it sits, and what happened to it. */
 const sampleElement = (
@@ -1164,21 +1286,39 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     },
     current: asElement,
   },
-  assignment: notice(
-    "Demande assignée",
-    "Une ou plusieurs demandes de support assignées à une personne.",
-    { rows: true, action: true },
-    {
-      title: "Demandes assignées",
-      intro: "Claire Martin vous a assigné ces 2 demandes :",
-      rows: [
-        { text: "#142 — Imprimante en panne", repetitions: 1 },
-        { text: "#143 — Accès VPN", repetitions: 1 },
-      ],
-      action: SAMPLE_LINK,
-      footer: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
-    },
-  ),
+  assignment: {
+    label: "Tickets assignés",
+    description: "Un ou plusieurs tickets assignés à une personne : un seul e-mail les liste tous.",
+    variables: [...TICKETS, ...REQUESTER, ...USER],
+    mjml: ASSIGNED_MJML,
+    current: asRequester,
+    sample: assignedView(SAMPLE_USER, [
+      {
+        ticket: { number: "HLP-142", subject: "Imprimante en panne", status: "Nouveau", url: `${SAMPLE_LINK.url}?support=142` },
+        requester: SAMPLE_REQUESTER,
+      },
+      {
+        ticket: { number: "HLP-143", subject: "Accès VPN", status: "En cours", url: `${SAMPLE_LINK.url}?support=143` },
+        requester: { first_name: "Paul", last_name: "Durand", full_name: "Paul Durand", email: "paul.durand@exemple.fr" },
+      },
+    ]),
+  },
+  support_new_ticket: {
+    label: "Réception d'un nouveau ticket",
+    description: "Un nouveau ticket arrive dans une liste : envoyé aux acteurs que la liste désigne (Acteurs).",
+    variables: [...TICKET, ...REQUESTER],
+    mjml: NEW_TICKET_MJML,
+    current: asRequester,
+    sample: { ticket: SAMPLE_TICKET, requester: SAMPLE_REQUESTER },
+  },
+  support_ticket_update: {
+    label: "Mise à jour d'un ticket",
+    description: "Un ticket change : envoyé à ses acteurs assignés, sauf à l'expéditeur du ticket et à l'auteur du changement.",
+    variables: [...TICKET, ...REQUESTER],
+    mjml: TICKET_UPDATE_MJML,
+    current: asRequester,
+    sample: { ticket: SAMPLE_TICKET, requester: SAMPLE_REQUESTER },
+  },
   // Its texts are written in the template: only the address and the code vary.
   mailbox_confirmation: {
     label: "Confirmation d'une adresse de réception",
@@ -1188,7 +1328,7 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     sample: { email: "support@exemple.fr", code: "4821" },
   },
   support_reply: reply(
-    "Réponse à une demande",
+    "Réponse à un ticket",
     "La réponse de l'équipe, envoyée depuis la boîte de support dans la conversation de l'e-mail d'origine.",
     (signer) =>
       spaced("Bonjour Claire,", "Nous avons remplacé le toner : l'imprimante fonctionne de nouveau.", signer),

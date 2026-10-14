@@ -27,6 +27,7 @@ import ActorAvatars from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
 import {
   DATE_FORMATS,
+  ACTOR_FORMATS,
   defaultWidths,
   formatMoment,
   keptColumns,
@@ -40,6 +41,7 @@ import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
@@ -132,6 +134,22 @@ const chosen = (f: Filters, o: Order): boolean => {
   );
 };
 
+/** The other columns' filters (useColumnFilters). */
+const COLUMN_FILTERS: Record<
+  "due_date" | "total" | "actors" | "created_at",
+  ColumnFilterSpec<Order>
+> = {
+  due_date: { kind: "date", label: "échéance", ahead: true, value: (o) => o.due_date },
+  total: { kind: "number", label: "total", value: (o) => orderTotal(o.lines) },
+  actors: {
+    kind: "choice",
+    label: "acteur",
+    all: "Tous",
+    options: (o) => o.actors.map((a) => ({ value: String(a.id), label: a.name })),
+  },
+  created_at: { kind: "date", label: "date de création", value: (o) => o.created_at },
+};
+
 /** The columns the list can show, in order. */
 export const ORDER_COLUMNS: (ListColumn & { key: ColumnKey })[] = [
   { key: "labels", label: "Étiquettes", labelGroups: ORDER_ROUTES.labels },
@@ -140,7 +158,7 @@ export const ORDER_COLUMNS: (ListColumn & { key: ColumnKey })[] = [
   { key: "supplier", label: "Fournisseur" },
   { key: "due_date", label: "Échéance" },
   { key: "total", label: "Total" },
-  { key: "actors", label: "Acteurs" },
+  { key: "actors", label: "Acteurs", formats: ACTOR_FORMATS },
   { key: "created_at", label: "Création", formats: DATE_FORMATS },
 ];
 
@@ -270,14 +288,15 @@ export default function OrdersList({
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(orders, labelsOf);
+  const columnFilter = useColumnFilters(orders, COLUMN_FILTERS);
   const isFiltered =
     labelFilter.active ||
+    columnFilter.active ||
     (Object.keys(NO_FILTER) as FilterKey[]).some((k) => filters[k] !== NO_FILTER[k]);
   const labelGroups = useLabelGroups(ORDER_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
-  // Adding is for display mode: in edit mode, clicks go to the widget.
-  const canAdd = accessIncludes(access, "update") && !isEditing;
+  const canAdd = accessIncludes(access, "update");
   /** The drawer: closed, adding (null), or showing an order. */
   const [drawer, setDrawer] = useState<{ order: Order | null } | null>(null);
   // The row whose menu is open, where the pointer was.
@@ -302,6 +321,7 @@ export default function OrdersList({
     return (orders ?? [])
       .filter((o) => chosen(filters, o))
       .filter(labelFilter.keep)
+      .filter(columnFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const right = value(b);
@@ -311,7 +331,7 @@ export default function OrdersList({
         if (typeof left === "number" && typeof right === "number") return (left - right) * factor;
         return String(left).localeCompare(String(right), "fr", { numeric: true }) * factor;
       });
-  }, [orders, sort, filters, labelFilter.keep]);
+  }, [orders, sort, filters, labelFilter.keep, columnFilter.keep]);
 
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
     const found = new Map<string, string>();
@@ -400,10 +420,10 @@ export default function OrdersList({
       ),
     status: (id) => th(id, "Statut", "status", choiceFilter("status", "statut", "Tous")),
     supplier: (id) => th(id, "Fournisseur", "supplier", choiceFilter("supplier", "fournisseur", "Tous")),
-    due_date: (id) => th(id, "Échéance", "due_date"),
-    total: (id) => th(id, "Total", "total"),
-    actors: (id) => th(id, "Acteurs", "actors"),
-    created_at: (id) => th(id, "Création", "created_at"),
+    due_date: (id) => th(id, "Échéance", "due_date", columnFilter.filter("due_date")),
+    total: (id) => th(id, "Total", "total", columnFilter.filter("total")),
+    actors: (id) => th(id, "Acteurs", "actors", columnFilter.filter("actors")),
+    created_at: (id) => th(id, "Création", "created_at", columnFilter.filter("created_at")),
   };
 
   const cells: Record<ColumnKey, (order: Order, group?: Id, format?: string) => ReactNode> = {
@@ -438,9 +458,9 @@ export default function OrdersList({
         <TextCell value={formatAmount(orderTotal(order.lines), order.currency)} />
       </Table.Td>
     ),
-    actors: (order) => (
+    actors: (order, _group, format) => (
       <Table.Td key="actors">
-        <ActorAvatars actors={order.actors} size={ACTOR_SIZE} />
+        <ActorAvatars actors={order.actors} size={ACTOR_SIZE} format={format} />
       </Table.Td>
     ),
     created_at: (order, _group, format) => (
@@ -499,6 +519,7 @@ export default function OrdersList({
                   onClick={() => {
                     setFilters(NO_FILTER);
                     labelFilter.reset();
+                    columnFilter.reset();
                   }}
                 >
                   <Text size="sm" c="teal">

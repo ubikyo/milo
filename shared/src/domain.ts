@@ -142,6 +142,9 @@ export type WorkspaceRef = Pick<Workspace, "id" | "name">;
 export interface Actor {
   id: Id;
   name: string;
+  /** Its parts, for an account: the list columns may show one of them alone. */
+  first_name?: string;
+  last_name?: string;
   email: string;
   gravatar_url: string;
 }
@@ -785,6 +788,12 @@ export const SUPPORT_NEW_MESSAGE_LABELS = ["Sans urgence", "E-mail"] as const;
  * incoming email receives automatically. Absent: SUPPORT_NEW_MESSAGE_LABELS.
  */
 export const NEW_MESSAGE_LABELS = "new_message_label_ids";
+
+/**
+ * The configuration key of a request list: the ids of the accounts told of
+ * each new ticket it receives ("Réception d'un nouveau ticket").
+ */
+export const NEW_TICKET_ACTORS = "new_ticket_actor_ids";
 
 /** The due date of an incoming email on a fresh installation, in business days. */
 export const SUPPORT_NEW_MESSAGE_DUE_DAYS = 15;

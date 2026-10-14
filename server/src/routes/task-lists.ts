@@ -199,16 +199,18 @@ taskListRoutes.put("/:id", (req, res) => {
 });
 
 // Empty a list of its tasks, the list and its separators staying in place.
+// With "?all=1", the separators go too: the list stays, empty.
 taskListRoutes.delete("/:id/cards", (req, res) => {
   const existing = orNotFound(taskLists.byId.get(req.params.id), LIST_NOT_FOUND);
   openTaskBoard(existing.board_id, req, "delete");
+  const all = req.query.all === "1";
   const recipients = concerned.list(existing.id);
-  taskCards.removeTasksOfList.run(existing.id);
+  (all ? taskCards.removeCardsOfList : taskCards.removeTasksOfList).run(existing.id);
   notifyDeletion({
     kind: "card",
     targetId: existing.id,
     title: existing.name,
-    message: "a supprimé les tâches de la liste",
+    message: all ? "a supprimé les cartes de la liste" : "a supprimé les tâches de la liste",
     author: req.user,
     base: root(req),
     recipients,

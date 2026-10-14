@@ -131,7 +131,7 @@ Toutes les routes sont sous `/api` et exigent un jeton
 | Rôles | `GET/POST /roles`, `PUT/DELETE /roles/:id` |
 | Suivi | `GET /follows`, `PUT/DELETE /follows/:kind/:id` |
 | Sauvegarde | `GET /backup`, `GET /backup/archive`, `POST /backup/restore` |
-| Proxys | `GET/POST /proxies`, `PUT/DELETE /proxies/:id`, `POST /proxies/:id/token` ; WebSocket des proxys sur `/api/proxy/socket` (token de proxy, pas de session) |
+| Proxies | `GET/POST /proxies`, `PUT/DELETE /proxies/:id`, `POST /proxies/:id/token` ; WebSocket des proxies sur `/api/proxy/socket` (token de proxy, pas de session) |
 | Entra | `GET/PUT /entra`, `POST /entra/test`, `GET /entra/mailboxes` |
 | Tableaux de projets | `GET/POST /project-boards`, `PUT/DELETE /project-boards/:id` |
 | Catégories | `GET/POST /categories`, `PUT/DELETE /categories/:id` |

@@ -304,7 +304,7 @@ export const createApp = (): express.Express => {
   app.use("/api/printers", settingsNotice("les imprimantes", /\/print$/), printerRoutes);
   // The proxies the printers may be reached through; their own socket is not
   // a route, but an upgrade of the HTTP server (lib/proxy-hub.ts).
-  app.use("/api/proxies", requireSettings, settingsNotice("les proxys"), proxyRoutes);
+  app.use("/api/proxies", requireSettings, settingsNotice("les proxies"), proxyRoutes);
   app.use("/api/paper-formats", requireSettingsToWrite, settingsNotice("les formats de papier"), paperFormatRoutes);
   app.use("/api/theme-colors", requireThemesToWrite, settingsNotice("les couleurs des thèmes"), themeColorRoutes);
   app.use("/api/title-styles", settingsNotice("les styles de titres"), titleStyleRoutes);

@@ -39,7 +39,8 @@ const colorOf = (
   };
 };
 
-const textLine = (
+/** The row of a card text — the title, the value —: its size and its color. */
+export const textLine = (
   name: string,
   what: string,
   t: CardText,
@@ -66,17 +67,19 @@ const textLine = (
 
 /**
  * The rows of an indicator's card: the title, the value for an
- * indicator that counts, then the background.
+ * indicator that counts, then the background. "texts" false: the background
+ * only — the widget puts its texts in their own groups.
  */
 export const appearanceRows = (
   config: unknown,
   onChange: (config: Config) => void,
   withValue?: boolean,
+  texts = true,
 ): SettingRow[] => {
   const background = colorOf(config, BACKGROUND, insetColor(), onChange);
   return [
-    textLine("Titre", "du titre", TITLE, config, onChange),
-    ...(withValue ? [textLine("Valeur", "de la valeur", VALUE, config, onChange)] : []),
+    ...(texts ? [textLine("Titre", "du titre", TITLE, config, onChange)] : []),
+    ...(texts && withValue ? [textLine("Valeur", "de la valeur", VALUE, config, onChange)] : []),
     {
       name: "Fond",
       what: "du fond",

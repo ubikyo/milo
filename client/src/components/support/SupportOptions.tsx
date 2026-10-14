@@ -2,6 +2,7 @@ import { Group, NumberInput, Stack } from "@mantine/core";
 import { IconMessageReply, IconSignature } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import {
+  CURSOR_VARIABLE,
   SUPPORT_CONTENT_EVENTS,
   SUPPORT_DUE_DAYS_MAX,
   SUPPORT_REPLY_EVENTS,
@@ -19,6 +20,9 @@ import SupportTemplates from "../settings/SupportTemplates";
 // Next come the automatic replies — the replies an event
 // sends automatically to the sender —, then the default contents, which are
 // dropped into the editor of a team reply: a signature…
+/** A predefined reply's variable beyond Support's: where the cursor goes. */
+const CONTENT_VARIABLES = [CURSOR_VARIABLE];
+
 interface SupportOptionsProps {
   canEdit: boolean;
   /**
@@ -71,7 +75,7 @@ export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
           canEdit={canEdit}
           onError={notifyError}
           // Sent automatically, a notification has no one who writes it.
-          variableGroups={["Expéditeur", "Demande"]}
+          variableGroups={["Demandeur", "Ticket"]}
           // Sent as the request's automatic reply.
           previewTemplate="support_auto_reply"
         />
@@ -90,6 +94,11 @@ export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
           onError={notifyError}
           // Dropped into a team reply.
           previewTemplate="support_reply"
+          // Where the cursor goes, once dropped in.
+          extraVariables={CONTENT_VARIABLES}
+          // Several contents per reply, placed in the list's order.
+          uniqueEvents={false}
+          reorder={api.reorderSupportContents}
         />
       </Stack>
     );

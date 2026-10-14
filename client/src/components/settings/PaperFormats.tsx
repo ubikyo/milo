@@ -1,7 +1,7 @@
 import { Box, Group, Input, NumberInput, Select, Stack } from "@mantine/core";
 import { IconRuler2 } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import type { FocusEvent, ReactNode } from "react";
 import type { PaperFormat, PaperFormatInput, Printer } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -9,8 +9,10 @@ import { RED } from "../../themes/colors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
   EmptyList,
+  INPUT_INSET,
   INPUT_STYLE,
   ListFooter,
+  ListHeader,
   FIRST_FIELD_MARGIN,
   NAME_INSET,
   NAME_MIN_WIDTH,
@@ -26,8 +28,9 @@ import {
 import listClasses from "../../assets/styles/SettingsList.module.css";
 
 // The "Formats de papier" list of "Paramétrage" > "Impression", under the
-// printers (PrintersTab): a row per format — its name, its printer, its width
-// and height in millimeters. The resolution is the printer's own: it gives it
+// printers (PrintersTab): a row per format — its name and its printer, a
+// quarter of the row each, then its width and height in millimeters, against
+// the row's end. The resolution is the printer's own: it gives it
 // itself (lib/zebra.ts). Each change is sent right away. A format is never
 // incomplete: the added row is only created once it has its name, its width
 // and its height, and a size cannot be emptied afterwards.
@@ -40,19 +43,25 @@ type Draft = Omit<PaperFormat, "id" | "width" | "height"> & {
 
 const EMPTY_DRAFT: Draft = { name: "", printer_id: null, width: null, height: null };
 
+/** The names' share of a row, the same as the printers' (PrintersTab). */
+const NAME_SHARE = "25%";
 const SIZE_WIDTH = 96;
-/**
- * The printers' columns (PrintersTab: type 100 + IP address 150 + connection
- * 140 + model 120, and the gap the connection adds, "sm") less the two sizes,
- * so the names are as wide as the printers' above.
- */
-const PRINTER_WIDTH = 100 + 150 + 140 + 120 + 12 - 2 * SIZE_WIDTH;
 
 const onError = (e: unknown) => notifyError(errorMessage(e));
 
 /** A row's field: transparent over its gray, the window's background once entered. */
 const fieldStyles = (entered: boolean) => ({
   input: entered ? INPUT_STYLE : { backgroundColor: "transparent", borderWidth: 0 },
+});
+
+/** A size's field: the same, its number against its end. */
+const sizeStyles = (entered: boolean, missing: boolean) => ({
+  input: {
+    ...(missing && !entered
+      ? { backgroundColor: "transparent", border: `1px solid ${RED}` }
+      : fieldStyles(entered).input),
+    textAlign: "right" as const,
+  },
 });
 
 /**
@@ -103,46 +112,36 @@ function SizeField({
         if (value === "" || value <= 0) setValue(saved ?? "");
         else if (value !== saved) onChange(value);
       }}
-      styles={
-        missing && !entered
-          ? { input: { backgroundColor: "transparent", border: `1px solid ${RED}` } }
-          : fieldStyles(entered)
-      }
+      styles={sizeStyles(entered, missing)}
     />
   );
 }
 
-/** A pick among a list, in a row. */
+/** A pick among a list, in a row, a quarter of it. */
 function RowSelect({
   data,
   value,
   onChange,
-  width,
   placeholder,
   label,
-  clearable = false,
 }: {
   data: { value: string; label: string }[];
   value: string | null;
   onChange: (value: string | null) => void;
-  width: number;
   placeholder: string;
   label: string;
-  clearable?: boolean;
 }) {
   const [entered, setEntered] = useState(false);
   return (
     <Select
       size="xs"
       radius={ROUNDING}
-      w={width}
-      style={{ flexShrink: 0 }}
+      style={{ flex: `0 0 ${NAME_SHARE}`, minWidth: 0 }}
       data={data}
       value={value}
       onChange={(v) => v !== value && onChange(v)}
       placeholder={placeholder}
-      allowDeselect={clearable}
-      clearable={clearable}
+      allowDeselect={false}
       {...pickKeys}
       comboboxProps={{ withinPortal: true }}
       classNames={{ dropdown: listClasses.dropdown, option: listClasses.option }}
@@ -196,16 +195,12 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
 
   /**
    * The added row, changed: created once complete — kept as it is if the
-   * server refuses it —, gone once emptied.
+   * server refuses it.
    */
   const changeDraft = async (change: Partial<Draft>) => {
     if (!draft) return;
     const next = { ...draft, ...change };
     const { name, width, height } = next;
-    if (!name && width === null && height === null && next.printer_id === null) {
-      setDraft(null);
-      return;
-    }
     setDraft(next);
     if (!name || width === null || height === null) return;
     try {
@@ -217,28 +212,58 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
     await reload();
   };
 
+  /**
+   * The focus leaving the added row, not one of its fields for another: with
+   * nothing entered, the row disappears. Asked once the field left has given
+   * its value (changeDraft) and the next one has the focus.
+   */
+  const leaveDraft = (e: FocusEvent<HTMLElement>) => {
+    const row = e.currentTarget;
+    setTimeout(() => {
+      if (row.contains(document.activeElement)) return;
+      setDraft((d) =>
+        d && !d.name && d.width === null && d.height === null && d.printer_id === null ? null : d,
+      );
+    });
+  };
+
   const total = formats.length + (draft ? 1 : 0);
 
-  /** A row's style: without its checkbox, read only, a simple list's. */
-  const formatRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
+  /**
+   * A row's style: without its checkbox, read only, a simple list's. The
+   * columns' header opens the stack (ListHeader).
+   */
+  const formatRowStyle = (rank: number) => rowStyle(rank + 1, total + 1, false, canEdit ? "checkbox" : "simple");
 
-  /** The name field: behind a checkbox, it moves back to align with it. */
-  const nameSlot = (field: ReactNode, added = false) =>
-    canEdit ? (
-      <Box
-        style={{
-          flex: 1,
-          minWidth: NAME_MIN_WIDTH,
-          display: "flex",
-          // Added, without a checkbox before it: it opens the row.
-          marginLeft: added ? FIRST_FIELD_MARGIN : -NAME_INSET,
-        }}
-      >
-        {field}
-      </Box>
-    ) : (
-      field
-    );
+  /**
+   * The name field, a quarter of the row (PrintersTab): behind a checkbox, it
+   * moves back to align with it.
+   */
+  const nameSlot = (field: ReactNode, added = false) => (
+    <Box
+      style={{
+        flex: `0 0 ${NAME_SHARE}`,
+        minWidth: NAME_MIN_WIDTH,
+        display: "flex",
+        // Added, without a checkbox before it: it opens the row.
+        marginLeft: !canEdit ? 0 : added ? FIRST_FIELD_MARGIN : -NAME_INSET,
+      }}
+    >
+      {field}
+    </Box>
+  );
+
+  /** The columns' titles, over the fields of the rows. */
+  const columns = [
+    {
+      label: "Nom",
+      style: { flex: `0 0 ${NAME_SHARE}`, minWidth: NAME_MIN_WIDTH, marginLeft: canEdit ? -NAME_INSET : 0 },
+      inset: INPUT_INSET,
+    },
+    { label: "Imprimante", style: { flex: `0 0 ${NAME_SHARE}` } },
+    { label: "Largeur", style: { width: SIZE_WIDTH, marginLeft: "auto" }, end: true },
+    { label: "Hauteur", style: { width: SIZE_WIDTH }, end: true },
+  ];
 
   return (
     // An editable list of the Settings: their look ("Formulaire" > "Liste").
@@ -247,6 +272,7 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
         <EmptyList icon={IconRuler2} message="Aucun format de papier" />
       ) : (
         <Stack gap={1}>
+          <ListHeader columns={columns} kind={canEdit ? "checkbox" : "simple"} />
           {formats.map((format, rank) => (
             <Group key={format.id} gap="sm" wrap="nowrap" style={formatRowStyle(rank)}>
               {canEdit && (
@@ -271,11 +297,11 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
                 data={printerChoices}
                 value={format.printer_id === null ? null : String(format.printer_id)}
                 onChange={(id) => change(format, { printer_id: id === null ? null : Number(id) })}
-                width={PRINTER_WIDTH}
                 placeholder="Imprimante"
                 label={`Imprimante de ${format.name}`}
-                clearable
               />
+              {/* Against the row's end. */}
+              <Box ml="auto" />
               <SizeField
                 value={format.width}
                 placeholder="Largeur"
@@ -291,14 +317,14 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
             </Group>
           ))}
           {draft && (
-            <Group gap="sm" wrap="nowrap" style={formatRowStyle(total - 1)}>
+            <Group gap="sm" wrap="nowrap" style={formatRowStyle(total - 1)} onBlur={leaveDraft}>
               {nameSlot(
                 <RowField
                   name={draft.name}
                   placeholder="Nom du format"
                   label="Nom du format à ajouter"
                   autoFocus
-                  // Left empty with nothing else entered, the row disappears.
+                  // Left empty with nothing else entered, the row disappears (leaveDraft).
                   onValidate={(name) => void changeDraft({ name })}
                 />,
                 true,
@@ -307,11 +333,10 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
                 data={printerChoices}
                 value={draft.printer_id === null ? null : String(draft.printer_id)}
                 onChange={(id) => void changeDraft({ printer_id: id === null ? null : Number(id) })}
-                width={PRINTER_WIDTH}
                 placeholder="Imprimante"
                 label="Imprimante du format à ajouter"
-                clearable
               />
+              <Box ml="auto" />
               {/* Named, the sizes still missing show in red. */}
               <SizeField
                 value={draft.width}

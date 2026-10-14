@@ -11,6 +11,8 @@ import classes from "../../assets/styles/SettingsList.module.css";
 import {
   DeleteSelectedButton,
   EmptyList,
+  INPUT_INSET,
+  ListHeader,
   ROUNDING,
   RowCheckbox,
   RowField,
@@ -105,11 +107,20 @@ export default function ThemeList() {
         <EmptyList icon={IconPalette} message="Aucun thème" />
       ) : (
         <Stack gap={1}>
+          <ListHeader
+            columns={[
+              { label: "Nom", style: { flex: 1 }, inset: INPUT_INSET },
+              // Over the icon of each row.
+              { label: "", style: { width: 16 }, inset: 0 },
+              { label: "Rôle", style: { width: SYSTEM_WIDTH }, inset: INPUT_INSET },
+            ]}
+          />
           {rows.map((theme, rank) => {
             const ThemeIcon = !theme?.system ? IconPalette : theme.scheme === "dark" ? IconMoon : IconSun;
             return (
               <Group key={theme?.id ?? "new"} gap="sm" wrap="nowrap" style={{
-                  ...rowStyle(rank, rows.length, false),
+                  // The columns' header opens the stack (ListHeader).
+                  ...rowStyle(rank + 1, rows.length + 1, false),
                   // Added, its name alone: as far from both edges.
                   ...(theme ? null : { paddingRight: ADDED_ROW_PADDING_RIGHT }),
                 }}

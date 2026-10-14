@@ -39,6 +39,8 @@ import {
   FIRST_FIELD_MARGIN,
   NAME_INSET,
   ROUNDING,
+  INPUT_INSET,
+  ListHeader,
   RowCheckbox,
   RowField,
   pickKeys,
@@ -151,6 +153,7 @@ function RowSelect({
   label,
   placeholder,
   missing = false,
+  end = false,
 }: {
   value: string | null;
   onChange: (value: string) => void;
@@ -159,6 +162,8 @@ function RowSelect({
   label: string;
   placeholder: string;
   missing?: boolean;
+  /** Its text against its end, its list under it. */
+  end?: boolean;
 }) {
   const [entered, setEntered] = useState(false);
   return (
@@ -174,11 +179,13 @@ function RowSelect({
       onChange={(v) => v && v !== value && onChange(v)}
       allowDeselect={false}
       {...pickKeys}
-      comboboxProps={{ withinPortal: true }}
+      comboboxProps={{ withinPortal: true, ...(end ? { width: "max-content", position: "bottom-end" } : null) }}
       classNames={{ dropdown: listClasses.dropdown, option: listClasses.option }}
       onFocus={() => setEntered(true)}
       onBlur={() => setEntered(false)}
-      styles={{ input: missing && !entered ? MISSING_STYLE : fieldStyle(entered) }}
+      styles={{
+        input: { ...(missing && !entered ? MISSING_STYLE : fieldStyle(entered)), ...(end ? { textAlign: "right" } : null) },
+      }}
       aria-label={label}
     />
   );
@@ -197,6 +204,7 @@ function AccessField({ value, onChange, of, missing }: FieldProps<ApiTokenAccess
       label={`Accès ${of}`}
       placeholder="Droits"
       missing={missing}
+      end
     />
   );
 }
@@ -424,8 +432,11 @@ export default function ApiTab({
 
   const total = tokens.length + (draft ? 1 : 0);
 
-  /** A row's style: without its checkbox, read only, a simple list's. */
-  const tokenRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
+  /**
+   * A row's style: without its checkbox, read only, a simple list's. The
+   * columns' header opens the stack (ListHeader).
+   */
+  const tokenRowStyle = (rank: number) => rowStyle(rank + 1, total + 1, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
   const nameSlot = (field: ReactNode, added = false) =>
@@ -446,6 +457,14 @@ export default function ApiTab({
       <Box w={NAME_WIDTH} style={{ flexShrink: 0 }}>{field}</Box>
     );
 
+  /** The columns' titles, over the fields of the rows. */
+  const columns = [
+    { label: "Nom", style: { width: NAME_WIDTH, marginLeft: canEdit ? -NAME_INSET : 0 }, inset: INPUT_INSET },
+    { label: "Workspaces", style: { flex: 1 } },
+    { label: "Accès", style: { width: ACCESS_WIDTH }, end: true, inset: CHEVRON_WIDTH },
+    { label: "État", end: true, inset: 0 },
+  ];
+
   // Named, the fields still empty show in red.
   const missing = Boolean(draft?.name);
 
@@ -457,6 +476,7 @@ export default function ApiTab({
             <EmptyList icon={IconKey} message="Aucun token" />
           ) : (
             <Stack gap={1}>
+              <ListHeader columns={columns} kind={canEdit ? "checkbox" : "simple"} />
               {tokens.map((token, rank) => (
                 <Group key={token.id} gap="sm" wrap="nowrap" style={tokenRowStyle(rank)}>
                   {canEdit && (

@@ -31,6 +31,18 @@ mailTemplateRoutes.put("/:key", (req, res, next) => {
     .catch(next);
 });
 
+/** The requester a preview cites, as the client sends it: four texts. */
+const requesterOf = (value: unknown) => {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const text = (field: string) => String(v[field] ?? "");
+  return {
+    first_name: text("first_name"),
+    last_name: text("last_name"),
+    full_name: text("full_name"),
+    email: text("email"),
+  };
+};
+
 // A support content — or an order's — in its reply template, as saved — the
 // content window's preview.
 mailTemplateRoutes.post("/:key/reply-preview", (req, res, next) => {
@@ -43,6 +55,9 @@ mailTemplateRoutes.post("/:key/reply-preview", (req, res, next) => {
     ticket: text("ticket"),
     subject: text("subject"),
     name: text("name"),
+    status: text("status"),
+    url: text("url"),
+    requester: requesterOf(body["requester"]),
   })
     .then((html) => res.json({ html }))
     .catch(next);

@@ -1,6 +1,6 @@
 import { Stack } from "@mantine/core";
 import { IconLayoutBottombar, IconLayoutColumns } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import type { BoardData } from "../widgets";
 import {
   ManagedDeviceAssetsListContext,
@@ -8,7 +8,7 @@ import {
 } from "../components/managed-device-assets/ManagedDeviceAssetsList";
 import { TaskBoardContext, type TaskBoardProps } from "../components/board/TaskBoard";
 import { ProjectsListContext, type ProjectsList } from "../components/project/ProjectTable";
-import SupportActions from "../components/support/SupportActions";
+import SupportActions, { type BulkAction } from "../components/support/SupportActions";
 import { SupportListContext, useSupportList } from "../components/support/SupportRequestsList";
 import type { AccountSlot } from "../components/ui/AccountControls";
 import BoardPanel from "../components/ui/BoardPanel";
@@ -127,10 +127,13 @@ export default function ViewPage({
   account,
 }: ViewPageProps) {
   // The requests list keeps its state here — sort, filters, checked boxes —
-  // so that the row's "Actions" menu applies to what has been checked.
+  // so that "Actions multiples" applies to what has been checked.
   const list = useSupportList(support.requests, "all");
   const { context, setContext, selection, setChecked } = list;
-  // The "Actions" menu only appears where a requests list is placed.
+  // "Actions multiples", under the list, runs in "SupportActions", where its
+  // confirmations live.
+  const bulk = useRef<(action: BulkAction) => void>(null);
+  // The request actions only exist where a requests list is placed.
   const withRequests = widgets.some((w) => w.type === "support.list");
 
   const openBoard = boards?.find((b) => String(b.id) === boardId);
@@ -171,6 +174,7 @@ export default function ViewPage({
               loading: support.loading,
               onOpenRequest: support.onOpenRequest,
               onAddRequest: support.onAddRequest,
+              onBulkAction: (action) => bulk.current?.(action),
             }}
           >
             <ManagedDeviceAssetsListContext.Provider value={managedDeviceAssets}>
@@ -226,7 +230,7 @@ export default function ViewPage({
               onCreateTask={support.onCreateTask}
               followedIds={support.followedIds}
               onToggleFollow={support.onToggleFollow}
-              onRefresh={support.onRequestsChanged}
+              bulkRef={bulk}
               onDone={async () => {
                 setChecked(new Set());
                 await support.onRequestsChanged();

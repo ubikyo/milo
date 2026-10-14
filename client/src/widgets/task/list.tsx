@@ -9,6 +9,7 @@ import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import { withField } from "../types";
 import type { WidgetConfigProps } from "../types";
 import type { TaskIndicatorWidget } from "./types";
+import { PERCENT_HEIGHT } from "../height";
 
 // The open board's lists and their cards, as a widget: they sit
 // in a section like an indicator. What they show, and what is done with them,
@@ -44,7 +45,7 @@ export const taskListIndicator: TaskIndicatorWidget = {
   kind: "task",
   label: "Tâches",
   icon: IconLayoutKanban,
-  defaultConfig: { [NUMBERS]: false },
+  defaultConfig: { [NUMBERS]: false, ...PERCENT_HEIGHT },
   Config: (props) => <ListFields {...props} />,
   ownClicks: true,
   fill: true,

@@ -11,8 +11,8 @@ import type { ComponentType } from "react";
 import { NameField, NAME, Nothing, IndicatorTitle, IndicatorValue } from "../support/common";
 import type { IndicatorConfigProps } from "../support/types";
 import { text, withField } from "../types";
-import { shownCalendarsOf } from "@milo/shared";
-import { SourcesField } from "../../lib/sources";
+import { SOURCES, shownCalendarsOf } from "@milo/shared";
+import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import type { Id } from "@milo/shared";
 import {
   appointmentKey,
@@ -88,7 +88,13 @@ const usePeriod = (config: unknown, offered: readonly Period[]) => {
 
 /** The drawer's "Widgets associés" field: the Calendar widgets one sees. */
 function SourceField({ config, onChange }: IndicatorConfigProps) {
-  return <SourcesField type="calendar" config={config} onChange={onChange} />;
+  return (
+    <WidgetLinksField
+      inputs={[{ field: SOURCES, label: "Calendrier", types: ["calendar"] }]}
+      config={config}
+      onChange={onChange}
+    />
+  );
 }
 
 /** The drawer's "Période" field, among the periods the widget offers. */

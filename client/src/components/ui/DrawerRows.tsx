@@ -1,4 +1,4 @@
-import { Box, Button, Checkbox, Radio, Text, TextInput, type ButtonProps } from "@mantine/core";
+import { Box, Button, Checkbox, Group, Radio, Text, TextInput, type ButtonProps } from "@mantine/core";
 import { useRef, useState } from "react";
 import { IconGripVertical, IconTrash } from "@tabler/icons-react";
 import type { ComponentType, CSSProperties, DragEvent, FocusEvent, KeyboardEvent } from "react";
@@ -417,6 +417,68 @@ export function ListFooter({
   }
   if (!addLabel || !onAdd) return null;
   return <AddButton label={addLabel} onClick={onAdd} mt={mt} h={h} />;
+}
+
+/** The text inset of an "xs" field — a select, an address —, Mantine's: a third of its height. */
+export const FIELD_INSET = 10;
+
+/** A column of a list's header row (ListHeader). */
+export interface ListColumn {
+  label: string;
+  /** Its box, the same as the rows' field under it: its width, its flex, its margins. */
+  style?: CSSProperties;
+  /** Its title against the end of its box, over a field aligned to the right. */
+  end?: boolean;
+  /**
+   * The room before its title — after it, at the end —, the field's own
+   * text inset: FIELD_INSET by default.
+   */
+  inset?: number;
+}
+
+/**
+ * The titles of a list's columns, above its rows: laid out like them — their
+ * padding and gap by type, the checkbox's room —, each title over its field.
+ * White on the header rows' gray; it opens the stack, its
+ * rows counting it (rowStyle: their first one square at the top). Shown only
+ * while the list has rows.
+ */
+export function ListHeader({ columns, kind = "checkbox" }: { columns: ListColumn[]; kind?: RowKind }) {
+  return (
+    <Group
+      wrap="nowrap"
+      gap="sm"
+      // The Settings set its look ("Formulaire" > "Liste").
+      data-list-header
+      style={{
+        padding: `var(--milo-row-padding-${kind}, ${ROW_PADDING[kind]})`,
+        gap: `var(--milo-row-gap-${kind}, var(--group-gap))`,
+        paddingTop: 6,
+        paddingBottom: 6,
+        backgroundColor: HEADER_BACKGROUND,
+        borderTopLeftRadius: RADIUS,
+        borderTopRightRadius: RADIUS,
+      }}
+    >
+      {kind === "checkbox" && <Box style={{ ...checkboxStyle(false), width: CHECKBOX_SIZE }} />}
+      {columns.map(({ label, style, end = false, inset = FIELD_INSET }, i) => (
+        <Box
+          key={i}
+          style={{
+            flexShrink: 0,
+            minWidth: 0,
+            ...style,
+            textAlign: end ? "right" : "left",
+            [end ? "paddingRight" : "paddingLeft"]: inset,
+          }}
+        >
+          <Text size="xs" c="#ffffff" fw={500} truncate>
+            {label}
+          </Text>
+        </Box>
+      ))}
+    </Group>
+  );
 }
 
 /** What each row field held when it was entered, for Escape (editKeys). */

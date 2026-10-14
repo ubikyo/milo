@@ -7,8 +7,8 @@
 // simulated for debugging: everything is prepared and logged, but nothing
 // leaves Milo. The message then says what became of it (mail_status).
 
-import { supportTicketRef } from "@milo/shared";
-import type { Id, SupportMailStatus } from "@milo/shared";
+import { itemLink, supportStatusLabel, supportTicketRef } from "@milo/shared";
+import type { Id, SupportMailStatus, SupportStatus } from "@milo/shared";
 import type { SupportRequestRow, TicketFileRow } from "../db/rows.js";
 import { readTicket } from "./ticket-files.js";
 import { env } from "../env.js";
@@ -16,6 +16,8 @@ import { supportComments } from "../repositories/support.js";
 import { entraConfigured, replyByGraph } from "./entra.js";
 import { replyTemplate } from "./mail-template.js";
 import { ticketReference, withReference } from "./mail-reference.js";
+import { miloUrl } from "./milo-url.js";
+import { senderPerson } from "./support-variables.js";
 
 /**
  * The inbox to reply from for a request, or nothing: a request entered in
@@ -66,7 +68,17 @@ export const replyByEmail = async (
     const ticket = supportTicketRef(request.number);
     // Its ticket in a hidden line too: a reply whose subject lost it still finds the request.
     const content = withReference(html, ticketReference(ticket));
-    const laidOut = await replyTemplate(kind, { content, ticket, subject: request.subject, name });
+    const base = miloUrl();
+    const requester = await senderPerson(request);
+    const laidOut = await replyTemplate(kind, {
+      content,
+      ticket,
+      subject: request.subject,
+      name,
+      status: supportStatusLabel(request.status as SupportStatus),
+      url: base ? `${base}/${itemLink("support", request.id)}` : "",
+      requester: requester ?? undefined,
+    });
     // The logos its template cites go with it, inline.
     const logos = laidOut.attachments.map((a) => ({
       name: a.filename,

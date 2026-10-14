@@ -1,13 +1,28 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { version } from "../package.json";
 
+// Each build gets its own identifier, baked into the code and written beside
+// it in version.json. The client rereads that file now and then: a different
+// identifier means a newer build was put in place since the page loaded
+// (NewVersionBanner).
+const BUILD_ID = `${version}-${Date.now().toString(36)}`;
+
+const buildId = (): Plugin => ({
+  name: "milo-build-id",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ build: BUILD_ID }) });
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), buildId()],
   // Milo's version number, from the root package.json, baked into the
   // code at build time: the header logo shows it on hover.
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
   },
   server: {
     host: true,

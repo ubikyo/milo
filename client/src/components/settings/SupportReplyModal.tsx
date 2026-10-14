@@ -1,17 +1,24 @@
-import { Button, Group, Modal, Splitter, Stack, Switch } from "@mantine/core";
+import { ActionIcon, Button, Group, Modal, Splitter, Stack, Switch } from "@mantine/core";
+import { IconMaximize, IconMinimize } from "@tabler/icons-react";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
+import { MODAL_PADDING } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import MailPreview, {
-  HANDLE_COLOR,
-  SPLITTER_STYLES,
-  PANES_HEIGHT,
   PANE_MINS,
+  TEMPLATE_PANES_HEIGHT,
+  TEMPLATE_WIDTH,
+  templateFooterMargin,
+  templateFooterStyle,
+  templateHandleColor,
+  templateIconColor,
+  templateModalStyles,
+  templateSplitterStyles,
+  templateWindow,
   FoldablePane,
   PANE_SIZES,
   paneStyle,
@@ -24,7 +31,6 @@ import type { PaneVariable } from "./VariablesPane";
 import { SUPPORT_REPLY_VARIABLES, SUPPORT_VARIABLE_GROUPS, fillSupportTemplate } from "@milo/shared";
 import type { ReplyTemplateKey, SupportPerson, SupportVariableGroup } from "@milo/shared";
 import { DEFAULT_CONTENT_SUBJECT, inSampleReply, supportSample } from "../../lib/support-sample";
-import { themeWindow } from "../../lib/themeWindow";
 
 interface SupportReplyModalProps {
   /**
@@ -67,9 +73,6 @@ export interface ExtraVariable {
   /** Its sample is HTML — an order's table —, put in as it is. */
   html?: boolean;
 }
-
-// As wide as the e-mail templates' window (MailTemplateModal).
-const WINDOW_WIDTH = 1320;
 
 // The preview waits for typing to pause before asking the server.
 const PREVIEW_DELAY_MS = 400;
@@ -121,6 +124,20 @@ export default function SupportReplyModal({
   const { dark, setDark, scheme } = usePreviewTheme(reply);
   // The variables folded at each opening; a folded pane, a column of its name.
   const panes = useFoldingPanes(reply);
+
+  // The window over the whole browser window, back to its size at each
+  // opening — as the e-mail templates' (MailTemplateModal).
+  const [full, setFull] = useState(false);
+  const [openedOn, setOpenedOn] = useState(reply);
+  if (reply !== openedOn) {
+    setOpenedOn(reply);
+    setFull(false);
+  }
+  // From one size to the other, the variables fold again — in either direction.
+  const toggleFull = () => {
+    setFull(!full);
+    panes.fold(0);
+  };
 
   // Escape closes nothing while the template is open: neither this window,
   // nor the one it opened from — the work in progress would go with them.
@@ -190,6 +207,9 @@ export default function SupportReplyModal({
         ticket: sample.ticket,
         subject: sample.subject,
         name: reply.name,
+        status: sample.status,
+        url: sample.url,
+        requester: sample.sender,
       })
       .then(
       (r) => current && setHtml(r.html),
@@ -222,30 +242,46 @@ export default function SupportReplyModal({
 
   return (
     <Modal
-      attributes={themeWindow("support-reply")}
+      attributes={templateWindow("support-reply")}
       opened={reply !== null}
       onClose={onClose}
       closeOnEscape={false}
-      title={reply ? `Modèle — ${reply.name}` : "Modèle"}
+      title={
+        // The title, and at the end of its line, the switch to the whole
+        // browser window. A span: the title is a heading, which holds no block.
+        <Group component="span" justify="space-between" wrap="nowrap">
+          {reply ? `Modèle — ${reply.name}` : "Modèle"}
+          <ActionIcon
+            variant="transparent"
+            c={templateIconColor(full)}
+            onClick={toggleFull}
+            aria-label={full ? "Réduire la fenêtre" : "Agrandir la fenêtre"}
+          >
+            {full ? <IconMinimize size={18} /> : <IconMaximize size={18} />}
+          </ActionIcon>
+        </Group>
+      }
       centered
-      size={WINDOW_WIDTH}
+      size={TEMPLATE_WIDTH}
+      fullScreen={full}
       padding={MODAL_PADDING}
       withCloseButton={false}
-      styles={modalHeaderStyles(MODAL_PADDING)}
+      styles={templateModalStyles(full)}
     >
-      <Stack gap="md">
+      <Stack gap={full ? 0 : "md"} style={full ? { flex: 1, minHeight: 0 } : undefined}>
         {/* As the e-mail templates (MailTemplateModal): the variables, the
             message, and what it gives in its e-mail — panes that fold when
             dragged narrow. */}
         <Splitter
-          h={PANES_HEIGHT}
-          handleColor={HANDLE_COLOR}
-          styles={SPLITTER_STYLES}
+          h={full ? undefined : TEMPLATE_PANES_HEIGHT}
+          style={full ? { flex: 1, minHeight: 0 } : undefined}
+          handleColor={templateHandleColor(full)}
+          styles={templateSplitterStyles(full)}
           {...panes.splitterProps}
           onResizeStart={() => setDragging(true)}
           onResizeEnd={() => setDragging(false)}
         >
-          <Splitter.Pane defaultSize={PANE_SIZES.variables} min={PANE_MINS.variables} collapsible style={paneStyle("left", panes.folded(0))}>
+          <Splitter.Pane defaultSize={PANE_SIZES.variables} min={PANE_MINS.variables} collapsible style={paneStyle(full ? undefined : "left", panes.folded(0))}>
             <FoldablePane label="Variables" folded={panes.folded(0)} onUnfold={() => panes.unfold(0)}>
               <VariablesPane
                 variables={variables}
@@ -262,14 +298,19 @@ export default function SupportReplyModal({
             </FoldablePane>
           </Splitter.Pane>
 
-          <Splitter.Pane defaultSize={PANE_SIZES.preview} min={PANE_MINS.preview} collapsible style={paneStyle("right", panes.folded(2))}>
+          <Splitter.Pane defaultSize={PANE_SIZES.preview} min={PANE_MINS.preview} collapsible style={paneStyle(full ? undefined : "right", panes.folded(2))}>
             <FoldablePane label="Aperçu" folded={panes.folded(2)} onUnfold={() => panes.unfold(2)}>
               <MailPreview html={html} dark={dark} scheme={scheme} dragging={dragging} />
             </FoldablePane>
           </Splitter.Pane>
         </Splitter>
 
-        <Footer justify="space-between" parentGap="var(--mantine-spacing-md)">
+        <Footer
+          justify="space-between"
+          parentGap="var(--mantine-spacing-md)"
+          mt={templateFooterMargin(full)}
+          style={templateFooterStyle(full)}
+        >
           {/* The preview's theme. */}
           <Switch
             size="xs"

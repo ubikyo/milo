@@ -11,6 +11,7 @@ import type { DisplaySettings } from "@milo/shared";
 
 let settings: DisplaySettings = {
   showGravatars: true,
+  labThemes: false,
 };
 let readItems = false;
 const subscribers = new Set<() => void>();

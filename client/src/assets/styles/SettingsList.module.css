@@ -1,5 +1,5 @@
 /* The selects of the Settings' editable lists — the themes' role
-   (Affichage), the printers' type and the paper formats (Impression) —, with the Settings' own
+   (Affichage), the printers' connection and the paper formats (Impression) —, with the Settings' own
    look ("Formulaire" > "Liste" > "Select"). These lists only show there: the
    rules read the Settings' variables, which also reach a select's list, out
    of the window. Mantine's rules are beaten by a doubled class. */

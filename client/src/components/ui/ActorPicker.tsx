@@ -25,6 +25,7 @@ import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
 import type {
   DirectoryUser,
+  EntraPrincipal,
   PublicUser,
   WidgetKind,
   WorkspacePeople,
@@ -44,6 +45,10 @@ import type {
 //   - a search, which filters all of it, without regard to accents.
 //
 // A retained actor who no longer has access stays listed, to be removed.
+//
+// For Support ("helpdesk"), a search also reaches the whole Entra directory:
+// its people — their account created when picked — and its groups, whose
+// users all come in.
 //
 // A record may offer contacts too, under the groups ("contacts"): an order's
 // supplier and its people who have an e-mail address. Their chips follow the
@@ -72,6 +77,15 @@ const loadPeople = (kind: WidgetKind): Promise<WorkspacePeople> => {
 };
 
 const NO_PEOPLE: WorkspacePeople = { users: [], groups: [] };
+
+/**
+ * The widget types whose actors may be anyone in the Entra directory: a
+ * search there also offers its people and groups beyond the workspace.
+ */
+const WHOLE_DIRECTORY: readonly WidgetKind[] = ["helpdesk"];
+
+/** The time to let typing finish before querying the directory. */
+const DIRECTORY_WAIT = 300;
 
 // Wider than the other lists: the name, the star at the end, and the address
 // of directory people.
@@ -185,6 +199,28 @@ export default function ActorPicker({
    */
   const [created, setCreatedUsers] = useState<PublicUser[]>([]);
 
+  // What the whole directory answers to the search, when the type allows it.
+  const wholeDirectory = WHOLE_DIRECTORY.includes(kind);
+  const [found, setFound] = useState<EntraPrincipal[]>([]);
+  useEffect(() => {
+    const typed = search.trim();
+    if (!wholeDirectory || typed.length < 2) {
+      setFound([]);
+      return undefined;
+    }
+    let abandoned = false;
+    const timeout = window.setTimeout(() => {
+      api
+        .searchDirectoryPrincipals(typed)
+        .then((list) => !abandoned && setFound(list))
+        .catch(() => !abandoned && setFound([]));
+    }, DIRECTORY_WAIT);
+    return () => {
+      abandoned = true;
+      window.clearTimeout(timeout);
+    };
+  }, [search, wholeDirectory]);
+
   useEffect(() => {
     let cancelled = false;
     loadPeople(kind)
@@ -232,6 +268,20 @@ export default function ActorPicker({
     (p) => !accountOf(p) && matches(`${p.name} ${p.email}`),
   );
   const listGroups = groups.filter((g) => matches(`${g.name} ${g.email}`));
+  // The directory's, beyond those already offered above.
+  const listedIds = new Set(list.map((u) => u.id));
+  const directoryPeople: DirectoryUser[] = found
+    .filter((p) => p.type === "user")
+    .map((p) => ({ oid: p.id, name: p.name, email: p.email, user_id: null, synced: p.synced }))
+    .filter((p) => {
+      const account = accountOf(p);
+      return account
+        ? !listedIds.has(account.id) && !value.includes(String(account.id))
+        : !newItems.some((n) => n.oid === p.oid);
+    });
+  const directoryGroups = found.filter(
+    (p) => p.type === "group" && !groups.some((g) => g.id === p.id),
+  );
   // The contacts offered, and those retained — still listed while they are, to be unchecked.
   const listContacts = (contacts?.options ?? []).filter((c) => matches(`${c.name} ${c.email}`));
   const chosenContacts = (contacts?.options ?? []).filter((c) => contacts?.value.includes(c.id));
@@ -259,6 +309,21 @@ export default function ActorPicker({
       const [account] = await accountsOf([person]);
       if (account && !value.includes(String(account.id)))
         onChange([...value, String(account.id)]);
+      setSearch("");
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  /** A directory group: its users all come in. */
+  const addDirectoryGroup = async (group: EntraPrincipal) => {
+    setAdding(group.id);
+    try {
+      const accounts = await accountsOf(await api.getDirectoryGroupMembers(group.id));
+      onChange([
+        ...value,
+        ...accounts.map((a) => String(a.id)).filter((id) => !value.includes(id)),
+      ]);
       setSearch("");
     } finally {
       setAdding(null);
@@ -313,7 +378,12 @@ export default function ActorPicker({
       dropdownWidth={LIST_WIDTH}
       listMaxHeight={LIST_MAX_HEIGHT}
       emptyText={
-        people === null || newItems.length || listGroups.length || listContacts.length
+        people === null ||
+        newItems.length ||
+        listGroups.length ||
+        listContacts.length ||
+        directoryPeople.length ||
+        directoryGroups.length
           ? ""
           : search.trim()
             ? "Personne ne correspond dans ce workspace"
@@ -511,11 +581,69 @@ export default function ActorPicker({
               })}
             </Stack>
           )}
+          {directoryPeople.length + directoryGroups.length > 0 && (
+            // The rest of the directory, under the workspace's: its people,
+            // then its groups.
+            <Stack
+              gap={0}
+              style={list.length || newItems.length || listGroups.length ? { borderTop: RULE } : undefined}
+            >
+              <Text size="xs" c="dimmed" fw={600} px={10} pt={8} pb={4} truncate>
+                Annuaire
+              </Text>
+              {[...directoryPeople.map((p) => ({ type: "user" as const, p })), ...directoryGroups.map((p) => ({ type: "group" as const, p }))].map(
+                (row, rank, rows) => {
+                  const id = row.type === "user" ? row.p.oid : row.p.id;
+                  return (
+                    <UnstyledButton
+                      key={`${row.type}:${id}`}
+                      onClick={() =>
+                        void (row.type === "user"
+                          ? selectFromDirectory(row.p)
+                          : addDirectoryGroup(row.p))
+                      }
+                      disabled={adding !== null}
+                      px={10}
+                      py={8}
+                      style={rank < rows.length - 1 ? { borderBottom: RULE } : undefined}
+                      data-row
+                    >
+                      <Group gap={8} wrap="nowrap">
+                        <Checkbox
+                          checked={false}
+                          readOnly
+                          size="xs"
+                          tabIndex={-1}
+                          aria-hidden
+                          style={{ pointerEvents: "none" }}
+                        />
+                        {adding === id ? (
+                          <Loader size={chipHeight - 8} style={{ width: chipHeight, flexShrink: 0 }} />
+                        ) : row.type === "group" ? (
+                          <GroupAvatar group={row.p} size={chipHeight} />
+                        ) : (
+                          <PersonAvatar
+                            person={{ id: 0, name: row.p.name, email: row.p.email, gravatar_url: "" }}
+                            size={chipHeight}
+                          />
+                        )}
+                        <NameAndAddress name={row.p.name} email={row.p.email} />
+                      </Group>
+                    </UnstyledButton>
+                  );
+                },
+              )}
+            </Stack>
+          )}
           {contacts && listContacts.length > 0 && (
             // The contacts, last, under their company's name.
             <Stack
               gap={0}
-              style={list.length || newItems.length || listGroups.length ? { borderTop: RULE } : undefined}
+              style={
+                list.length || newItems.length || listGroups.length || directoryPeople.length || directoryGroups.length
+                  ? { borderTop: RULE }
+                  : undefined
+              }
             >
               <Text size="xs" c="dimmed" fw={600} px={10} pt={8} pb={4} truncate>
                 {contacts.title}

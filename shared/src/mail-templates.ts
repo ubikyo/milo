@@ -14,6 +14,8 @@ export const MAIL_TEMPLATE_KEYS = [
   "mailbox_confirmation",
   "support_reply",
   "support_auto_reply",
+  "support_new_ticket",
+  "support_ticket_update",
   "calendar_confirmation",
   "mail_confirmation",
   "order_quote_request",
@@ -22,11 +24,13 @@ export const MAIL_TEMPLATE_KEYS = [
 export type MailTemplateKey = (typeof MAIL_TEMPLATE_KEYS)[number];
 
 /**
- * The e-mails of the Tickets widget: its inboxes' code, the requests
- * assigned, the replies to the senders.
+ * The e-mails of the Tickets widget: its inboxes' code, the new tickets and
+ * their updates, the requests assigned, the replies to the senders.
  */
 export const TICKETS_MAIL_TEMPLATE_KEYS: readonly MailTemplateKey[] = [
   "mailbox_confirmation",
+  "support_new_ticket",
+  "support_ticket_update",
   "assignment",
   "support_reply",
   "support_auto_reply",

@@ -13,7 +13,7 @@
 //
 // An inbox received by two widgets goes to the first: the oldest.
 
-import { COLLECTORS, NEW_MESSAGE_LABELS, SUPPORT_NEW_MESSAGE_LABELS, listKey } from "@milo/shared";
+import { COLLECTORS, NEW_MESSAGE_LABELS, NEW_TICKET_ACTORS, SUPPORT_NEW_MESSAGE_LABELS, listKey } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { selection } from "../db/query.js";
 import { optins, pair } from "./optins.js";
@@ -82,6 +82,22 @@ const parsed = (config: string): Record<string, unknown> | null => {
   } catch {
     return null;
   }
+};
+
+/** The accounts a list tells of its new tickets (NEW_TICKET_ACTORS). */
+const newTicketActorsOf = (config: Record<string, unknown>): Id[] => {
+  const chosen = config[NEW_TICKET_ACTORS];
+  return Array.isArray(chosen) ? chosen.map(Number).filter((id) => Number.isInteger(id) && id > 0) : [];
+};
+
+/** Who a request list of this board tells of its new tickets; none if no widget states it. */
+export const newTicketActors = (boardId: Id, list: string): Id[] => {
+  for (const widget of receivers.all("support.list")) {
+    if (widget.board_id !== boardId) continue;
+    const config = parsed(widget.config);
+    if (config && listKey(config) === list) return newTicketActorsOf(config);
+  }
+  return [];
 };
 
 /**

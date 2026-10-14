@@ -5,11 +5,14 @@ import { inboxesWithProblem, inboxesOf } from "../../components/ui/ReceptionFiel
 import { useConfirmations } from "../../lib/confirmations";
 import {
   NEW_MESSAGE_LABELS,
+  NEW_TICKET_ACTORS,
   SUPPORT_NEW_MESSAGE_LABELS,
   TICKETS_MAIL_TEMPLATE_KEYS,
   listKey,
 } from "@milo/shared";
 import MailTemplates from "../../components/settings/MailTemplates";
+import ActorPicker from "../../components/ui/ActorPicker";
+import { useUsers } from "../../lib/users";
 import SupportOptions from "../../components/support/SupportOptions";
 import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
@@ -25,6 +28,7 @@ import SupportRequestsList, {
   SUPPORT_COLUMNS,
 } from "../../components/support/SupportRequestsList";
 import type { IndicatorConfigProps, IndicatorDisplayProps, SupportIndicatorWidget } from "./types";
+import { PERCENT_HEIGHT } from "../height";
 
 /**
  * The labels a ticket received by e-mail gets automatically, among the
@@ -48,7 +52,26 @@ function NewMessageFields({ config, onChange }: IndicatorConfigProps) {
 }
 
 /**
- * The list's settings: the addresses it receives requests from, each with
+ * The actors told of each new ticket the list receives ("Réception d'un
+ * nouveau ticket"): the same picker as a ticket's actors.
+ */
+function NewTicketActors({ config, onChange }: IndicatorConfigProps) {
+  const users = useUsers();
+  const chosen = (config as Record<string, unknown> | null)?.[NEW_TICKET_ACTORS];
+  const value = Array.isArray(chosen) ? chosen.map(String) : [];
+  return (
+    <ActorPicker
+      kind="helpdesk"
+      label="Acteurs"
+      users={users}
+      value={value}
+      onChange={(ids) => onChange(withField(config, NEW_TICKET_ACTORS, ids.map(Number)))}
+    />
+  );
+}
+
+/**
+ * The list's settings: who is told of its new tickets, the addresses it receives requests from, each with
  * the label it sets and confirmed by its inbox,
  * what it does with the retrieved e-mails, then its columns, the board's
  * Support labels and those an e-mail receives. For whoever may modify the
@@ -60,6 +83,7 @@ function ListFields(props: IndicatorConfigProps) {
   const canEditTemplates = useTemplatesAccess();
   return (
     <Stack gap="xl">
+      <NewTicketActors {...props} />
       <Inboxes {...props} />
       <ColumnFields columns={SUPPORT_COLUMNS} {...props} />
       {/* The board's Support labels: they go to saving. */}
@@ -123,7 +147,7 @@ export const listIndicator: SupportIndicatorWidget = {
   kind: "helpdesk",
   label: "Tickets",
   icon: IconList,
-  defaultConfig: {},
+  defaultConfig: { ...PERCENT_HEIGHT },
   ownClicks: true,
   fill: true,
   Display: ({ config, onEdit, locked }) => (

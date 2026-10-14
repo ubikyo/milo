@@ -66,6 +66,7 @@ import type {
   FollowKind,
   Follows,
   Id,
+  LinkTargetKind,
   Label,
   LabelGroup,
   LabelGroupLayout,
@@ -387,12 +388,20 @@ export const api = {
   // if it doesn't exist yet — to make them an actor.
   searchDirectoryUsers: (q: string) =>
     get<DirectoryUser[]>(`/users/directory?q=${encodeURIComponent(q)}`),
+  // Its users and groups, and a group's users: the Support actors may be anyone in it.
+  searchDirectoryPrincipals: (q: string) =>
+    get<EntraPrincipal[]>(`/users/directory/principals?q=${encodeURIComponent(q)}`),
+  getDirectoryGroupMembers: (oid: string) =>
+    get<DirectoryUser[]>(`/users/directory/groups/${encodeURIComponent(oid)}/members`),
   addDirectoryUser: (oid: string) =>
     post<PublicUser>(`/users/directory/${encodeURIComponent(oid)}`),
 
   // --- Workspaces ----------------------------------------------------------
   // Switching to another of one's workspaces.
   switchWorkspace: (workspace: Id) => put<PublicUser>("/auth/me/workspace", { workspace }),
+  // The workspace a link's item sits in, if the account reads it there.
+  getLinkWorkspace: (kind: LinkTargetKind, id: Id) =>
+    get<{ workspace: Id }>(`/auth/me/link-workspace/${kind}/${id}`),
   // Their management: reserved to those entitled to it.
   getWorkspaces: () => get<Workspace[]>("/workspaces"),
   createWorkspace: (name: string) => post<Workspace>("/workspaces", { name }),
@@ -785,8 +794,9 @@ export const api = {
     data: { name?: string; color?: ListColor; board_id?: Id },
   ) => put<TaskList>(`/task-lists/${id}`, data),
   deleteTaskList: (id: Id) => del(`/task-lists/${id}`),
-  // Empties the list of its tasks; its separators stay.
-  deleteTaskListCards: (id: Id) => del(`/task-lists/${id}/cards`),
+  // Empties the list of its tasks; its separators stay, unless "all".
+  deleteTaskListCards: (id: Id, all = false) =>
+    del(`/task-lists/${id}/cards${all ? "?all=1" : ""}`),
   // The copy takes the list's cards; without "board_id", it stays
   // in the original board.
   copyTaskList: (id: Id, data: TaskListCopyInput = {}) =>
@@ -942,6 +952,8 @@ export const api = {
     data: { name?: string; html?: string; event?: SupportContentEvent | null },
   ) => put<SupportContent>(`/support-contents/${id}`, data),
   deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
+  /** The contents in this order. */
+  reorderSupportContents: (ids: Id[]) => put<SupportContent[]>("/support-contents/order", { ids }),
   // An Asset widget's settings: the templates table, the VLAN one.
   getManagedDeviceAssetSettings: (ref: ListRef) =>
     get<ManagedDeviceAssetSettings>(`/managed-device-asset-settings${scopeQuery(ref)}`),
@@ -1144,7 +1156,15 @@ export const api = {
   // A support content — or an order's — in its reply template, as saved.
   previewReply: (
     key: ReplyTemplateKey,
-    reply: { content: string; ticket: string; subject: string; name: string },
+    reply: {
+      content: string;
+      ticket: string;
+      subject: string;
+      name: string;
+      status?: string;
+      url?: string;
+      requester?: Pick<SupportPerson, "first_name" | "last_name" | "full_name" | "email"> | null;
+    },
   ) => post<{ html: string }>(`/mail-templates/${key}/reply-preview`, reply),
   previewMailTemplate: (key: MailTemplateKey, mjml: string) =>
     post<MailTemplatePreview>(`/mail-templates/${key}/preview`, { mjml }),

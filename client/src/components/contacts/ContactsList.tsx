@@ -35,8 +35,8 @@ import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { useResizableColumns } from "../ui/useResizableColumns";
-import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
 import { useWidgetAccess } from "../../lib/rights";
@@ -112,6 +112,12 @@ const chosen = (f: Filters, c: Contact): boolean => {
   return (Object.keys(CHOICES) as (keyof typeof CHOICES)[]).every(
     (key) => f[key] === ALL_OPTION || CHOICES[key](c).some((o) => o.value === f[key]),
   );
+};
+
+/** The other columns' filters: a text searched (useColumnFilters). */
+const COLUMN_FILTERS: Record<"email" | "website", ColumnFilterSpec<Contact>> = {
+  email: { kind: "text", label: "e-mail", text: (c) => c.emails },
+  website: { kind: "text", label: "site", text: (c) => c.websites.map((w) => shortUrl(w.url)) },
 };
 
 /** The columns the list can show, in order. */
@@ -233,14 +239,14 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(contacts, labelsOf);
+  const columnFilter = useColumnFilters(contacts, COLUMN_FILTERS);
   const isFiltered =
     labelFilter.active ||
+    columnFilter.active ||
     (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(CONTACT_ROUTES.labels);
-  const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
-  // Adding is for display mode: in edit mode, clicks go to the widget.
-  const canAdd = accessIncludes(access, "update") && !isEditing;
+  const canAdd = accessIncludes(access, "update");
   /** The drawer: closed, adding (null), or showing a contact. */
   const [drawer, setDrawer] = useState<{ contact: Contact | null } | null>(null);
 
@@ -260,6 +266,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
     return (contacts ?? [])
       .filter((c) => (contextType === null || c.type === contextType) && chosen(filters, c))
       .filter(labelFilter.keep)
+      .filter(columnFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -270,7 +277,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [contacts, sort, filters, contextType, labelFilter.keep]);
+  }, [contacts, sort, filters, contextType, labelFilter.keep, columnFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the contacts carry. */
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
@@ -359,8 +366,9 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
         />,
       ),
     type: (id) => th(id, "Type", "type", choiceFilter("type", "type", "Tous")),
-    email: (id) => th(id, "E-mail", "email"),
-    website: (id) => th(id, "Site internet", "website", undefined, { whiteSpace: "nowrap" }),
+    email: (id) => th(id, "E-mail", "email", columnFilter.filter("email")),
+    website: (id) =>
+      th(id, "Site internet", "website", columnFilter.filter("website"), { whiteSpace: "nowrap" }),
   };
 
   /** Each column's cell, for a contact. */
@@ -445,6 +453,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
                   onClick={() => {
                     setFilters(NO_FILTER);
                     labelFilter.reset();
+                    columnFilter.reset();
                   }}
                 >
                   <Text size="sm" c="teal">

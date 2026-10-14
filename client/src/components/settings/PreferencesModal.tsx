@@ -418,6 +418,8 @@ export default function PreferencesModal({
               />
             </Group>
 
+            {/* "Paramétrage" > "Labo" > "Thèmes": hidden while off. */}
+            {display.labThemes && (
             <Group gap={GAP} wrap="nowrap" align="center">
               <Text size="sm" fw={500} w={LABEL_WIDTH} data-field-label>
                 Thème
@@ -451,6 +453,7 @@ export default function PreferencesModal({
                 w={FIELD_WIDTH + 50}
               />
             </Group>
+            )}
           </Stack>
         </Tabs.Panel>
 

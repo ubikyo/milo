@@ -52,7 +52,8 @@ export const actorsAppearance = (config: unknown, onChange: (config: Record<stri
   colorRow(config, onChange, { name: "Fond", what: "du fond des anneaux", key: TRACK_COLOR, defaultColor: defaultTrack() }),
 ];
 
-const CHART_HEIGHT = 240;
+/** The rings' usual height, legend included. */
+export const RINGS_HEIGHT = 240;
 
 /**
  * Contribution rings: a "Total" ring that sets the scale — all the items
@@ -66,12 +67,15 @@ export function Rings({
   unit,
   config,
   none,
+  h,
 }: {
   rows: { name: string; value: number }[];
   total: number;
   unit: string;
   config: unknown;
   none: string;
+  /** Its height, when the widget gives it one; failing that, the usual one. */
+  h?: number;
 }) {
   if (rows.length === 0) {
     return (
@@ -88,7 +92,7 @@ export function Rings({
   const legend = chosenColor(config, LEGEND_COLOR);
   return (
     <RadialBarChart
-      h={CHART_HEIGHT}
+      h={h ?? RINGS_HEIGHT}
       data={data}
       dataKey={unit}
       withBackground

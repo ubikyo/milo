@@ -240,8 +240,15 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
   );
   const byId = selection<DeclaredAssetRow>(`SELECT * FROM ${t.assets} WHERE id = ?`);
 
-  const actorsOfBoard = selection<{ asset_id: Id; id: Id; name: string; email: string }>(
-    `SELECT a.asset_id, u.id, u.name, u.email FROM ${t.actors} a
+  const actorsOfBoard = selection<{
+    asset_id: Id;
+    id: Id;
+    name: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  }>(
+    `SELECT a.asset_id, u.id, u.name, u.first_name, u.last_name, u.email FROM ${t.actors} a
      JOIN users u ON u.id = a.user_id
      JOIN ${t.assets} x ON x.id = a.asset_id
      WHERE x.board_id = ? ORDER BY u.name`,

@@ -12,6 +12,7 @@ import LoginPage from "./pages/LoginPage";
 import FirstSetup from "./pages/FirstSetup";
 import { loadThemeColors, useThemes } from "./lib/themeColors";
 import { useThemeEditor } from "./lib/themeEditor";
+import { useDisplaySettings } from "./lib/displaySettings";
 import ThemeEditor from "./components/theme/ThemeEditor";
 import { THEME_INTERFACE_GAP, themePanelWidth } from "./components/theme/ThemePanel";
 import ViewPage from "./pages/ViewPage";
@@ -43,6 +44,7 @@ import {
   isDeclaredAssetKind,
   isM365Change,
   isNotification,
+  itemLink,
   m365Event,
 } from "@milo/shared";
 import { RightsProvider, canFrom } from "./lib/rights";
@@ -79,6 +81,8 @@ import ShortcutsHelp from "./components/ui/ShortcutsHelp";
 import LayoutModal from "./components/ui/LayoutModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
 import KonamiCode from "./components/ui/KonamiCode";
+import UpdatesModal from "./components/ui/UpdatesModal";
+import NewVersionBanner from "./components/ui/NewVersionBanner";
 import { placeInterface, clearPage } from "./lib/interfaceFall";
 import { loadTitleStyles } from "./lib/titleStyles";
 import { rememberDeletion, useUndoShortcut } from "./lib/undo";
@@ -369,6 +373,7 @@ export default function App() {
   const [accessRequestSubject, setAccessRequestSubject] = useState<string | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
   const themeEditorOn = useThemeEditor();
+  const { settings: display } = useDisplaySettings();
   const [preferencesOpened, setPreferencesOpened] = useState(false);
   // The notifications drawer, and what makes it re-read.
   const [notificationsOpened, setNotificationsOpened] = useState(false);
@@ -802,6 +807,7 @@ export default function App() {
    * the search. A request and a workstation open in place; a project,
    * a card and a widget lead first to their board.
    */
+  const currentWorkspace = user?.workspace;
   const openTarget = useCallback(
     async (target: Target) => {
       try {
@@ -830,10 +836,21 @@ export default function App() {
           setCardToOpen(target.id);
         }
       } catch {
-        /* item deleted in the meantime, or made private: there is nothing to open */
+        // Not here: it may sit in another of the account's workspaces — the
+        // link of an e-mail, of a notification. Switching to it reloads the
+        // application, which opens the item from the address. Otherwise it was
+        // deleted in the meantime, or made private: there is nothing to open.
+        try {
+          const { workspace } = await api.getLinkWorkspace(target.kind, target.id);
+          if (currentWorkspace === undefined || workspace === currentWorkspace) return;
+          await api.switchWorkspace(workspace);
+          window.location.assign(`${window.location.pathname}${itemLink(target.kind, target.id)}`);
+        } catch {
+          /* nowhere the account reads it */
+        }
       }
     },
-    [goToBoard, showBoard],
+    [goToBoard, showBoard, currentWorkspace],
   );
 
   /**
@@ -1502,7 +1519,10 @@ export default function App() {
   // The theme editor's panels, for whoever may change the themes: it was
   // turned on in this browser, possibly by another account.
   const themeEditor =
-    themeEditorOn && user.settings.update && user.administration.themes.includes("access");
+    themeEditorOn &&
+    display.labThemes &&
+    user.settings.update &&
+    user.administration.themes.includes("access");
 
   return (
     <RightsProvider
@@ -1890,6 +1910,7 @@ export default function App() {
                 toRename={viewToRename}
                 onRenameOpened={() => setViewToRename(null)}
                 onRenameEnded={endViewRename}
+                trailing={<NewVersionBanner />}
                 // Rename, delete: in edit mode only. Sharing is not the
                 // interface: it is offered at any time. All three only for
                 // one's own views (ViewSwitch).
@@ -1934,6 +1955,7 @@ export default function App() {
                 isEditing={isEditing}
                 onLeaveEditing={() => setIsEditing(false)}
               />
+              <UpdatesModal />
 
               {/* "Créer une tâche": a blank card record, which chooses where
                 it goes. We stay where we are; the notification leads to the task. */}

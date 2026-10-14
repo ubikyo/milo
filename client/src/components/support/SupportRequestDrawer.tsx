@@ -52,6 +52,8 @@ import {
   MILO_ACTOR_ID,
   SUPPORT_STATUSES,
   fillSupportTemplate,
+  itemLink,
+  supportStatusLabel,
   supportReplyValues,
   supportTicketRef,
 } from "@milo/shared";
@@ -120,7 +122,7 @@ const CHIP_HEIGHT = 30;
 
 /**
  * A ticket's form. It opens on a click on a row, or
- * empty from "Nouveau ticket", and closes on save.
+ * empty from "Ajouter un ticket", and closes on save.
  *
  * Its actors and labels work like a card's members and labels:
  * you pick as many as needed, in the same checkbox list.
@@ -171,6 +173,8 @@ export default function SupportRequestDrawer({
   following,
   onToggleFollow,
 }: SupportRequestDrawerProps) {
+  // "Répondre", folded, sticks under the exchanges (SupportReply).
+  const [replyAttached, setReplyAttached] = useState(false);
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState<SupportStatus>(DEFAULT_SUPPORT_STATUS);
   /** The support labels of the request's widget. */
@@ -282,22 +286,25 @@ export default function SupportRequestDrawer({
   // The actors a message went to, or who sent one: they stay.
   const lockedActors = [...lockedIds(users, sentAddresses(exchanges)), ...senderIds(exchanges)];
 
-  // What the reply carries by default: the content for the moment in the thread, then that
-  // of any message — a signature — after a blank line; their variables
+  // What the reply carries by default: the contents for the moment in the thread and those
+  // of any message, together in the list's order — a greeting above, a signature below,
+  // as Settings ranks them —, a blank line between each; their variables
   // filled in with the Entra record of whoever writes, that of the sender, and the
   // request. Before creation, it has neither a number nor a sender: these
   // variables stay empty. Rendering waits for the records, so as not to place
   // a signature without a phone number that would fix itself before one's eyes.
-  const contentFor = (event: SupportContentEvent) =>
-    contents.find((c) => c.event === event)?.html ?? "";
+  const contentFor = (events: SupportContentEvent[]) =>
+    contents
+      .filter((c) => c.event !== null && events.includes(c.event))
+      .map((c) => c.html)
+      .filter(Boolean)
+      .join("<p></p>");
   const replyValues = supportReplyValues({
     ...people,
     request: { number: request?.number ?? 0, subject, status },
   });
   const replyTemplate = (() => {
-    const html = [contentFor(threadEvent(exchanges)), contentFor("all")]
-      .filter(Boolean)
-      .join("<p></p>");
+    const html = contentFor([threadEvent(exchanges), "all"]);
     if (!html || !people.user) return "";
     return fillSupportTemplate(html, replyValues);
   })();
@@ -318,9 +325,11 @@ export default function SupportRequestDrawer({
    * What the request carries. None of it is mandatory: a request
    * without a subject is read through its thread.
    */
-  const input = (): SupportRequestInput => ({
+  const input = (
+    nextStatus: SupportStatus = status,
+  ): SupportRequestInput => ({
     subject: subject.trim(),
-    status,
+    status: nextStatus,
     actor_ids: actorIds.map(Number),
     due_date: due,
     label_ids: labelIds.map(Number),
@@ -357,18 +366,20 @@ export default function SupportRequestDrawer({
     comments.length,
   );
 
-  // "Sauvegarder": the only action that writes. A new request with nothing
-  // said is not created. If the server refuses, the drawer stays open
-  // with the message rather than discarding the input.
-  const persist = async () => {
+  // "Enregistrer": the only action that writes; its chevron saves while
+  // closing or resolving the request. A new request with nothing said is
+  // not created. If the server refuses, the drawer stays open with the
+  // message rather than discarding the input.
+  const persist = async (nextStatus: SupportStatus = status) => {
     if (!request && !isFilled) return onClose();
     setSaving(true);
     try {
       if (request) {
-        await api.updateSupportRequest(request.id, input());
+        await api.updateSupportRequest(request.id, input(nextStatus));
+        setStatus(nextStatus);
       } else {
         const created = await api.createSupportRequest({
-          ...input(),
+          ...input(nextStatus),
           board_id: boardId ?? undefined,
           // Created in a context, it receives its label (server).
           context: context ?? undefined,
@@ -384,7 +395,7 @@ export default function SupportRequestDrawer({
         }
       }
       await onSaved();
-      // "Mettre à jour" leaves the request open; a creation, on the other hand,
+      // "Enregistrer" leaves the request open; a creation, on the other hand,
       // closes the drawer.
       if (!request) onClose();
     } catch (e) {
@@ -650,19 +661,12 @@ export default function SupportRequestDrawer({
                     </Group>
 
                     {/* The subject: the e-mail's for a received request, and
-                      which stays editable. It ends flush with the due date below. */}
-                    <div
-                      style={{
-                        width: `calc(${STATUS_WIDTH + DUE_WIDTH}px + var(--mantine-spacing-md))`,
-                        maxWidth: "100%",
-                      }}
-                    >
-                      <TextInput
-                        label="Objet"
-                        value={subject}
-                        onChange={(e) => setSubject(e.currentTarget.value)}
-                      />
-                    </div>
+                      which stays editable. It takes the drawer's full width. */}
+                    <TextInput
+                      label="Objet"
+                      value={subject}
+                      onChange={(e) => setSubject(e.currentTarget.value)}
+                    />
 
                     {/* The status and due date, on their own row. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
@@ -691,24 +695,6 @@ export default function SupportRequestDrawer({
                           onRemove={() => setDue("")}
                         />
                       </div>
-                      {/* An open request is saved here, flush right on
-                        the row, rather than at the drawer's foot: the exchanges, below,
-                        have their own send. Creation keeps "Sauvegarder"
-                        at the bottom. */}
-                      {request && !readOnly && (
-                        <Button
-                          color="teal"
-                          onClick={persist}
-                          loading={registration}
-                          style={{
-                            alignSelf: "flex-end",
-                            flexShrink: 0,
-                            marginLeft: "auto",
-                          }}
-                        >
-                          Mettre à jour
-                        </Button>
-                      )}
                     </Group>
                   </Stack>
                 </fieldset>
@@ -730,6 +716,8 @@ export default function SupportRequestDrawer({
                   <Paper
                     bg="var(--mantine-color-default)"
                     style={{
+                      // "Répondre", folded, sticks under it: no rounded corners between them.
+                      ...(replyAttached && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }),
                       flex: exchanges.length === 0 ? "0 0 auto" : 1,
                       minHeight: 0,
                       ...(exchanges.length === 0 && { height: EMPTY_EXCHANGES_HEIGHT }),
@@ -789,6 +777,7 @@ export default function SupportRequestDrawer({
 
                 {!readOnly && (
                   <SupportReply
+                    onAttachedChange={setReplyAttached}
                     template={replyTemplate}
                     snippets={snippets}
                     // The reply as the sender will read it: in the team reply's template.
@@ -799,6 +788,9 @@ export default function SupportRequestDrawer({
                           ticket: request ? supportTicketRef(request.number) : "",
                           subject,
                           name: "",
+                          status: request ? supportStatusLabel(request.status) : "",
+                          url: request ? `${window.location.origin}/${itemLink("support", request.id)}` : "",
+                          requester: people.sender,
                         })
                         .then((r) => r.html)
                     }
@@ -861,7 +853,12 @@ export default function SupportRequestDrawer({
         </Tabs>
 
         <DrawerFooter
-          onSave={readOnly || request ? undefined : persist}
+          onSave={readOnly ? undefined : () => persist()}
+          saveLabel="Enregistrer"
+          saveMenu={[
+            { label: "Fermer le ticket", onClick: () => void persist("closed") },
+            { label: "Définir comme résolu", onClick: () => void persist("resolved") },
+          ]}
           onClose={onClose}
           onDelete={
             canDelete ? () => setConfirmDeleteOpened(true) : undefined

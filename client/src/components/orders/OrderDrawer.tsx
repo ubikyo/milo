@@ -353,6 +353,8 @@ export default function OrderDrawer({
     contact_actor_ids: [],
     label_ids: [],
   });
+  // "Répondre", folded, sticks under the exchanges (SupportReply).
+  const [replyAttached, setReplyAttached] = useState(false);
   const [labels, setLabels] = useState<Label[]>([]);
   // Before its creation, the comments written live here, sent once it is saved.
   const [comments, setComments] = useState<ThreadItem[]>([]);
@@ -867,18 +869,18 @@ export default function OrderDrawer({
   const statusEvent: OrderContentEvent =
     status === "quote" ? "quote_request" : status === "order" ? "confirmation" : "cancellation";
   const offeredEvents: (OrderContentEvent | null)[] = [statusEvent, "new", "all"];
-  // Its default text: its status's first content — the others being
-  // alternatives —, "Nouveau message"'s once a message went out in this
-  // status; then all of every message's, in their order.
+  // Its default text: its status's contents, "Nouveau message"'s once a
+  // message went out in this status; then every message's — each in the
+  // list's order.
   const statusSent = messages.some(
     (m) => m.order_status === status && (m.mail_status === "sent" || m.mail_status === "simulated"),
   );
   const exchangeTemplate = exchangeFill(
     [
-      contents.find((c) => c.event === (statusSent ? "new" : statusEvent)),
+      ...contents.filter((c) => c.event === (statusSent ? "new" : statusEvent)),
       ...contents.filter((c) => c.event === "all"),
     ]
-      .map((c) => c?.html ?? "")
+      .map((c) => c.html)
       .join(""),
   );
   // The tables its variables stand for, as the editor shows them in their
@@ -1587,6 +1589,8 @@ export default function OrderDrawer({
                     bg="var(--mantine-color-default)"
                     // Its height its own: the editor under it does not squeeze it.
                     style={{
+                      // "Répondre", folded, sticks under it: no rounded corners between them.
+                      ...(replyAttached && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }),
                       // No exchange yet: the empty frame at its own height.
                       ...(messages.length === 0
                         ? { flex: "0 0 auto", height: EMPTY_EXCHANGES_HEIGHT }
@@ -1609,6 +1613,7 @@ export default function OrderDrawer({
                   </Paper>
                   {canSave && (
                     <SupportReply
+                      onAttachedChange={setReplyAttached}
                       template={exchangeTemplate}
                       snippets={snippets}
                       blocks={blocks}

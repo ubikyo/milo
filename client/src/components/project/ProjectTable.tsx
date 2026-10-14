@@ -1,8 +1,11 @@
 import {
+  Box,
   Center,
   Group,
   Menu,
   Progress,
+  ScrollArea,
+  Stack,
   Table,
   Text,
   UnstyledButton,
@@ -25,13 +28,14 @@ import { createContext, Fragment, useContext, useMemo, useState } from "react";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment, PATH_FORMATS, formatPath } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment, PATH_FORMATS, formatPath, ACTOR_FORMATS } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { ChoiceFilter, type FilterOption } from "../ui/ColumnFilters";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
@@ -46,6 +50,8 @@ import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { useRights } from "../../lib/rights";
 import { useIsEditing } from "../../lib/editing";
 import { NewShortcut } from "../../lib/newShortcut";
+import { isSized } from "../../widgets/height";
+import scroll from "../../assets/styles/ListScroll.module.css";
 
 /** What the table asks for its column funnels. */
 export interface ProjectFiltersProps {
@@ -121,6 +127,11 @@ export const GRID_STYLES = {
   },
 } as const;
 
+// "Ajouter un projet", under the grid, sits in the height of a row: that of
+// its "xs" button, plus what the padding gives back.
+const ADD_BUTTON_HEIGHT = 30;
+const ADD_PADDING_Y = (ACTOR_AVATAR_SIZE + 2 * ROW_PADDING_Y - ADD_BUTTON_HEIGHT) / 2;
+
 /** A grid's column label, as the projects' header shows it. */
 export const GRID_HEADER_TEXT = { size: "sm", fw: 600, c: STRONG_TEXT } as const;
 
@@ -134,6 +145,18 @@ const STATUS_WIDTH = PROGRESS_WIDTH + PERCENT_WIDTH + STATUS_GAP;
 // The longest reference expected: the tag takes its width.
 const REFERENCE_TEMPLATE = projectReference(999);
 
+
+/** The columns the page does not filter: they are filtered here (useColumnFilters). */
+const COLUMN_FILTERS: Record<"number" | "name" | "created_at" | "updated_at", ColumnFilterSpec<Project>> = {
+  number: {
+    kind: "text",
+    label: "numéro",
+    text: (p) => (p.number > 0 ? projectReference(p.number) : null),
+  },
+  name: { kind: "text", label: "projet", text: (p) => p.name },
+  created_at: { kind: "date", label: "date de création", value: (p) => p.created_at },
+  updated_at: { kind: "date", label: "date de modification", value: (p) => p.updated_at },
+};
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "all", label: "Tous" },
@@ -246,10 +269,12 @@ const COLUMNS: Column[] = [
 export const PROJECT_COLUMNS: ListColumn[] = COLUMNS.map(({ key, label }) => ({
   key,
   label: key === "number" ? "Référence" : label,
-  // The labels column picks the group it shows; a date, its format.
+  // The labels column picks the group it shows; a date, the place or the
+  // actors, their format.
   ...(key === "labels" ? { labelGroups: "/project-labels" as const } : {}),
   ...(key === "created_at" || key === "updated_at" ? { formats: DATE_FORMATS } : {}),
   ...(key === "category_name" ? { formats: PATH_FORMATS } : {}),
+  ...(key === "actors" ? { formats: ACTOR_FORMATS } : {}),
 }));
 
 /** A project's labels, for the labels filters (useLabelFilter). */
@@ -504,9 +529,10 @@ const CELLS: Record<ColumnKey, (project: Project, format?: string) => ReactNode>
     </Table.Td>
   ),
   category_name: (project) => <Table.Td>{project.category_name}</Table.Td>,
-  actors: (project) => (
+  // Their avatars, or their names.
+  actors: (project, format) => (
     <Table.Td>
-      <ActorAvatars actors={project.actors} />
+      <ActorAvatars actors={project.actors} format={format} />
     </Table.Td>
   ),
   // In the column's format: date and time, date, or time.
@@ -619,6 +645,7 @@ export default function ProjectTable({
   // The labels filters, one per labels column, limited to its group. Unlike
   // the others, they are applied here, on the projects read — as in Support.
   const labelFilter = useLabelFilter(projects, labelsOf);
+  const columnFilter = useColumnFilters(projects, COLUMN_FILTERS);
   // The columns the widget shows, in the set order; without a setting,
   // all of them.
   // A column can come back: "id" distinguishes each occurrence.
@@ -704,7 +731,7 @@ export default function ProjectTable({
       );
     }
     if (key === "labels") return labelFilter.filter(group);
-    return null;
+    return columnFilter.filter(key);
   };
 
   // Names and labels start from the top: A to Z, the first labels first.
@@ -719,7 +746,7 @@ export default function ProjectTable({
     const column =
       columns.find((c) => sameSort(sort, c.key, c.group)) ??
       COLUMNS.find((c) => c.key === sort.key);
-    const filtered = projects.filter(labelFilter.keep);
+    const filtered = projects.filter(labelFilter.keep).filter(columnFilter.keep);
     if (!column) return filtered;
     const factor = sort.direction === "asc" ? 1 : -1;
 
@@ -741,7 +768,7 @@ export default function ProjectTable({
     // "columns" is rebuilt on each render: the configuration it comes from is
     // what changes it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, sort, config, labelFilter.keep]);
+  }, [projects, sort, config, labelFilter.keep, columnFilter.keep]);
 
   // With no project to show, the table has no reason to exist: only the empty
   // state is displayed. It then carries what is needed to undo the filters. During
@@ -757,68 +784,86 @@ export default function ProjectTable({
     );
   }
 
-  return (
-    <>
-      {/* A section narrower than the list makes it scroll sideways. */}
-      <GridScroll>
-        <Table
-          {...resize.tableProps}
-          highlightOnHover
-          verticalSpacing={0}
-          // Rows are exactly the height of an actor badge, whether there
-          // are actors or not. The header follows the same measure.
-          styles={GRID_STYLES}
-        >
-          {resize.colgroup}
-          <Table.Thead>
-            {resize.widthRow}
-            <Table.Tr>
-              {columns.map((column) => (
-                <SortableTh
-                  key={column.id}
-                  column={column}
-                  sort={sort}
-                  onSort={handleSort}
-                  filter={filterFor(column)}
-                  handle={resize.handle(column.id)}
-                  frozen={resize.colgroup !== null}
-                />
-              ))}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {sorted.map((project) => (
-              <ProjectRow
-                key={project.id}
-                project={project}
-                active={contextMenu?.project.id === project.id}
-                columns={columns}
-                categoryNames={categoryNames}
-                onEdit={onRowClick}
-                onContextMenu={
-                  isEditing && !canCopy
-                    ? undefined
-                    : (project, x, y) => setContextMenu({ project: project, x, y })
-                }
+  // A height of its own: the grid fills it and scrolls, "Ajouter un projet"
+  // stays at the bottom of the widget.
+  const sized = isSized(config);
+  const grid = (
+    // A section narrower than the list makes it scroll sideways.
+    <GridScroll>
+      <Table
+        {...resize.tableProps}
+        highlightOnHover
+        verticalSpacing={0}
+        // Rows are exactly the height of an actor badge, whether there
+        // are actors or not. The header follows the same measure.
+        styles={GRID_STYLES}
+      >
+        {resize.colgroup}
+        <Table.Thead>
+          {resize.widthRow}
+          <Table.Tr>
+            {columns.map((column) => (
+              <SortableTh
+                key={column.id}
+                column={column}
+                sort={sort}
+                onSort={handleSort}
+                filter={filterFor(column)}
+                handle={resize.handle(column.id)}
+                frozen={resize.colgroup !== null}
               />
             ))}
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {sorted.map((project) => (
+            <ProjectRow
+              key={project.id}
+              project={project}
+              active={contextMenu?.project.id === project.id}
+              columns={columns}
+              categoryNames={categoryNames}
+              onEdit={onRowClick}
+              onContextMenu={
+                isEditing && !canCopy
+                  ? undefined
+                  : (project, x, y) => setContextMenu({ project: project, x, y })
+              }
+            />
+          ))}
+        </Table.Tbody>
+      </Table>
+    </GridScroll>
+  );
 
-            {/* Last row of the table: adding a project happens where the
-                list ends, and no longer in the application header. With no
-                inner margin, the "+" aligns with the project names. The explicit
-                background neutralizes the table's hover: this row is not
-                a project, it does not light up when the mouse passes, and the
-                button's "transparent" variant has no background on hover. */}
-            {onAddProject && (
-              <Table.Tr style={{ backgroundColor: "transparent" }}>
-                <Table.Td colSpan={columns.length}>
-                  <AddButton label="Ajouter un projet" onClick={onAddProject} />
-                </Table.Td>
-              </Table.Tr>
-            )}
-          </Table.Tbody>
-        </Table>
-      </GridScroll>
+  // Under the grid: adding a project happens where the list ends. Aligned
+  // with the cells' padding, the "+" lines up with the project names.
+  const add = onAddProject && (
+    <Box px="xs" py={ADD_PADDING_Y} style={{ flexShrink: 0 }}>
+      <AddButton label="Ajouter un projet" onClick={onAddProject} />
+    </Box>
+  );
+
+  return (
+    <>
+      {sized ? (
+        <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
+          <ScrollArea
+            type="auto"
+            scrollbars="y"
+            classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            {grid}
+          </ScrollArea>
+          {add}
+        </Stack>
+      ) : (
+        <>
+          {grid}
+          {add}
+        </>
+      )}
 
       {contextMenu && (
         <ProjectContextMenu

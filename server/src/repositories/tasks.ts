@@ -57,6 +57,8 @@ export const taskCards = {
   remove: mutation("DELETE FROM task_cards WHERE id = ?"),
   /** Emptying a list of its tasks: its separators stay in place. */
   removeTasksOfList: mutation("DELETE FROM task_cards WHERE list_id = ? AND kind = 'card'"),
+  /** Emptying a list of all its cards, separators included. */
+  removeCardsOfList: mutation("DELETE FROM task_cards WHERE list_id = ?"),
   /** The cards of a board, as ids: a card only moves within its own board. */
   idsOfBoard: selection<{ id: Id }>(
     `SELECT task_cards.id

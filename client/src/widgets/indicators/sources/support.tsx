@@ -40,7 +40,8 @@ export const supportSource: IndicatorSource<SupportRequest> = {
   none: "Aucun ticket",
   useItems: ({ sources, board }) => useSourceItems("support", sources, board.requests),
   measures: [
-    { value: "ongoing", label: "Tickets en cours", weight: (d) => (ongoing(d) ? 1 : 0) },
+    // Named like the Statut column's filter; "ongoing" stays the value saved by the widgets.
+    { value: "ongoing", label: "Tickets non résolus", weight: (d) => (ongoing(d) ? 1 : 0) },
     { value: "open", label: "Tickets ouverts", weight: (d) => (d.status === "open" ? 1 : 0) },
     { value: "pending", label: "Tickets en attente", weight: (d) => (d.status === "pending" ? 1 : 0) },
     {

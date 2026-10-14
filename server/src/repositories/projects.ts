@@ -63,11 +63,13 @@ interface ActorRow {
   project_id: Id;
   id: Id;
   name: string;
+  first_name: string;
+  last_name: string;
   email: string;
 }
 
 const actorsFor = selection<ActorRow>(
-  `SELECT project_actors.project_id, users.id, users.name, users.email
+  `SELECT project_actors.project_id, users.id, users.name, users.first_name, users.last_name, users.email
    FROM project_actors
    JOIN users ON users.id = project_actors.user_id
    WHERE project_actors.project_id IN (SELECT value FROM json_each(?))

@@ -8,23 +8,17 @@ import {
   IconEye,
   IconPencil,
   IconSquarePlus,
-  IconTags,
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
 import { useRights } from "../../lib/rights";
-import { useCallback, useRef, useState } from "react";
-import { listOf } from "../../lib/list-ref";
-import LabelGroupsEditor from "../ui/LabelGroupsEditor";
+import { useImperativeHandle, useState, type Ref } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import {
-  ACTIONS_BUTTON_STYLE,
-  ROW_MENU_OFFSET,
-  TAB_MENU_STYLES,
-} from "../../themes/menus";
+import { PLUS_SIZE } from "../../themes/plus";
+import AddButton from "../ui/AddButton";
 import ActorPicker from "../ui/ActorPicker";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
@@ -41,14 +35,14 @@ interface SupportActionsProps {
   /** The checked requests, in list order. */
   selected: SupportRequest[];
   users: PublicUser[];
-  /** "Modifier": the checked request opens in its drawer. */
+  /** "Modifier", on right-click: the request opens in its drawer. */
   onEdit: (request: SupportRequest) => void;
   /** "Créer une tâche", on right-click of a request. */
   onCreateTask?: (request: SupportRequest) => void;
   /** An action succeeded: the list is re-read, the checkboxes are unchecked. */
   onDone: () => void | Promise<void>;
-  /** The list is re-read, the checkboxes stay checked. */
-  onRefresh: () => void | Promise<void>;
+  /** What "Actions multiples", under the list, runs on the checked requests. */
+  bulkRef?: Ref<(action: BulkAction) => void>;
   /**
    * Right-click on a row: its menu opens at the clicked point, and its
    * actions apply only to that request, checked or not.
@@ -68,10 +62,80 @@ const quote = (requests: SupportRequest[]): string => {
     : `${refs.slice(0, -1).join(", ")} et ${refs.at(-1)}`;
 };
 
+/** What "Actions multiples" does with the checked requests. */
+export type BulkAction = "assign" | "merge" | "close" | "delete";
+
 /**
- * The Support mode's "Actions" menu, placed to the left of the companies
- * list. It only appears once a request is checked, and applies to them:
- * merge, close and delete ask for confirmation; "Assigner à" opens the
+ * "Actions multiples", under the requests list's "Ajouter un ticket": it only
+ * appears once a request is checked, and applies to them. The action itself
+ * runs in "SupportActions", where its confirmations live.
+ */
+export function SupportBulkMenu({
+  selected,
+  onAction,
+  height,
+}: {
+  selected: SupportRequest[];
+  onAction: (action: BulkAction) => void;
+  /** That of "Ajouter un ticket", above it. */
+  height?: number;
+}) {
+  const can = useRights();
+  const n = selected.length;
+  if (n === 0) return null;
+  const canEdit = can("support", "update");
+  return (
+    <Menu position="bottom-start" withinPortal>
+      <Menu.Target>
+        {/* The look of "Ajouter un ticket", right above it; the chevron takes
+            the place of its "+". */}
+        <AddButton
+          label={`Actions multiples (${n})`}
+          leftSection={<IconChevronDown size={PLUS_SIZE} />}
+          onClick={() => {}}
+          h={height}
+        />
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          leftSection={<IconUserPlus size={16} />}
+          disabled={!canEdit}
+          onClick={() => onAction("assign")}
+        >
+          Assigner à
+        </Menu.Item>
+        <Menu.Item
+          leftSection={<IconArrowMerge size={16} />}
+          disabled={n < 2 || !canEdit}
+          onClick={() => onAction("merge")}
+        >
+          Fusionner
+        </Menu.Item>
+        <Menu.Item
+          leftSection={<IconCircleX size={16} />}
+          disabled={!canEdit}
+          onClick={() => onAction("close")}
+        >
+          Fermer
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item
+          color={RED}
+          leftSection={<IconTrash size={16} />}
+          disabled={!can("support", "delete")}
+          onClick={() => onAction("delete")}
+        >
+          Supprimer
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+/**
+ * The Support mode's request actions: the right-click menu of a row, and the
+ * confirmations and actor choice of "Actions multiples" (SupportBulkMenu).
+ * Merge, close and delete ask for confirmation; "Assigner à" opens the
  * actor choice, and those actors are notified on screen and by e-mail.
  */
 export default function SupportActions({
@@ -80,24 +144,13 @@ export default function SupportActions({
   onEdit,
   onCreateTask,
   onDone,
-  onRefresh,
+  bulkRef,
   context = null,
   onContextClose,
   followedIds = [],
   onToggleFollow,
 }: SupportActionsProps) {
   const [toConfirm, setToConfirm] = useState<ToConfirm>(null);
-  const [managesLabels, setManagingLabels] = useState(false);
-  const openLabels = () => setManagingLabels(true);
-  // The editor's save, run by "Enregistrer".
-  const saveLabels = useRef<(() => Promise<unknown>) | null>(null);
-  const [savingLabels, setSavingLabels] = useState(false);
-  const registerLabels = useCallback((save: () => Promise<unknown>) => {
-    saveLabels.current = save;
-    return () => {
-      if (saveLabels.current === save) saveLabels.current = null;
-    };
-  }, []);
   const [assignment, setAssignment] = useState(false);
   const [actors, setActors] = useState<string[]>([]);
   const [ongoing, setInProgress] = useState(false);
@@ -119,15 +172,11 @@ export default function SupportActions({
         : -1,
   )[0];
   const others = targetedItems.filter((d) => d !== keptByKey);
-  /** Label management: those of the "Tickets" widget of the first targeted request. */
-  const labelList = targetedItems[0] ? listOf(targetedItems[0]) : null;
 
   // The actions follow the account's rights on support.
   const can = useRights();
   const canForRequests = (requests: SupportRequest[], right: "update" | "delete") =>
     requests.length > 0 && can("support", right);
-  const editChecked = canForRequests(selected, "update");
-  const deleteChecked = canForRequests(selected, "delete");
   const targetEdit = context
     ? canForRequests([context.request], "update")
     : false;
@@ -178,6 +227,21 @@ export default function SupportActions({
     setAssignment(false);
   };
 
+  // "Actions multiples", under the list: on the checked requests.
+  useImperativeHandle(
+    bulkRef,
+    () => (action: BulkAction) => {
+      setTargets(null);
+      if (action === "assign") {
+        setActors([]);
+        setAssignment(true);
+      } else {
+        setToConfirm(action);
+      }
+    },
+    [],
+  );
+
   const texts: Record<
     Exclude<ToConfirm, null>,
     { title: string; message: string; button: string; color: string }
@@ -211,84 +275,6 @@ export default function SupportActions({
 
   return (
     <>
-      {/* Only the menu disappears: the confirmations and the inboxes stay
-          mounted, they still close after the checkboxes have been
-          unchecked. */}
-      {selected.length > 0 && (
-        <Menu
-          position="bottom-end"
-          withinPortal
-          offset={ROW_MENU_OFFSET}
-          styles={TAB_MENU_STYLES}
-        >
-          <Menu.Target>
-            <Button
-              variant="subtle"
-              color="gray"
-              size="xs"
-              rightSection={<IconChevronDown size={14} />}
-              style={ACTIONS_BUTTON_STYLE}
-            >
-              Actions ({selected.length})
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {/* Edit only applies to one request at a time: it is its drawer
-              that opens. */}
-            <Menu.Item
-              leftSection={<IconPencil size={16} />}
-              disabled={n !== 1 || !editChecked}
-              onClick={() => selected[0] && onEdit(selected[0])}
-            >
-              Modifier
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconUserPlus size={16} />}
-              disabled={n === 0 || !editChecked}
-              onClick={() => {
-                setActors([]);
-                setAssignment(true);
-              }}
-            >
-              Assigner à
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconArrowMerge size={16} />}
-              disabled={n < 2 || !editChecked}
-              onClick={() => setToConfirm("merge")}
-            >
-              Fusionner
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconCircleX size={16} />}
-              disabled={n === 0 || !editChecked}
-              onClick={() => setToConfirm("close")}
-            >
-              Fermer
-            </Menu.Item>
-            <Menu.Divider />
-            {/* Labels belong to the board, not to the checked requests:
-              this action requires none. */}
-            <Menu.Item
-              leftSection={<IconTags size={16} />}
-              disabled={!can("support", "update")}
-              onClick={openLabels}
-            >
-              Étiquettes
-            </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item
-              color={RED}
-              leftSection={<IconTrash size={16} />}
-              disabled={n === 0 || !deleteChecked}
-              onClick={() => setToConfirm("delete")}
-            >
-              Supprimer
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      )}
-
       {/* Right-click on a row: its actions, for it alone. */}
       {context && (
         <PointMenu
@@ -376,48 +362,6 @@ export default function SupportActions({
         cancelLabel="Annuler"
         confirmColor={text?.color}
       />
-
-      <Modal
-        attributes={themeWindow("support-labels")}
-        opened={managesLabels}
-        onClose={() => setManagingLabels(false)}
-        title="Étiquettes"
-        withCloseButton={false}
-        centered
-        size="lg"
-        padding={MODAL_PADDING}
-        styles={modalHeaderStyles(MODAL_PADDING)}
-      >
-        <Stack gap="md">
-          {labelList && (
-            <LabelGroupsEditor base="/support-labels" list={labelList} register={registerLabels} />
-          )}
-          {/* Nothing is sent before "Enregistrer": it saves, closes and has
-              the requests re-read, so that they show the labels as they were
-              just left. "Fermer" leaves everything as before. */}
-          <Footer parentGap="var(--mantine-spacing-md)">
-            <CloseButton onClick={() => setManagingLabels(false)} />
-            <Button
-              color="teal"
-              loading={savingLabels}
-              onClick={async () => {
-                setSavingLabels(true);
-                try {
-                  await saveLabels.current?.();
-                  setManagingLabels(false);
-                } catch (e) {
-                  notifyError(errorMessage(e));
-                } finally {
-                  setSavingLabels(false);
-                }
-                await onRefresh();
-              }}
-            >
-              Enregistrer
-            </Button>
-          </Footer>
-        </Stack>
-      </Modal>
 
       <Modal
         attributes={themeWindow("support-assign")}

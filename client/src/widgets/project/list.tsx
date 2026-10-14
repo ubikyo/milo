@@ -8,6 +8,7 @@ import BoardListFields from "../../components/ui/BoardListFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import type { WidgetConfigProps } from "../types";
 import type { ProjectIndicatorWidget } from "./types";
+import { PERCENT_HEIGHT } from "../height";
 
 // The projects list, as a widget: it sits in a section like an
 // indicator, and its configuration says what it displays — its columns. The
@@ -23,6 +24,7 @@ export const projectsListIndicator: ProjectIndicatorWidget = {
   // Once placed, the widget shows these columns; the others are added from its
   // drawer.
   defaultConfig: {
+    ...PERCENT_HEIGHT,
     [LIST_COLUMNS]: [
       "number",
       "name",

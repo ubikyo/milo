@@ -40,6 +40,7 @@ import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { ManagedDeviceAsset, Id } from "@milo/shared";
@@ -125,6 +126,43 @@ const VALUES: Record<ColumnKey, (a: ManagedDeviceAsset) => string | number | nul
   encrypted: (a) => (a.system_disk_encrypted == null ? null : a.system_disk_encrypted ? 1 : 0),
   disk: (a) => diskUsage(a.system_disk),
   inventory: (a) => dayjs(a.last_inventory).valueOf(),
+};
+
+/** Each column's filter, but the labels' (useColumnFilters). */
+const COLUMN_FILTERS: Record<Exclude<ColumnKey, "labels">, ColumnFilterSpec<ManagedDeviceAsset>> = {
+  name: { kind: "text", label: "asset", text: (a) => a.name },
+  os: { kind: "text", label: "système", text: (a) => (a.os ? osLabel(a.os) : null) },
+  user: { kind: "text", label: "utilisateur", text: (a) => a.user },
+  // The vendor, and apart, the protections to watch: none, or disabled.
+  protection: {
+    kind: "choice",
+    label: "antivirus",
+    all: "Tous",
+    order: ["none", "inactive"],
+    options: ({ protection: p }) => {
+      if (p.state === "unknown") return [];
+      if (p.state === "none") return [{ value: "none", label: "Aucun" }];
+      const name = p.name || p.company || "Protection";
+      return [
+        { value: `name:${name}`, label: name },
+        ...(p.state === "inactive" ? [{ value: "inactive", label: "Inactif", divider: true }] : []),
+      ];
+    },
+  },
+  encrypted: {
+    kind: "choice",
+    label: "chiffrement",
+    all: "Tous",
+    order: ["yes", "no"],
+    options: (a) =>
+      a.system_disk_encrypted == null
+        ? []
+        : a.system_disk_encrypted
+          ? [{ value: "yes", label: "Oui" }]
+          : [{ value: "no", label: "Non" }],
+  },
+  disk: { kind: "number", label: "disque", value: (a) => diskUsage(a.system_disk) },
+  inventory: { kind: "date", label: "actualisation", value: (a) => a.last_inventory },
 };
 
 function SortableTh({
@@ -337,6 +375,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(assets, labelsOf);
+  const columnFilter = useColumnFilters(assets, COLUMN_FILTERS);
   // A labels column limited to a group takes its name.
   const labelGroups = useLabelGroups("/managed-device-asset-labels");
   const isEditing = useIsEditing();
@@ -354,6 +393,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
     const factor = sort.direction === "asc" ? 1 : -1;
     return (assets ?? [])
       .filter(labelFilter.keep)
+      .filter(columnFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -364,7 +404,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [assets, sort, labelFilter.keep]);
+  }, [assets, sort, labelFilter.keep, columnFilter.keep]);
 
   // Texts go up first; the disk and the date start with the fullest and
   // the most recent.
@@ -425,7 +465,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
 
   /** The header of each column. */
   const headers: Record<ColumnKey, (id: string, group?: Id) => ReactNode> = {
-    name: (id) => th(id, "Asset", "name"),
+    name: (id) => th(id, "Asset", "name", undefined, undefined, columnFilter.filter("name")),
     labels: (id, group) =>
       th(
         id,
@@ -435,14 +475,26 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
         group,
         labelFilter.filter(group),
       ),
-    os: (id) => th(id, "Système", "os"),
-    user: (id) => th(id, "Dernier utilisateur connecté", "user"),
-    protection: (id) => th(id, "Antivirus", "protection"),
-    encrypted: (id) => th(id, "Chiffré", "encrypted"),
-    disk: (id) => th(id, "Disque", "disk", { width: DISK_BAR_WIDTH + DISK_PERCENT_WIDTH + DISK_GAP }),
+    os: (id) => th(id, "Système", "os", undefined, undefined, columnFilter.filter("os")),
+    user: (id) =>
+      th(id, "Dernier utilisateur connecté", "user", undefined, undefined, columnFilter.filter("user")),
+    protection: (id) =>
+      th(id, "Antivirus", "protection", undefined, undefined, columnFilter.filter("protection")),
+    encrypted: (id) =>
+      th(id, "Chiffré", "encrypted", undefined, undefined, columnFilter.filter("encrypted")),
+    disk: (id) =>
+      th(
+        id,
+        "Disque",
+        "disk",
+        { width: DISK_BAR_WIDTH + DISK_PERCENT_WIDTH + DISK_GAP },
+        undefined,
+        columnFilter.filter("disk"),
+      ),
     // What dates what was just read: a workstation off for three
     // weeks is spotted there.
-    inventory: (id) => th(id, "Dernière actualisation", "inventory"),
+    inventory: (id) =>
+      th(id, "Dernière actualisation", "inventory", undefined, undefined, columnFilter.filter("inventory")),
   };
 
   /** Each column's cell, for a workstation. */

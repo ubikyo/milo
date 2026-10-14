@@ -27,8 +27,8 @@ import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
+import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
 import { useResizableColumns } from "../ui/useResizableColumns";
-import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
 import { useWidgetAccess } from "../../lib/rights";
@@ -185,6 +185,16 @@ function LabelsCell({ labels }: { labels: Warehouse["labels"] }) {
 /** A warehouse's labels, for the labels filters (useLabelFilter). */
 const labelsOf = (w: Warehouse) => w.labels;
 
+/** The other columns' filters: a text searched (useColumnFilters). */
+const COLUMN_FILTERS: Record<"address", ColumnFilterSpec<Warehouse>> = {
+  address: {
+    kind: "text",
+    label: "adresse",
+    placeholder: "Rechercher une adresse",
+    text: (w) => warehouseAddress(w),
+  },
+};
+
 export default function WarehousesList({ config, blockId }: { config: unknown; blockId: Id }) {
   const boardId = useContext(CopyPasteContext)?.board?.id;
   const { warehouses: all, reload } = useWarehouses(boardId);
@@ -194,14 +204,14 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(warehouses, labelsOf);
+  const columnFilter = useColumnFilters(warehouses, COLUMN_FILTERS);
   const isFiltered =
     labelFilter.active ||
+    columnFilter.active ||
     (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(WAREHOUSE_ROUTES.labels);
-  const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
-  // Adding is for display mode: in edit mode, clicks go to the widget.
-  const canAdd = accessIncludes(access, "update") && !isEditing;
+  const canAdd = accessIncludes(access, "update");
   /** The drawer: closed, adding (null), or showing a warehouse. */
   const [drawer, setDrawer] = useState<{ warehouse: Warehouse | null } | null>(null);
 
@@ -221,6 +231,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
     return (warehouses ?? [])
       .filter((w) => chosen(filters, w))
       .filter(labelFilter.keep)
+      .filter(columnFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -231,7 +242,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [warehouses, sort, filters, labelFilter.keep]);
+  }, [warehouses, sort, filters, labelFilter.keep, columnFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the warehouses carry. */
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
@@ -319,7 +330,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
           onChange={(value) => setFilters((f) => ({ ...f, name: value }))}
         />,
       ),
-    address: (id) => th(id, "Adresse", "address"),
+    address: (id) => th(id, "Adresse", "address", columnFilter.filter("address")),
     city: (id) => th(id, "Ville", "city", choiceFilter("city", "ville", "Toutes")),
     country: (id) => th(id, "Pays", "country", choiceFilter("country", "pays", "Tous")),
   };
@@ -398,6 +409,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
                   onClick={() => {
                     setFilters(NO_FILTER);
                     labelFilter.reset();
+                    columnFilter.reset();
                   }}
                 >
                   <Text size="sm" c="teal">

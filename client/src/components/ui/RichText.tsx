@@ -215,7 +215,10 @@ interface RichTextFieldProps {
   contentEnd?: ReactNode;
   /** The lines the area shows before scrolling: five by default. */
   maxLines?: number;
-  /** The lines the area shows even when empty: just one by default. */
+  /**
+   * The lines the area shows even when empty: just one by default. The
+   * e-mail's template around the text (frame) keeps the same height.
+   */
   minLines?: number;
   /**
    * The field takes its parent's full height, square — a template window's
@@ -345,6 +348,7 @@ export default function RichTextField({
               // Under a preview, kept in place but unseen: the field keeps its height.
               ...(preview ? { visibility: "hidden" } : {}),
               ...(maxLines ? { "--milo-rich-lines": maxLines } : {}),
+              ...(minLines ? { "--milo-rich-min-lines": minLines } : {}),
               ...(fill && { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }),
             } as CSSProperties
           }

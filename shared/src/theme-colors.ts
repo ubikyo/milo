@@ -573,7 +573,7 @@ export const THEME_SIZES: ThemeSizeDefinition[] = [
   { key: "settings-list-accordion-gap", group: "settings-list-accordion", label: "Gap horizontal", hint: "Entre les éléments d'une ligne", defaultValue: 12, min: 0, max: 60, unit: "px", direction: "horizontal" },
   ...paddingSizes("settings-list-accordion-padding", { group: "settings-list-accordion", label: "Padding", hint: "Chaque ligne", defaultValue: 10, max: 40 }, { right: 15 }),
   { key: "settings-list-checkbox-gap", group: "settings-list-checkbox", label: "Gap horizontal", hint: "Entre les éléments d'une ligne", defaultValue: 12, min: 0, max: 60, unit: "px", direction: "horizontal" },
-  ...paddingSizes("settings-list-checkbox-padding", { group: "settings-list-checkbox", label: "Padding", hint: "Chaque ligne", defaultValue: 5, max: 40 }, { right: 10, left: 10 }),
+  ...paddingSizes("settings-list-checkbox-padding", { group: "settings-list-checkbox", label: "Padding", hint: "Chaque ligne", defaultValue: 5, max: 40 }, { left: 10 }),
   ...paddingSizes("settings-tab-padding", { group: "settings-all-tabs", label: "Padding", hint: "Chaque onglet", defaultValue: 10, max: 40 }, { right: 15, left: 15 }),
   // Between a tab's icon and its name: Mantine's "xs".
   { key: "settings-tab-icon-margin-right", group: "settings-all-tabs", label: "Marge droite de l'icône", defaultValue: 10, min: 0, max: 40, unit: "px", direction: "right" },

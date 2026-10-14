@@ -1,6 +1,6 @@
 import { ActionIcon, Group, Menu, Scroller, SegmentedControl } from "@mantine/core";
 import { IconEye, IconEyeOff, IconPencil, IconPlus, IconShare, IconTrash } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { View } from "@milo/shared";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import { MODE_SWITCH_TOP, PAGE_GUTTER } from "../../themes/layout";
@@ -46,6 +46,8 @@ interface ViewSwitchProps {
   onRenameOpened?: () => void;
   /** Name entry is over: validated — even unchanged —, or abandoned with Escape. */
   onRenameEnded?: (id: number, abandoned: boolean) => void;
+  /** Shown after the views and their "+": the "Nouvelle version disponible" banner. */
+  trailing?: ReactNode;
 }
 
 /**
@@ -101,6 +103,7 @@ export default function ViewSwitch({
   toRename,
   onRenameOpened,
   onRenameEnded,
+  trailing,
 }: ViewSwitchProps) {
   // Views are dragged like the tabs of a row (useTabReorder).
   const { ordered, tabProps, guardChange, insertAt } = useTabReorder(
@@ -319,6 +322,7 @@ export default function ViewSwitch({
             <IconPlus size={16} />
           </ActionIcon>
         )}
+        {trailing}
       </Group>
 
       {menu && (

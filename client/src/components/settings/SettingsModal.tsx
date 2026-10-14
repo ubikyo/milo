@@ -13,6 +13,7 @@ import {
 import {
   IconApi,
   IconDatabaseExport,
+  IconFlask,
   IconBrandWindows,
   IconLayoutNavbar,
   IconMail,
@@ -22,7 +23,7 @@ import {
   IconTopologyStar3,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { AdminPermissions, EntraStatus, PublicUser, Workspace } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -37,20 +38,34 @@ import { tabStyle } from "../../themes/tabs";
 import { themeWindow } from "../../lib/themeWindow";
 import { THEME_TAB_ATTRIBUTE } from "../theme/ThemeHighlight";
 import classes from "../../assets/styles/SettingsModal.module.css";
-import BackupTab from "./BackupTab";
-import EntraTab from "./EntraTab";
+import BackupTabView from "./BackupTab";
+import EntraTabView from "./EntraTab";
 import type { EntraCheckControls, EntraCheckPhase } from "./EntraTab";
-import TemplatesTab from "./TemplatesTab";
-import DisplayTab from "./DisplayTab";
-import PrintersTab from "./PrintersTab";
-import ProxiesTab from "./ProxiesTab";
-import WorkspacesTab from "./WorkspacesTab";
+import TemplatesTabView from "./TemplatesTab";
+import DisplayTabView from "./DisplayTab";
+import LabTabView from "./LabTab";
+import PrintersTabView from "./PrintersTab";
+import ProxiesTabView from "./ProxiesTab";
+import WorkspacesTabView from "./WorkspacesTab";
 import SettingsIntro from "./SettingsIntro";
-import AdministrationTab from "./AdministrationTab";
-import ApiTab from "./ApiTab";
+import AdministrationTabView from "./AdministrationTab";
+import ApiTabView from "./ApiTab";
 import type { ComponentType, ReactNode } from "react";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
+
+// All the tabs stay mounted (keepMountedMode): memoized, a tab change only
+// renders the tabs' column again, not the ten panels' content.
+const BackupTab = memo(BackupTabView);
+const EntraTab = memo(EntraTabView);
+const TemplatesTab = memo(TemplatesTabView);
+const DisplayTab = memo(DisplayTabView);
+const LabTab = memo(LabTabView);
+const PrintersTab = memo(PrintersTabView);
+const ProxiesTab = memo(ProxiesTabView);
+const WorkspacesTab = memo(WorkspacesTabView);
+const AdministrationTab = memo(AdministrationTabView);
+const ApiTab = memo(ApiTabView);
 
 const TABS: {
   value: string;
@@ -73,10 +88,10 @@ const TABS: {
   },
   {
     value: "proxy",
-    label: "Proxys",
+    label: "Proxies",
     icon: IconTopologyStar3,
     description:
-      "Les proxys Milo s’installent sur le réseau d’un site pour permettre à Milo, hébergé sur Internet, d’en joindre les périphériques — les imprimantes pour commencer. Chaque proxy se connecte à Milo en HTTPS avec son token, à coller dans /etc/milo.proxy.conf.",
+      "Les proxies Milo s’installent sur le réseau d’un site pour permettre à Milo, hébergé sur Internet, d’en joindre les périphériques — les imprimantes pour commencer. Chaque proxy se connecte à Milo en HTTPS avec son token, à coller dans /etc/milo.proxy.conf.",
   },
   {
     value: "printing",
@@ -97,6 +112,13 @@ const TABS: {
     icon: IconApi,
     description:
       "Les tokens API permettent à des clients externes (agents connectés via MCP, scripts, etc.) d’accéder à Milo. Chaque token agit comme un compte de service dont les droits sont limités aux workspaces autorisés, sans accès aux paramètres d’administration.",
+  },
+  {
+    value: "lab",
+    label: "Labo",
+    icon: IconFlask,
+    description:
+      "Fonctionnalités en cours de développement, à utiliser avec précaution dans un environnement de production.",
   },
   // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
@@ -119,6 +141,7 @@ const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
   proxy: () => true,
   display: () => true,
   api: () => true,
+  lab: () => true,
 };
 
 /**
@@ -210,6 +233,8 @@ export default function SettingsModal({
       notifyError(errorMessage(e));
     }
   }, [onUserChange]);
+  // Stable, like the reloads: the memoized tabs receive them.
+  const refreshAccount = useCallback(() => void reloadAccount(), [reloadAccount]);
   const reloadWorkspaces = useCallback(async () => {
     try {
       setWorkspaces(await api.getWorkspaces());
@@ -457,7 +482,7 @@ export default function SettingsModal({
               rights={user.workspace_rights}
               workspaces={workspaces}
               onChanged={reloadWorkspaces}
-              onAccessChanged={() => void reloadAccount()}
+              onAccessChanged={refreshAccount}
             />,
           )}
 
@@ -467,7 +492,7 @@ export default function SettingsModal({
               rights={user.administration}
               invite={invite}
               saveRef={saveAdministration}
-              onChange={() => void reloadAccount()}
+              onChange={refreshAccount}
             />,
           )}
 
@@ -487,6 +512,8 @@ export default function SettingsModal({
           )}
 
           {panel("backup", <BackupTab />)}
+
+          {panel("lab", <LabTab canEdit={canEdit} />)}
 
           {panel("api", <ApiTab canEdit={canEdit} workspaces={user.workspaces} />)}
 

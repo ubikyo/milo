@@ -10,7 +10,7 @@
 
 import { Stack } from "@mantine/core";
 import type { ComponentType, ReactNode } from "react";
-import { COMMON_WIDGET_TYPES, DECLARED_ASSET_KINDS } from "@milo/shared";
+import { COMMON_WIDGET_TYPES, DECLARED_ASSET_KINDS, SOURCES } from "@milo/shared";
 import type {
   AccessBlockType,
   ManagedDeviceAsset,
@@ -44,7 +44,8 @@ import {
 } from "./margins";
 import { appearanceRows } from "../components/ui/AppearanceFields";
 import { alignmentRows } from "./alignment";
-import { SourcesField, useSourceItems, useSources } from "../lib/sources";
+import { TYPE_LABELS, useSourceItems, useSources } from "../lib/sources";
+import { WidgetLinksField } from "../components/ui/WidgetLinks";
 import type { SourceItems } from "../lib/sources";
 import { heightRow } from "./height";
 import SettingRows, { frameRow } from "../components/ui/SettingRows";
@@ -106,7 +107,7 @@ const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> =>
     ];
     // Its height, then its alignment in it: its own configuration's, never
     // its style's.
-    const placement = [heightRow(config, onChange), ...alignmentRows(config, onChange)];
+    const placement = [heightRow(config, onChange, undefined, widget.defaultConfig), ...alignmentRows(config, onChange)];
     return (
       <Stack gap="xl">
         <widget.Config config={config} onChange={onChange} />
@@ -208,7 +209,7 @@ const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorCo
         <SettingRows
           label="Apparence"
           rows={[
-            ...(card ? appearanceRows(config, onChange, w.withValue) : []),
+            ...(card ? appearanceRows(config, onChange, w.withValue, !w.ownAlignment) : []),
             ...(w.frameless ? [] : [frameRow(config, onChange, FRAMED, isFramed(config, card), card)]),
             ...spacingRows(
               regularMargins(w),
@@ -216,10 +217,13 @@ const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorCo
               config,
               onChange,
             ),
-            heightRow(config, onChange),
-            ...alignmentRows(config, onChange),
+            heightRow(config, onChange, w.defaultHeight?.(config), w.defaultConfig),
+            ...(w.ownAlignment ? [] : alignmentRows(config, onChange)),
           ]}
         />
+        {w.ownAlignment?.(config, onChange).map((group) => (
+          <SettingRows key={group.label} label={group.label} rows={group.rows} />
+        ))}
         {chart && <SettingRows label="Apparence du graphique" rows={chart} />}
       </Stack>
     );
@@ -302,7 +306,13 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
         ...(wrapsSource && {
           Config: ({ config, onChange }: IndicatorConfigProps) => (
             <Stack gap="xl">
-              <SourcesField type={`${prefix}.list`} config={config} onChange={onChange} />
+              <WidgetLinksField
+                inputs={[
+                  { field: SOURCES, label: TYPE_LABELS[`${prefix}.list`] ?? "Widget", types: [`${prefix}.list`] },
+                ]}
+                config={config}
+                onChange={onChange}
+              />
               {Own && <Own config={config} onChange={onChange} />}
             </Stack>
           ),

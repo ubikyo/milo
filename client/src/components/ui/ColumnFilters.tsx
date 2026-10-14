@@ -1,5 +1,6 @@
-import { ActionIcon, Menu, Popover, ScrollArea, TextInput } from "@mantine/core";
-import { IconCheck, IconFilter } from "@tabler/icons-react";
+import { Fragment } from "react";
+import { ActionIcon, CloseButton, Menu, Popover, ScrollArea, TextInput } from "@mantine/core";
+import { IconCheck, IconFilter, IconSearch } from "@tabler/icons-react";
 
 // The funnels of the lists' column headers: a choice list, or a text to
 // type. Every list takes them (Support, Projets, Assets, Entrepôts…).
@@ -8,6 +9,8 @@ import { IconCheck, IconFilter } from "@tabler/icons-react";
 export interface FilterOption {
   value: string;
   label: string;
+  /** A line under the option: it closes a group of its own. */
+  divider?: boolean;
 }
 
 export const ALL_OPTION = "all";
@@ -47,8 +50,8 @@ export function ChoiceFilter({
         <ScrollArea.Autosize mah={360} type="auto" scrollbars="y" scrollbarSize={2} mx={-4}>
           <div style={{ padding: "0 4px" }}>
             {options.map((option) => (
+              <Fragment key={option.value}>
               <Menu.Item
-                key={option.value}
                 onClick={() => onChange(option.value)}
                 leftSection={
                   option.value === value ? <IconCheck size={14} /> : <span style={{ width: 14 }} />
@@ -56,6 +59,8 @@ export function ChoiceFilter({
               >
                 {option.label}
               </Menu.Item>
+              {option.divider && <Menu.Divider />}
+              </Fragment>
             ))}
           </div>
         </ScrollArea.Autosize>
@@ -69,14 +74,17 @@ export function TextFilter({
   label,
   value,
   onChange,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  /** In place of "Rechercher un <label>": a feminine noun, an example… */
+  placeholder?: string;
 }) {
   const active = value.trim() !== "";
   return (
-    <Popover position="bottom-end" withinPortal shadow="md" trapFocus>
+    <Popover position="bottom-end" withinPortal shadow="md" trapFocus radius={0}>
       <Popover.Target>
         <ActionIcon
           variant={active ? "light" : "subtle"}
@@ -90,7 +98,15 @@ export function TextFilter({
       <Popover.Dropdown>
         <TextInput
           size="xs"
-          placeholder={`Rechercher un ${label}`}
+          radius={0}
+          leftSection={<IconSearch size={14} />}
+          // Only with something typed: it empties the search.
+          rightSection={
+            value !== "" && (
+              <CloseButton size="sm" aria-label="Effacer la recherche" onClick={() => onChange("")} />
+            )
+          }
+          placeholder={placeholder ?? `Rechercher un ${label}`}
           value={value}
           onChange={(e) => onChange(e.currentTarget.value)}
           data-autofocus

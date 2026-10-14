@@ -3,6 +3,7 @@ import {
   Anchor,
   Box,
   Button,
+  Collapse,
   Group,
   Menu,
   Paper,
@@ -15,6 +16,7 @@ import {
 import { RichTextEditor } from "@mantine/tiptap";
 import {
   IconAlertTriangle,
+  IconArrowBackUp,
   IconChevronDown,
   IconMailCheck,
   IconMailOff,
@@ -38,7 +40,8 @@ import MailPreview from "../settings/MailPreview";
 import { MAIL_SLOT_MARKER } from "../ui/MailFrame";
 import { useReplyEditor } from "../../lib/reply-editor";
 import type { ThreadItem } from "../project/CommentThread";
-import { MILO_ACTOR_ID } from "@milo/shared";
+import { MILO_ACTOR_ID, withoutCursor } from "@milo/shared";
+import type { Editor } from "@tiptap/react";
 import type {
   Actor,
   SqliteBool,
@@ -617,8 +620,34 @@ const SENDINGS: { status: SupportStatus; label: string }[] = [
   { status: "closed", label: "Envoyer et définir comme fermé" },
 ];
 
+/** The cursor marks of a predefined reply ("{{cursor}}", CURSOR_VARIABLE). */
+const CURSOR_MARK = /\{\{\s*cursor\s*\}\}/g;
+
+/**
+ * Takes the cursor marks out of the editor, and puts the cursor where the
+ * first one was: its position, or null without one.
+ */
+const takeCursor = (editor: Editor): number | null => {
+  const found: { from: number; to: number }[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    for (const m of node.text.matchAll(CURSOR_MARK)) {
+      found.push({ from: pos + m.index, to: pos + m.index + m[0].length });
+    }
+  });
+  const first = found[0];
+  if (!first) return null;
+  const chain = editor.chain();
+  // From the last: the positions before it stay right.
+  for (const range of [...found].reverse()) chain.deleteRange(range);
+  chain.setTextSelection(first.from).run();
+  return first.from;
+};
+
 /**
  * The reply: the editor and its button, placed under the messages panel.
+ * Folded at first behind a dark grey "Répondre", full width, against the exchanges: a click unfolds it
+ * for good — until the drawer is left — and puts the cursor where one writes.
  * The editor is cleared once the message is sent; if it is refused, the text
  * stays, so that it is not lost.
  *
@@ -637,6 +666,7 @@ export function SupportReply({
   snippets = [],
   blocks,
   preview,
+  onAttachedChange,
 }: {
   /**
    * What the editor carries by default — the default contents from Settings:
@@ -672,6 +702,11 @@ export function SupportReply({
    * that shows it light or dark.
    */
   preview?: (html: string) => Promise<string>;
+  /**
+   * Told whether the folded "Répondre" sticks under the exchanges: their
+   * panel then squares its bottom corners.
+   */
+  onAttachedChange?: (attached: boolean) => void;
 }) {
   // Its tables' variables, shown as tables: the store is the editor's, built once.
   const [store] = useState(() => (blocks ? createBlockStore() : undefined));
@@ -690,6 +725,8 @@ export function SupportReply({
   const [files, setFiles] = useState<File[]>([]);
   // What the editor received from the template, as the editor renders it.
   const appliedTemplate = useRef("");
+  // Where its "{{cursor}}" put the cursor; without one, at the start.
+  const cursorAt = useRef<number | null>(null);
 
   /** Sets the template, cursor at the start: you write before the signature. */
   // Touched since the template was set: "Envoyer" turns green.
@@ -737,10 +774,33 @@ export function SupportReply({
   }, [view, editor]);
   // The panel of the attachments, the paperclip's: its drop zone.
   const [filesOpen, setFilesOpen] = useState(false);
+  // Folded behind "Répondre" until clicked; it does not fold back.
+  const [unfolded, setUnfolded] = useState(false);
+  // Once unfolded and shown, the cursor goes where one writes: before the
+  // signature, as the template sets it.
+  useEffect(() => {
+    if (unfolded) editor?.commands.focus(cursorAt.current ?? "start");
+  }, [unfolded, editor]);
+  // Unfolding, the drawer follows the editor as it grows, down to "Envoyer":
+  // frame after frame, until the animation ends.
+  const unfoldedBox = useRef<HTMLDivElement>(null);
+  const following = useRef(0);
+  const follow = () => {
+    unfoldedBox.current?.scrollIntoView({ block: "end" });
+    following.current = requestAnimationFrame(follow);
+  };
+  const stopFollowing = () => cancelAnimationFrame(following.current);
+  useEffect(() => stopFollowing, []);
+  // Folded, "Répondre" sticks under the exchanges; gone, it no longer does.
+  useEffect(() => {
+    onAttachedChange?.(!unfolded);
+    return () => onAttachedChange?.(false);
+  }, [unfolded, onAttachedChange]);
 
   const applyTemplate = useCallback(() => {
     if (!editor) return;
     editor.chain().setContent(asBlocks(template)).setTextSelection(1).run();
+    cursorAt.current = takeCursor(editor);
     appliedTemplate.current = editor.getHTML();
     setTouched(false);
     // The tables follow the order without the template being set again.
@@ -772,7 +832,8 @@ export function SupportReply({
 
   const send = async (status: SupportStatus) => {
     if (!editor || tooHeavy || blockedReason) return;
-    const html = editor.getHTML();
+    // A mark typed by hand never goes out.
+    const html = withoutCursor(editor.getHTML());
     if (isEmpty(html)) return;
     setSending(true);
     try {
@@ -869,170 +930,219 @@ export function SupportReply({
     </Group>
   );
 
+  // Folded, the editor stays mounted, hidden: the template is set in it as usual.
   return (
-    <RichTextField
-      editor={editor}
-      noBlocks
-      // A reply is written at greater length than a comment: fifteen lines
-      // before scrolling.
-      maxLines={15}
-      frame={view === "layout" ? frame : ""}
-      frameDark={dark}
-      // At the toolbar's end, still active under a preview: the editor, or
-      // the e-mail it makes; then the sun or the moon, light or dark.
-      toolbarLast={
-        preview && (
-          <>
-            <SegmentedControl
-              size="xs"
-              aria-label="Affichage"
-              data={[
-                { value: "content", label: "Contenu" },
-                { value: "layout", label: "Mise en page" },
-                { value: "preview", label: "Aperçu" },
-              ]}
-              value={view}
-              onChange={(v) => setView(v as typeof view)}
-            />
-            {/* The text alone has no e-mail to show light or dark: greyed. */}
-            <RichTextEditor.Control
-              onClick={() => setDark((d) => !d)}
-              disabled={view === "content"}
-              aria-label={dark ? "Afficher en clair" : "Afficher en sombre"}
-            >
-              {dark ? <IconSun size={16} /> : <IconMoon size={16} />}
-            </RichTextEditor.Control>
-          </>
-        )
-      }
-      preview={
-        view === "preview" && (
-          <Box h="100%">
-            <MailPreview html={previewHtml} dark={dark} scheme={scheme} dragging={false} />
-          </Box>
-        )
-      }
-      toolbarControls={
-        (byEmail || withFiles) && (
-          <>
-            {withFiles && (
-              <RichTextEditor.Control
-                onClick={() => setFilesOpen((open) => !open)}
-                active={filesOpen}
-                aria-label="Joindre des fichiers"
-              >
-                <IconPaperclip size={16} />
-              </RichTextEditor.Control>
-            )}
-            {byEmail && (
+    <>
+      {!unfolded && (
+        // In the colour and height of "Envoyer", which it gives way to.
+        <Button
+          color="dark"
+          variant="filled"
+          size="compact-sm"
+          fullWidth
+          h={36}
+          style={{
+            "--button-bg": "var(--milo-dark-button)",
+            "--button-hover": "var(--milo-dark-button-hover)",
+            flex: "0 0 auto",
+            // Against the exchanges above it: the gap of the Stack that holds
+            // them both is taken back, and its top corners are square.
+            marginTop: "calc(-1 * var(--stack-gap, 0px))",
+            borderRadius: `0 0 ${corner} ${corner}`,
+          } as CSSProperties}
+          leftSection={<IconArrowBackUp size={16} />}
+          onClick={() => setUnfolded(true)}
+        >
+          Répondre
+        </Button>
+      )}
+      {/* Folded, the editor stays mounted, hidden; it unfolds animated. */}
+      <Collapse
+        ref={unfoldedBox}
+        expanded={unfolded}
+        keepMountedMode="display-none"
+        onTransitionStart={() => {
+          stopFollowing();
+          if (unfolded) follow();
+        }}
+        onTransitionEnd={() => {
+          stopFollowing();
+          if (unfolded) unfoldedBox.current?.scrollIntoView({ block: "end" });
+        }}
+      >
+        <RichTextField
+          editor={editor}
+          noBlocks
+          // A reply is written at greater length than a comment: fifteen lines
+          // before scrolling.
+          maxLines={15}
+          // With the views, fifteen lines even short: "Contenu", "Mise en page"
+          // and "Aperçu" keep the same height.
+          minLines={preview ? 15 : undefined}
+          frame={view === "layout" ? frame : ""}
+          frameDark={dark}
+          // At the toolbar's end, still active under a preview: the editor, or
+          // the e-mail it makes; then the sun or the moon, light or dark.
+          toolbarLast={
+            preview && (
               <>
+                <SegmentedControl
+                  size="xs"
+                  aria-label="Affichage"
+                  data={[
+                    { value: "content", label: "Contenu" },
+                    { value: "layout", label: "Mise en page" },
+                    { value: "preview", label: "Aperçu" },
+                  ]}
+                  value={view}
+                  onChange={(v) => setView(v as typeof view)}
+                />
+                {/* The text alone has no e-mail to show light or dark: greyed. */}
                 <RichTextEditor.Control
-                  onClick={() => toggle(cc, setCc)}
-                  active={cc !== null}
-                  aria-label="Copie"
-                  px={6}
-                  w="auto"
+                  onClick={() => setDark((d) => !d)}
+                  disabled={view === "content"}
+                  aria-label={dark ? "Afficher en clair" : "Afficher en sombre"}
                 >
-                  <Text size="xs" fw={600} c="inherit">
-                    CC
-                  </Text>
-                </RichTextEditor.Control>
-                <RichTextEditor.Control
-                  onClick={() => toggle(bcc, setBcc)}
-                  active={bcc !== null}
-                  aria-label="Copie cachée"
-                  px={6}
-                  w="auto"
-                >
-                  <Text size="xs" fw={600} c="inherit">
-                    CCI
-                  </Text>
+                  {dark ? <IconSun size={16} /> : <IconMoon size={16} />}
                 </RichTextEditor.Control>
               </>
-            )}
-          </>
-        )
-      }
-      // The predefined replies, behind an icon at the toolbar's end: the one
-      // chosen goes where the cursor was — the editor keeps its selection.
-      toolbarEnd={
-        snippets.length > 0 && (
-          <Menu position="bottom-end" withinPortal shadow="md">
-            <Menu.Target>
-              <RichTextEditor.Control aria-label="Insérer une réponse pré-définie">
-                <IconMessagePlus size={16} />
-              </RichTextEditor.Control>
-            </Menu.Target>
-            <Menu.Dropdown>
-              {snippets.map((s) => (
-                <Menu.Item
-                  key={s.value}
-                  onClick={() => editor?.chain().focus().insertContent(asBlocks(s.html)).run()}
-                >
-                  {s.label}
-                </Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
-        )
-      }
-      // The chosen attachments, as in the messages, under the text;
-      // each is removed with a cross as long as the reply has not been sent.
-      contentEnd={
-        (files.length > 0 || (withFiles && filesOpen)) && (
-          <>
-            {files.length > 0 && (
-              <FileList
-                px={10}
-                rows={files.map((f, rank) => ({
-                  key: `${rank}-${f.name}`,
-                  name: f.name,
-                  size: f.size,
-                  onRemove: () =>
-                    setFiles((already) => already.filter((_, i) => i !== rank)),
-                }))}
-              />
-            )}
-            {/* The paperclip's panel, between the text and "Envoyer", a line
-                above it as the copies' rows: files dropped, or chosen with a
-                click, join the list. */}
-            {withFiles && filesOpen && (
-              <Box
-                px={10}
-                py={10}
-                style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
-              >
-                <FileDropzone
-                  icon={IconPaperclip}
-                  message="Déposez des fichiers ici, ou cliquez pour en choisir"
-                  onDrop={(dropped) => setFiles((already) => [...already, ...dropped])}
-                />
+            )
+          }
+          preview={
+            view === "preview" && (
+              <Box h="100%">
+                <MailPreview html={previewHtml} dark={dark} scheme={scheme} dragging={false} />
               </Box>
-            )}
-            {tooHeavy && (
-              <Text size="xs" c="red" px={12} pb={6}>
-                Les pièces jointes d'une réponse par e-mail ne dépassent pas 3
-                Mo au total.
-              </Text>
-            )}
-          </>
-        )
-      }
-      topSection={
-        byEmail &&
-        (cc !== null || bcc !== null) && (
-          <>
-            {cc !== null && (
-              <RecipientsInput label="CC" value={cc} onChange={setCc} />
-            )}
-            {bcc !== null && (
-              <RecipientsInput label="CCI" value={bcc} onChange={setBcc} />
-            )}
-          </>
-        )
-      }
-      // Under the editor, full width, flush against the borders.
-      bottomBar={buttons}
-    />
+            )
+          }
+          toolbarControls={
+            (byEmail || withFiles) && (
+              <>
+                {withFiles && (
+                  <RichTextEditor.Control
+                    onClick={() => setFilesOpen((open) => !open)}
+                    active={filesOpen}
+                    aria-label="Joindre des fichiers"
+                  >
+                    <IconPaperclip size={16} />
+                  </RichTextEditor.Control>
+                )}
+                {byEmail && (
+                  <>
+                    <RichTextEditor.Control
+                      onClick={() => toggle(cc, setCc)}
+                      active={cc !== null}
+                      aria-label="Copie"
+                      px={6}
+                      w="auto"
+                    >
+                      <Text size="xs" fw={600} c="inherit">
+                        CC
+                      </Text>
+                    </RichTextEditor.Control>
+                    <RichTextEditor.Control
+                      onClick={() => toggle(bcc, setBcc)}
+                      active={bcc !== null}
+                      aria-label="Copie cachée"
+                      px={6}
+                      w="auto"
+                    >
+                      <Text size="xs" fw={600} c="inherit">
+                        CCI
+                      </Text>
+                    </RichTextEditor.Control>
+                  </>
+                )}
+              </>
+            )
+          }
+          // The predefined replies, behind an icon at the toolbar's end: the one
+          // chosen goes where the cursor was — the editor keeps its selection.
+          toolbarEnd={
+            snippets.length > 0 && (
+              <Menu position="bottom-end" withinPortal shadow="md">
+                <Menu.Target>
+                  <RichTextEditor.Control aria-label="Insérer une réponse pré-définie">
+                    <IconMessagePlus size={16} />
+                  </RichTextEditor.Control>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  {snippets.map((s) => (
+                    <Menu.Item
+                      key={s.value}
+                      onClick={() => {
+                        if (!editor) return;
+                        editor.chain().focus().insertContent(asBlocks(s.html)).run();
+                        // Its "{{cursor}}", if it has one, takes the cursor.
+                        takeCursor(editor);
+                      }}
+                    >
+                      {s.label}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+            )
+          }
+          // The chosen attachments, as in the messages, under the text;
+          // each is removed with a cross as long as the reply has not been sent.
+          contentEnd={
+            (files.length > 0 || (withFiles && filesOpen)) && (
+              <>
+                {files.length > 0 && (
+                  <FileList
+                    px={10}
+                    rows={files.map((f, rank) => ({
+                      key: `${rank}-${f.name}`,
+                      name: f.name,
+                      size: f.size,
+                      onRemove: () =>
+                        setFiles((already) => already.filter((_, i) => i !== rank)),
+                    }))}
+                  />
+                )}
+                {/* The paperclip's panel, between the text and "Envoyer", a line
+                    above it as the copies' rows: files dropped, or chosen with a
+                    click, join the list. */}
+                {withFiles && filesOpen && (
+                  <Box
+                    px={10}
+                    py={10}
+                    style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
+                  >
+                    <FileDropzone
+                      icon={IconPaperclip}
+                      message="Déposez des fichiers ici, ou cliquez pour en choisir"
+                      onDrop={(dropped) => setFiles((already) => [...already, ...dropped])}
+                    />
+                  </Box>
+                )}
+                {tooHeavy && (
+                  <Text size="xs" c="red" px={12} pb={6}>
+                    Les pièces jointes d'une réponse par e-mail ne dépassent pas 3
+                    Mo au total.
+                  </Text>
+                )}
+              </>
+            )
+          }
+          topSection={
+            byEmail &&
+            (cc !== null || bcc !== null) && (
+              <>
+                {cc !== null && (
+                  <RecipientsInput label="CC" value={cc} onChange={setCc} />
+                )}
+                {bcc !== null && (
+                  <RecipientsInput label="CCI" value={bcc} onChange={setBcc} />
+                )}
+              </>
+            )
+          }
+          // Under the editor, full width, flush against the borders.
+          bottomBar={buttons}
+        />
+      </Collapse>
+    </>
   );
 }

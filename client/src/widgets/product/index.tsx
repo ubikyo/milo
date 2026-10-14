@@ -10,6 +10,7 @@ import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import type { ContactWidget } from "../contact";
 import type { IndicatorConfigProps } from "../support/types";
+import { PERCENT_HEIGHT } from "../height";
 
 /**
  * The list settings: at the top, the board's product labels, then its
@@ -32,7 +33,7 @@ export const productListWidget: ContactWidget = {
   kind: "logistics",
   label: "Produits",
   icon: IconPackage,
-  defaultConfig: {},
+  defaultConfig: { ...PERCENT_HEIGHT },
   ownClicks: true,
   fill: true,
   Display: ({ config, id }) => <ProductsList config={config} blockId={id} />,

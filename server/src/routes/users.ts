@@ -11,10 +11,10 @@
 
 import { Router } from "express";
 import { WIDGET_KINDS } from "@milo/shared";
-import type { DirectoryUser, Id, WidgetKind } from "@milo/shared";
+import type { DirectoryUser, EntraPrincipal, Id, WidgetKind } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { fullName } from "../lib/auth.js";
-import { searchInDirectory, entraProfile } from "../lib/entra.js";
+import { entraGroupMembers, searchInDirectory, entraProfile } from "../lib/entra.js";
 import { badRequest, orNotFound, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -110,6 +110,30 @@ userRoutes.get("/directory", (req, res, next) => {
           }),
       ),
     )
+    .catch(next);
+});
+
+/** Whether a person of the directory already has a Milo account: theirs, or null. */
+const directoryUser = (p: EntraPrincipal): DirectoryUser => {
+  const account = users.byEntraId.get(p.id) ?? (p.email ? users.byEmail.get(p.email) : undefined);
+  return { oid: p.id, name: p.name, email: p.email, user_id: account?.id ?? null, synced: p.synced };
+};
+
+/**
+ * The users and groups of the Entra directory whose name or address starts
+ * with what is typed: the Support actors may be anyone in the directory.
+ */
+userRoutes.get("/directory/principals", (req, res, next) => {
+  searchInDirectory(String(req.query["q"] ?? ""), "all")
+    .then((matches) => res.json(matches))
+    .catch(next);
+});
+
+/** The users of a directory group — those of its subgroups included. */
+userRoutes.get("/directory/groups/:oid/members", (req, res, next) => {
+  const oid = requireText(req.params.oid, "Identifiant requis");
+  entraGroupMembers(oid)
+    .then((members) => res.json(members.map(directoryUser)))
     .catch(next);
 });
 

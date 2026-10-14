@@ -28,8 +28,8 @@ export const supportReplyEventLabel = (event: string): string =>
 
 /**
  * When a default content is placed in the editor of a team reply.
- * "Tout message" is appended at the end of all — a signature; the others
- * follow the request thread, and go first:
+ * "Tout message" goes in every reply; the others follow the request
+ * thread. Those placed go together in the list's order:
  * - "Nouveau message": the thread is empty, the team writes the first one;
  * - "Première réponse": the sender has written, the team has not yet;
  * - "Réponse suivante": the team has already replied.
@@ -59,17 +59,17 @@ export interface SupportContent {
 }
 
 /** Where a variable comes from: the writing account, the sender, the request. */
-export const SUPPORT_VARIABLE_GROUPS = ["Utilisateur", "Expéditeur", "Demande"] as const;
+export const SUPPORT_VARIABLE_GROUPS = ["Utilisateur", "Demandeur", "Ticket"] as const;
 
 export type SupportVariableGroup = (typeof SUPPORT_VARIABLE_GROUPS)[number];
 
 /**
  * What a template can cite: "{{ticket.number}}" becomes "HLP-12" in
- * the message. The user ("user") is the signed-in account, the sender
- * ("sender") that of the request: their records come from Entra. Templates
- * stored before cited these variables in French
- * ("{{demande.numero}}"): the migration rewrote them
- * (LEGACY_SUPPORT_VARIABLES).
+ * the message. The user ("user") is the signed-in account, the requester
+ * ("requester") the request's sender: their records come from Entra.
+ * Templates stored before cited these variables in French
+ * ("{{demande.numero}}"), then the requester as "{{sender.email}}": the
+ * migrations rewrote them (migrateSupportTemplate).
  */
 export const SUPPORT_REPLY_VARIABLES = [
   { group: "Utilisateur", key: "user.first_name", label: "Prénom" },
@@ -86,13 +86,13 @@ export const SUPPORT_REPLY_VARIABLES = [
   { group: "Utilisateur", key: "user.state", label: "Département (adresse)" },
   { group: "Utilisateur", key: "user.postal_code", label: "Code postal" },
   { group: "Utilisateur", key: "user.country", label: "Pays" },
-  { group: "Expéditeur", key: "sender.first_name", label: "Prénom" },
-  { group: "Expéditeur", key: "sender.last_name", label: "Nom" },
-  { group: "Expéditeur", key: "sender.full_name", label: "Nom complet" },
-  { group: "Expéditeur", key: "sender.email", label: "Adresse e-mail" },
-  { group: "Demande", key: "ticket.number", label: "Numéro" },
-  { group: "Demande", key: "ticket.subject", label: "Objet" },
-  { group: "Demande", key: "ticket.status", label: "Statut" },
+  { group: "Demandeur", key: "requester.first_name", label: "Prénom" },
+  { group: "Demandeur", key: "requester.last_name", label: "Nom" },
+  { group: "Demandeur", key: "requester.full_name", label: "Nom complet" },
+  { group: "Demandeur", key: "requester.email", label: "Adresse e-mail" },
+  { group: "Ticket", key: "ticket.number", label: "Numéro" },
+  { group: "Ticket", key: "ticket.subject", label: "Objet" },
+  { group: "Ticket", key: "ticket.status", label: "Statut" },
 ] as const satisfies readonly {
   group: SupportVariableGroup;
   key: string;
@@ -102,8 +102,10 @@ export const SUPPORT_REPLY_VARIABLES = [
 /** The groups and fields of the former variables, mapped to today's. */
 const LEGACY_VARIABLE_GROUPS: Record<string, string> = {
   utilisateur: "user",
-  expediteur: "sender",
+  expediteur: "requester",
   demande: "ticket",
+  // Then named in English, before the "Demandeur": "{{sender.email}}".
+  sender: "requester",
 };
 const LEGACY_VARIABLE_FIELDS: Record<string, string> = {
   prenom: "first_name",
@@ -124,9 +126,10 @@ const LEGACY_VARIABLE_FIELDS: Record<string, string> = {
 };
 
 /**
- * An HTML template whose former French variables ("{{demande.numero}}")
- * are rewritten as today ("{{ticket.number}}"); the rest as
- * is. Used by the database migration.
+ * An HTML template whose former variables — French ("{{demande.numero}}"),
+ * or the requester as "{{sender.email}}" — are rewritten as today
+ * ("{{ticket.number}}", "{{requester.email}}"); the rest as is. Used by the
+ * database migrations.
  */
 export const migrateSupportTemplate = (template: string): string =>
   template.replace(/\{\{(\s*)([\w.]+)(\s*)\}\}/g, (match, before: string, key: string, after: string) => {
@@ -222,7 +225,7 @@ export const supportReplyValues = ({
     "ticket.subject": request.subject,
     "ticket.status": supportStatusLabel(request.status),
   };
-  const people = { user, sender };
+  const people = { user, requester: sender };
   for (const v of SUPPORT_REPLY_VARIABLES) {
     const [who, field] = v.key.split(".") as [string, keyof SupportPerson];
     if (who === "ticket") continue;
@@ -242,6 +245,24 @@ const escapeHtml = (text: string): string =>
  * An HTML template in which "{{ticket.number}}" is replaced by its value,
  * escaped; an unknown variable is left as is.
  */
+/**
+ * Where the cursor goes when a predefined reply drops into the editor: cited
+ * in a template, "{{cursor}}" is taken out there, and the cursor put in its
+ * place — the first one, when several contents carry it. Never sent.
+ */
+export const CURSOR_VARIABLE = {
+  group: "Rédaction",
+  key: "cursor",
+  label: "Curseur",
+  sample: "",
+} as const;
+
+export const CURSOR_TOKEN = `{{${CURSOR_VARIABLE.key}}}`;
+
+/** A message without its cursor marks: what goes out. */
+export const withoutCursor = (html: string): string =>
+  html.replace(/\{\{\s*cursor\s*\}\}/g, "");
+
 export const fillSupportTemplate = (template: string, values: Record<string, string>): string =>
   template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) =>
     key in values ? escapeHtml(values[key]!) : match,

@@ -36,7 +36,7 @@ import {
   supportComments,
   supportRequests,
 } from "../repositories/support.js";
-import { receivedMailboxes, type Inbox } from "../repositories/inboxes.js";
+import { newTicketActors, receivedMailboxes, type Inbox } from "../repositories/inboxes.js";
 import { users } from "../repositories/users.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import {
@@ -59,7 +59,7 @@ import {
   ticketUrl,
 } from "./ticket-files.js";
 import { miloUrl } from "./milo-url.js";
-import { notify, requestTitle } from "./notify.js";
+import { notify, notifyNewTicket, requestTitle } from "./notify.js";
 import { parisTime, now } from "./time.js";
 import { supportSettings } from "../routes/support-settings.js";
 import { sendAutoReply } from "./support-auto-reply.js";
@@ -466,6 +466,15 @@ const receive = async (
   }
   if (!imported) return { imported, alreadyThere: false, replied: false };
   if (followUp.replied) repliedByEmail(followUp.replied, mail);
+  // Each list tells its own actors of the ticket it has just received.
+  const created = followUp.created ? supportRequests.byId.get(followUp.created) : undefined;
+  if (created) {
+    notifyNewTicket({
+      request: created,
+      recipients: newTicketActors(created.board_id, created.list_key),
+      base: miloUrl(),
+    });
+  }
   // The Settings' default replies: the acknowledgement of receipt of a new
   // request, or the note saying a closed request is reopened. The sender
   // receives them only once, even if several lists have the inbox.
