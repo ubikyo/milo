@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { WAREHOUSE_SETTINGS_DEFAULTS } from "@milo/shared";
 import type { WarehouseSettings } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -66,6 +67,7 @@ export default function WarehouseTablesFields() {
     <CountryRows
       value={settings.countries}
       onChange={(countries) => setSettings((s) => ({ ...s, countries }))}
+      defaults={WAREHOUSE_SETTINGS_DEFAULTS.countries}
     />
   );
 }

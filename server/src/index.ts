@@ -6,7 +6,7 @@ import { createApp } from "./app.js";
 import { env } from "./env.js";
 import { FEED_POLL_INTERVAL, pollAllFeeds } from "./lib/feed.js";
 import { REMINDERS_INTERVAL, sendReminders } from "./lib/reminders.js";
-import { POLL_INTERVAL, pollMailboxes } from "./lib/support-mail.js";
+import { POLL_CHECK_INTERVAL, pollIsDue, pollMailboxes } from "./lib/support-mail.js";
 import { MAINTENANCE_INTERVAL, maintainSubscriptions } from "./lib/support-webhooks.js";
 import { M365_MAINTENANCE_INTERVAL, maintainM365Subscriptions } from "./lib/m365-webhooks.js";
 import { attachProxyHub, closeProxyHub } from "./lib/proxy-hub.js";
@@ -31,13 +31,16 @@ const purge = () => {
 purge();
 setInterval(purge, 24 * 60 * 60 * 1000).unref();
 
-// Companies' support mailboxes are polled at startup, then every five
-// minutes: each e-mail received there becomes a request.
+// Companies' support mailboxes are polled at startup, then at the interval
+// Support's settings set (five minutes by default): each e-mail received there
+// becomes a request. The check runs every minute, so that a new interval
+// applies without restarting.
 const poll = () => {
+  if (!pollIsDue()) return;
   pollMailboxes().catch((error) => console.error("Support mailbox polling:", error));
 };
 poll();
-setInterval(poll, POLL_INTERVAL).unref();
+setInterval(poll, POLL_CHECK_INTERVAL).unref();
 
 // RSS item feeds are polled by the server, each at the interval its items
 // set (30 minutes by default): the background poll checks every minute which

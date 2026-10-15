@@ -4,22 +4,32 @@
 
 import { Stack } from "@mantine/core";
 import { IconPackage } from "@tabler/icons-react";
+import { PRODUCT_SUPPLIER_SOURCES, TAX_SOURCES } from "@milo/shared";
 import ProductsList, { PRODUCT_COLUMNS } from "../../components/products/ProductsList";
 import ProductTablesFields from "../../components/products/ProductTablesFields";
 import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
+import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import type { ContactWidget } from "../contact";
 import type { IndicatorConfigProps } from "../support/types";
 import { PERCENT_HEIGHT } from "../height";
 
 /**
- * The list settings: at the top, the board's product labels, then its
- * categories tree, then the grid's columns. The variants are each product's
- * own, in its drawer.
+ * The list settings: at the top, the Contact widgets its suppliers come from
+ * and the Taxes widgets its prices' taxes come from, on any board; then the board's product labels, its categories tree,
+ * then the grid's columns. The variants are each product's own, in its drawer.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
+      <WidgetLinksField
+        inputs={[
+          { field: PRODUCT_SUPPLIER_SOURCES, label: "Fournisseurs", types: ["contact.list"] },
+          { field: TAX_SOURCES, label: "Taxes", types: ["tax.list"] },
+        ]}
+        config={props.config}
+        onChange={props.onChange}
+      />
       {/* The board's labels and categories: they go to saving. */}
       <LabelGroupFields kind="product-labels" />
       <ProductTablesFields />

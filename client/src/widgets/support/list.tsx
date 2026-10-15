@@ -1,11 +1,12 @@
 import { Stack } from "@mantine/core";
 import { IconList, IconMailbox } from "@tabler/icons-react";
 import Inboxes, { looksLikeAddress } from "../../components/support/Inboxes";
-import { inboxesWithProblem, inboxesOf } from "../../components/ui/ReceptionField";
+import { inboxesOf } from "../../components/ui/ReceptionField";
 import { useConfirmations } from "../../lib/confirmations";
 import {
   NEW_MESSAGE_LABELS,
   NEW_TICKET_ACTORS,
+  SUPPORT_DEFAULT_COLUMNS,
   SUPPORT_NEW_MESSAGE_LABELS,
   TICKETS_MAIL_TEMPLATE_KEYS,
   listKey,
@@ -15,7 +16,6 @@ import ActorPicker from "../../components/ui/ActorPicker";
 import { useUsers } from "../../lib/users";
 import SupportOptions from "../../components/support/SupportOptions";
 import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
-import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import EmptyPanel from "../../components/ui/EmptyPanel";
 import { DRAWER_WIDTH } from "../../components/ui/IndicatorDrawer";
 import ColumnFields from "../../components/ui/ColumnFields";
@@ -23,6 +23,7 @@ import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import NewMessageLabels from "../../components/settings/NewMessageLabels";
 import { useSupportLabels } from "../../lib/label-groups";
 import { withField } from "../types";
+import { useListRef } from "../../lib/list-ref";
 import SupportRequestsList, {
   MAILBOXES,
   SUPPORT_COLUMNS,
@@ -81,11 +82,13 @@ function NewTicketActors({ config, onChange }: IndicatorConfigProps) {
 function ListFields(props: IndicatorConfigProps) {
   const canEditSettings = useSettingsMode();
   const canEditTemplates = useTemplatesAccess();
+  // Its e-mail templates and replies are its own.
+  const list = useListRef();
   return (
     <Stack gap="xl">
       <NewTicketActors {...props} />
       <Inboxes {...props} />
-      <ColumnFields columns={SUPPORT_COLUMNS} {...props} />
+      <ColumnFields columns={SUPPORT_COLUMNS} defaults={SUPPORT_DEFAULT_COLUMNS} {...props} />
       {/* The board's Support labels: they go to saving. */}
       <LabelGroupFields kind="support-labels" />
       {/* Right under the labels it picks from. */}
@@ -93,7 +96,7 @@ function ListFields(props: IndicatorConfigProps) {
       {canEditSettings && (
         <>
           <SupportOptions canEdit part="settings" />
-          <MailTemplates canEdit={canEditTemplates} only={TICKETS_MAIL_TEMPLATE_KEYS} />
+          <MailTemplates canEdit={canEditTemplates} only={TICKETS_MAIL_TEMPLATE_KEYS} list={list} />
           {/* The replies after the templates they are laid out in. */}
           <SupportOptions canEdit part="replies" />
         </>
@@ -102,7 +105,7 @@ function ListFields(props: IndicatorConfigProps) {
   );
 }
 
-/** The list, or the prompt to review its settings when its inboxes do not hold. */
+/** The list, or the prompt to add an inbox while none is confirmed. */
 function ListIndicator({
   config,
   onEdit,
@@ -112,35 +115,29 @@ function ListIndicator({
     typeof b.email === "string" ? b.email : "",
   );
   const { isRead, confirmed } = useConfirmations(listKey(config), emails);
-  // No inbox: "Ajouter" opens the drawer, where they are named — as for Mail.
-  if (emails.length === 0) {
+  // As long as the confirmations are not read, nothing shows: the list
+  // does not appear only to make way for the prompt a moment later.
+  if (emails.length > 0 && !isRead) return null;
+  // No confirmed inbox — none yet, or still waiting for its code: "Ajouter"
+  // opens the drawer, where they are named and confirmed — as for Mail. One
+  // confirmed inbox is enough for the list to work.
+  if (!emails.some((e) => looksLikeAddress(e.trim()) && confirmed(e))) {
     return (
       <EmptyPanel
         icon={IconMailbox}
         message="Aucune boîte aux lettres"
         actionLabel={locked ? undefined : "Ajouter"}
         onAction={onEdit}
-        fill={false}
       />
     );
-  }
-  // Each inbox must have a readable e-mail address, and be confirmed.
-  if (inboxesWithProblem(config, MAILBOXES, "email", looksLikeAddress)) {
-    return <ConfigurationProblem widget={listIndicator.label} />;
-  }
-  // As long as the confirmations are not read, nothing shows: the list
-  // does not appear only to make way for the warning a moment later.
-  if (!isRead) return null;
-  if (emails.some((e) => !confirmed(e))) {
-    return <ConfigurationProblem widget={listIndicator.label} />;
   }
   return <SupportRequestsList config={config} />;
 }
 
 // The requests list, as a widget: it sits in a section like an
-// indicator, and its configuration only says which columns it shows. What
-// it lists — the open tab, sorted, filtered — comes from the page
-// (SupportListContext).
+// indicator, and its configuration only says which columns it shows. The
+// requests of the open tab and the checked boxes come from the page
+// (SupportListContext); it sorts and filters them itself.
 
 export const listIndicator: SupportIndicatorWidget = {
   type: "list",

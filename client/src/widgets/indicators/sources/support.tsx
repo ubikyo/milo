@@ -1,8 +1,12 @@
 import dayjs from "dayjs";
-import { SUPPORT_STATUSES } from "@milo/shared";
+import { useMemo } from "react";
+import { SUPPORT_STATUSES, listKey } from "@milo/shared";
 import type { SupportRequest } from "@milo/shared";
 import { dueState } from "../../../lib/due";
+import { useConfirmedMailboxes } from "../../../lib/confirmations";
 import { useSourceItems } from "../../../lib/sources";
+import { MAILBOXES } from "../../../components/support/SupportRequestsList";
+import { inboxesOf } from "../../../components/ui/ReceptionField";
 import { CHART_COLORS } from "../../chart-colors";
 import { actorsDimension, bandDimension, dueDimension, labelsDimension, plainDimension } from "../dimensions";
 import type { IndicatorSource } from "../types";
@@ -13,6 +17,10 @@ import type { IndicatorSource } from "../types";
 
 /** A resolved or closed request is waiting for nothing: neither actor nor due date. */
 const ongoing = (d: SupportRequest) => d.status !== "resolved" && d.status !== "closed";
+
+/** The addresses a Tickets list receives, as its drawer states them. */
+const mailboxesOf = (config: unknown): string[] =>
+  inboxesOf(config, MAILBOXES).flatMap((b) => (typeof b.email === "string" ? [b.email] : []));
 
 /** The age bands, in days since receipt — the upper bound excluded —, and where their colors were stored. */
 const AGE_BANDS = [
@@ -38,7 +46,23 @@ export const supportSource: IndicatorSource<SupportRequest> = {
   sourceType: "support.list",
   unit: "tickets",
   none: "Aucun ticket",
-  useItems: ({ sources, board }) => useSourceItems("support", sources, board.requests),
+  // Like the list itself, only what its confirmed addresses receive: a ticket
+  // from an address since removed — or not yet confirmed — no longer counts;
+  // one entered by hand counts as long as the list receives.
+  useItems: function useRequests({ sources, board }) {
+    const items = useSourceItems("support", sources, board.requests);
+    const confirmed = useConfirmedMailboxes(
+      sources.map((s) => ({ list: listKey(s.config), emails: mailboxesOf(s.config) })),
+    );
+    return useMemo(() => {
+      if (!items || !confirmed) return null;
+      const receiving = new Set([...confirmed].map((k) => k.split("\n")[0]));
+      return items.filter((d) => {
+        const mailbox = d.mailbox.trim().toLowerCase();
+        return mailbox ? confirmed.has(`${d.list_key}\n${mailbox}`) : receiving.has(d.list_key);
+      });
+    }, [items, confirmed]);
+  },
   measures: [
     // Named like the Statut column's filter; "ongoing" stays the value saved by the widgets.
     { value: "ongoing", label: "Tickets non résolus", weight: (d) => (ongoing(d) ? 1 : 0) },

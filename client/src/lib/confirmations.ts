@@ -93,3 +93,48 @@ export const useConfirmations = (
     states.get(email.trim().toLowerCase())?.status === "confirmed";
   return { states, isRead, confirmed };
 };
+
+/**
+ * The confirmed addresses of several request lists at once — those a chart
+ * reads —, as "list\naddress" in lowercase; null until all are read.
+ */
+export const useConfirmedMailboxes = (lists: { list: string; emails: string[] }[]): Set<string> | null => {
+  const wanted = lists
+    .map(({ list, emails }) => ({
+      list,
+      emails: [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))].sort(),
+    }))
+    .filter((l) => l.list && l.emails.length > 0);
+  const key = wanted.map((l) => `${l.list}|${l.emails.join(",")}`).join(";");
+  const [confirmed, setConfirmed] = useState<{ key: string; set: Set<string> } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const read = () =>
+      Promise.all(
+        wanted.map(({ list, emails }) =>
+          readers.mailbox(list, emails).then((states) =>
+            states
+              .filter((s) => s.status === "confirmed")
+              .map((s) => `${list}\n${s.email.toLowerCase()}`),
+          ),
+        ),
+      )
+        .then((all) => active && setConfirmed({ key, set: new Set(all.flat()) }))
+        .catch(() => {
+          /* without the states, nothing is concluded: the next read will tell */
+        });
+    void read();
+    const interval = setInterval(read, RELOAD_INTERVAL);
+    window.addEventListener(EVENT, read);
+    return () => {
+      active = false;
+      clearInterval(interval);
+      window.removeEventListener(EVENT, read);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  if (!key) return new Set();
+  return confirmed?.key === key ? confirmed.set : null;
+};

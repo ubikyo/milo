@@ -141,7 +141,7 @@ export const createBoard = transaction(
     const id = Number(boards.create.run(viewId, name, next, 1, owner, now()).lastInsertRowid);
     if (firstWidget) boardSections.setFirst(id, firstWidget);
     // A list widget brings its own default labels (repositories/list-seeds.ts).
-    for (const widget of boardWidgets.all(id)) seedListWidget(widget.type, widget.config, id);
+    for (const widget of boardWidgets.all(id)) seedListWidget(widget, id);
     return id;
   },
 );

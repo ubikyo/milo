@@ -15,6 +15,8 @@ import {
   useRowSelection,
   EmptyList,
   FIRST_FIELD_MARGIN,
+  INPUT_INSET,
+  ListHeader,
   NAME_INSET,
   NAME_MIN_WIDTH,
   INPUT_STYLE,
@@ -39,6 +41,9 @@ const NO_EVENT = "";
 
 /** Wide enough to read "Demande prise en charge". */
 const EVENT_WIDTH = 190;
+
+/** The "Modèle" button's room: the header keeps it, the button ends it. */
+const BUTTON_WIDTH = 90;
 
 interface Template<E extends string> {
   id: Id;
@@ -231,9 +236,20 @@ export default function SupportTemplates<E extends string>({
       field
     );
 
-  /** A row's style: without its checkbox, read only, a simple list's. */
+  /** A row's style: without its checkbox, read only, a simple list's — under the header. */
   const templateRowStyle = (rank: number) =>
-    rowStyle(rank, total, held === rank, canEdit ? "checkbox" : "simple");
+    rowStyle(rank + 1, total + 1, held === rank, canEdit ? "checkbox" : "simple");
+
+  /** The columns' titles, over the fields of the rows. */
+  const columns = [
+    {
+      label: "Intitulé",
+      style: { flex: 1, minWidth: NAME_MIN_WIDTH, marginLeft: canEdit ? -NAME_INSET : 0 },
+      inset: INPUT_INSET,
+    },
+    { label: "Évènement", style: { width: EVENT_WIDTH } },
+    { label: "", style: { width: BUTTON_WIDTH } },
+  ];
 
   return (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -242,6 +258,7 @@ export default function SupportTemplates<E extends string>({
           <EmptyList icon={emptyIcon} message={emptyText} />
         ) : (
           <Stack gap={1}>
+            <ListHeader columns={columns} kind={canEdit ? "checkbox" : "simple"} handle={draggable} />
             {shown.map((m, rank) => (
               <Group
                 key={m.id}
@@ -283,14 +300,16 @@ export default function SupportTemplates<E extends string>({
                   taken={takenEvents(m.id)}
                   disabled={!canEdit}
                 />
-                <RowButton
-                  icon={IconTemplate}
-                  onClick={() => setTemplateOf(m.id)}
-                  // Its distance to the end is the row's padding.
-                  rightMargin={0}
-                >
-                  Modèle
-                </RowButton>
+                <Box style={{ width: BUTTON_WIDTH, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
+                  <RowButton
+                    icon={IconTemplate}
+                    onClick={() => setTemplateOf(m.id)}
+                    // Its distance to the end is the row's padding.
+                    rightMargin={0}
+                  >
+                    Modèle
+                  </RowButton>
+                </Box>
               </Group>
             ))}
             {adding && (

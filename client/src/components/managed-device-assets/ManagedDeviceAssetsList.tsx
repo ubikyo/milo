@@ -44,6 +44,7 @@ import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters"
 import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { ManagedDeviceAsset, Id } from "@milo/shared";
+import { readSort, useGridState } from "../../lib/gridStates";
 
 // The Assets mode workstation list: a section widget, like the
 // indicators (widgets/asset/list.tsx). It holds its sort and its right-click
@@ -372,7 +373,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   // this widget only: those whose tag its board's labels name (lib/lists.ts).
   const all = list?.managedDeviceAssets ?? null;
   const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
-  const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "name", direction: "asc" }, readSort<Sort>(Object.keys(VALUES)));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(assets, labelsOf);
   const columnFilter = useColumnFilters(assets, COLUMN_FILTERS);

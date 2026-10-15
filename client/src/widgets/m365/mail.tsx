@@ -85,6 +85,7 @@ import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared
 import MailTemplates from "../../components/settings/MailTemplates";
 import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import type { MailTemplateKey } from "@milo/shared";
+import { readSort, useGridState } from "../../lib/gridStates";
 
 /** The template of the e-mail that carries the code. */
 const MAIL_TEMPLATES: readonly MailTemplateKey[] = ["mail_confirmation"];
@@ -510,7 +511,11 @@ function Mail({ blockId, config, onEdit, locked }: WidgetDisplayProps) {
   const unreadOnly = isChecked(config, UNREAD, false);
   const columns = keptColumns(MAIL_COLUMNS, withColumns(config));
   // By default, as the mailboxes send them: the most recent first.
-  const [sort, setSort] = useState<MailSort>({ key: "date", direction: "desc" });
+  const [sort, setSort] = useGridState<MailSort>(
+    "sort",
+    { key: "date", direction: "desc" },
+    readSort<MailSort>(Object.keys(SORT_VALUES)),
+  );
   const onSort = (key: string) =>
     setSort((current) =>
       current.key === key
@@ -978,7 +983,7 @@ function MailConfig({ config, onChange }: WidgetConfigProps) {
   return (
     <Stack gap="xl">
       <MailboxesField config={config} onChange={onChange} />
-      <ColumnFields columns={MAIL_COLUMNS} config={withColumns(config)} onChange={onChange} />
+      <ColumnFields columns={MAIL_COLUMNS} defaults={DEFAULT_COLUMNS} config={withColumns(config)} onChange={onChange} />
       {/* A field emptied while typing stores the default value. */}
       <NumberInput
         label="E-mails par chargement"

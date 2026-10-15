@@ -188,7 +188,6 @@ export default function ManagedDeviceAssetTablesFields() {
     <>
       <ListRows
         title="Modèles"
-        description="Ils donnent le nom commercial de l'identifiant que déclare un poste."
         columns={MODEL_COLUMNS}
         rows={settings.models.map((m) => [m.identifier, m.name])}
         save={(list) =>

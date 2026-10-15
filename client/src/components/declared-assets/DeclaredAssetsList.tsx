@@ -33,7 +33,7 @@ import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
 import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GridScroll";
+import GridWithAdd from "../ui/GridWithAdd";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
 import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
@@ -48,6 +48,7 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { STRONG_TEXT } from "../../themes/colors";
 import { NewShortcut } from "../../lib/newShortcut";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The list of a declared asset kind — equipment, applications —: the assets
 // entered by hand, which no agent inventories (widgets/declared-asset). The
@@ -174,7 +175,7 @@ const chosen = (f: Filters, a: Row): boolean => {
 /** The other columns' filters: a number compared (useColumnFilters). */
 const COLUMN_FILTERS: Record<"quantity" | "price", ColumnFilterSpec<Row>> = {
   quantity: { kind: "number", label: "quantité", value: (a) => a.quantity },
-  price: { kind: "number", label: "prix", value: (a) => a.price },
+  price: { kind: "number", label: "prix HT", value: (a) => a.price },
 };
 
 /** A price as it reads in France: "1 250,00 €". */
@@ -199,7 +200,7 @@ export const declaredAssetColumns = (kind: DeclaredAssetKind): (ListColumn & { k
       ? [{ key: "location" as const, label: "Emplacement", formats: PATH_FORMATS }]
       : []),
     { key: "quantity", label: "Quantité" },
-    { key: "price", label: "Prix" },
+    { key: "price", label: "Prix HT" },
   ];
 };
 
@@ -212,6 +213,7 @@ function SortableTh({
   filter,
   style,
   handle,
+  align,
 }: {
   label: string;
   column: ColumnKey;
@@ -223,6 +225,8 @@ function SortableTh({
   filter?: ReactNode;
   style?: CSSProperties;
   handle: ReactNode;
+  /** A number's column: its label on the right, as its values. */
+  align?: "right";
 }) {
   const active = sameSort(sort, column, group);
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
@@ -230,7 +234,7 @@ function SortableTh({
     <Table.Th style={style}>
       <Group gap={4} wrap="nowrap">
         <UnstyledButton onClick={() => onSort(column, group)} style={{ flex: 1, minWidth: 0 }}>
-          <Group gap={4} wrap="nowrap" justify="space-between">
+          <Group gap={4} wrap="nowrap" justify={align === "right" ? "flex-end" : "space-between"}>
             <Text size="sm" fw={600} c={STRONG_TEXT}>
               {label}
             </Text>
@@ -246,10 +250,10 @@ function SortableTh({
   );
 }
 
-/** A text cell: the value, or a dimmed dash. */
-function TextCell({ value }: { value: string }) {
+/** A text cell: the value, or a dimmed dash; a number on the right. */
+function TextCell({ value, align }: { value: string; align?: "right" }) {
   return (
-    <Text size="sm" c={value ? undefined : "dimmed"} truncate>
+    <Text size="sm" c={value ? undefined : "dimmed"} ta={align} truncate>
       {value || EMPTY}
     </Text>
   );
@@ -327,8 +331,8 @@ export default function DeclaredAssetsList({
         ) ?? null
     );
   }, [all, config, categories, locations]);
-  const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "name", direction: "asc" }, readSort<Sort>(Object.keys(VALUES)));
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(assets, labelsOf);
   const columnFilter = useColumnFilters(assets, COLUMN_FILTERS);
@@ -428,6 +432,7 @@ export default function DeclaredAssetsList({
     filter?: ReactNode,
     style?: CSSProperties,
     group?: Id,
+    align?: "right",
   ) => (
     <SortableTh
       key={id}
@@ -439,6 +444,7 @@ export default function DeclaredAssetsList({
       filter={filter}
       style={style}
       handle={resize.handle(id)}
+      align={align}
     />
   );
 
@@ -472,8 +478,10 @@ export default function DeclaredAssetsList({
     maker: (id) => th(id, words.maker.title, "maker", nounFilter("maker", words.maker)),
     product: (id) => th(id, words.product.title, "product", nounFilter("product", words.product)),
     location: (id) => th(id, "Emplacement", "location", choiceFilter("location", "emplacement", "Tous")),
-    quantity: (id) => th(id, "Quantité", "quantity", columnFilter.filter("quantity"), { whiteSpace: "nowrap" }),
-    price: (id) => th(id, "Prix", "price", columnFilter.filter("price"), { whiteSpace: "nowrap" }),
+    quantity: (id) =>
+      th(id, "Quantité", "quantity", columnFilter.filter("quantity"), { whiteSpace: "nowrap" }, undefined, "right"),
+    price: (id) =>
+      th(id, "Prix HT", "price", columnFilter.filter("price"), { whiteSpace: "nowrap" }, undefined, "right"),
   };
 
   /** Each column's cell, for an asset. */
@@ -523,12 +531,12 @@ export default function DeclaredAssetsList({
     ),
     quantity: (asset) => (
       <Table.Td key="quantity">
-        <TextCell value={String(asset.quantity)} />
+        <TextCell value={String(asset.quantity)} align="right" />
       </Table.Td>
     ),
     price: (asset) => (
       <Table.Td key="price" style={{ whiteSpace: "nowrap" }}>
-        <TextCell value={asset.price === null ? "" : PRICE_FORMAT.format(asset.price)} />
+        <TextCell value={asset.price === null ? "" : PRICE_FORMAT.format(asset.price)} align="right" />
       </Table.Td>
     ),
   };
@@ -572,7 +580,7 @@ export default function DeclaredAssetsList({
             <Table.Td colSpan={columns.length}>
               <Group gap="xs">
                 <Text size="sm" c="dimmed">
-                  Aucun asset ne correspond aux filtres.
+                  {look.none} ne correspond aux filtres.
                 </Text>
                 <UnstyledButton
                   onClick={() => {
@@ -589,17 +597,6 @@ export default function DeclaredAssetsList({
             </Table.Td>
           </Table.Tr>
         )}
-
-        {/* Last row: adding an asset happens where the list ends, as in
-            the projects table. Its background neutralizes the hover: it is
-            not an asset. */}
-        {canAdd && (
-          <Table.Tr style={{ backgroundColor: "transparent" }}>
-            <Table.Td colSpan={columns.length}>
-              <AddButton label="Ajouter un asset" onClick={() => setDrawer({ asset: null })} />
-            </Table.Td>
-          </Table.Tr>
-        )}
       </Table.Tbody>
     </Table>
   );
@@ -613,13 +610,18 @@ export default function DeclaredAssetsList({
         // With nothing to show, only the empty state, which offers to add.
         <EmptyPanel
           icon={look.icon}
-          message="Aucun asset"
-          actionLabel={canAdd ? "Ajouter un asset" : undefined}
+          message={look.none}
+          actionLabel={canAdd ? look.add : undefined}
           onAction={canAdd ? () => setDrawer({ asset: null }) : undefined}
         />
       ) : (
-        // A section narrower than the list makes it scroll sideways.
-        <GridScroll>{table}</GridScroll>
+        // Under the grid, "Ajouter", at the bottom of the widget (GridWithAdd).
+        <GridWithAdd
+          config={config}
+          add={canAdd && <AddButton label={look.add} onClick={() => setDrawer({ asset: null })} />}
+        >
+          {table}
+        </GridWithAdd>
       )}
 
       <DeclaredAssetDrawer
@@ -628,6 +630,7 @@ export default function DeclaredAssetsList({
         onClose={() => setDrawer(null)}
         boardId={boardId}
         listKey={listKey(config)}
+        config={config}
         asset={drawer?.asset ?? null}
         onSaved={() => void reload()}
         canSave={accessIncludes(access, "update")}

@@ -21,10 +21,13 @@ function ListFields(props: IndicatorConfigProps) {
       {/* The widget's labels: they go to saving. */}
       <LabelGroupFields kind="warehouse-labels" />
       <WarehouseTablesFields />
-      <ColumnFields columns={WAREHOUSE_COLUMNS} {...props} />
+      <ColumnFields columns={WAREHOUSE_COLUMNS} defaults={DEFAULT_COLUMNS} {...props} />
     </Stack>
   );
 }
+
+/** The columns a new widget shows; the others are added from its drawer. */
+const DEFAULT_COLUMNS = ["name", "labels"].map((key) => ({ key }));
 
 export const warehouseListWidget: ContactWidget = {
   type: "list",
@@ -33,7 +36,7 @@ export const warehouseListWidget: ContactWidget = {
   icon: IconBuildingWarehouse,
   // Once placed, the widget shows these columns; the others are added from its
   // drawer.
-  defaultConfig: { [LIST_COLUMNS]: ["name", "labels"].map((key) => ({ key })) },
+  defaultConfig: { [LIST_COLUMNS]: DEFAULT_COLUMNS },
   ownClicks: true,
   fill: true,
   Display: ({ config, id }) => <WarehousesList config={config} blockId={id} />,

@@ -35,6 +35,7 @@ import {
 } from "../../themes/menus";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import Footer from "../ui/Footer";
 import { DrawerActionsContext } from "../ui/IndicatorDrawer";
 import { ROW_INSET, NAME_INSET } from "../ui/DrawerRows";
@@ -74,8 +75,18 @@ const mailboxesOf = (config: unknown): Mailbox[] =>
     label_id: typeof r.label_id === "number" ? r.label_id : null,
   }));
 
-/** An address's state: confirmed, or pending — an address not yet saved too. */
-export function State({ confirmed }: { confirmed: boolean }) {
+/**
+ * An address's state: confirmed, or pending — an address not yet saved too.
+ * Given "onConfirm", the pending state opens the code's entry.
+ */
+export function State({
+  confirmed,
+  onConfirm,
+}: {
+  confirmed: boolean;
+  onConfirm?: () => void;
+}) {
+  const clickable = !confirmed && onConfirm !== undefined;
   return (
     <Box
       style={{
@@ -91,6 +102,12 @@ export function State({ confirmed }: { confirmed: boolean }) {
     >
       {/* The label of the application's states (EntraTab): filled, green or red. */}
       <Badge
+        {...(clickable && {
+          component: "button" as const,
+          type: "button" as const,
+          onClick: onConfirm,
+          style: { cursor: "pointer" },
+        })}
         color={confirmed ? "green" : RED}
         variant="filled"
         size="sm"
@@ -130,6 +147,12 @@ export default function Inboxes({
   const { confirmed } = useConfirmations(list, addresses);
 
   const pending = [...new Set(addresses)].filter((e) => !confirmed(e));
+  // The pending address whose badge was clicked: the code's entry opens on it.
+  const [toConfirm, setToConfirm] = useState<string | null>(null);
+
+  const deletes =
+    (config as Record<string, unknown> | null)?.[DELETION] === true;
+  const [confirmDeletion, setConfirmDeletion] = useState(false);
 
   return (
     <Stack gap="xs">
@@ -152,21 +175,57 @@ export default function Inboxes({
         empty="Aucune adresse e-mail"
         normalizeValue={(value) => value.trim()}
         // An address not yet readable has no state to show.
-        state={(email) => (email.trim() ? <State confirmed={confirmed(email)} /> : null)}
+        state={(email) => {
+          if (!email.trim()) return null;
+          const address = email.trim().toLowerCase();
+          return (
+            <State
+              confirmed={confirmed(email)}
+              onConfirm={pending.includes(address) ? () => setToConfirm(address) : undefined}
+            />
+          );
+        }}
         labels={labels}
         config={config}
         onChange={onChange}
       />
+      <ConfirmModal
+        scope="mailbox"
+        list={list}
+        opened={toConfirm !== null}
+        addresses={pending}
+        initial={toConfirm}
+        onClose={() => setToConfirm(null)}
+      />
       <Switch
         mt="xs"
+        // Only the switch and its label react to the click, not the whole row.
+        w="fit-content"
         color="teal"
         label="Supprimer les e-mails relevés de la boîte"
-        checked={
-          (config as Record<string, unknown> | null)?.[DELETION] === true
-        }
+        checked={deletes}
+        // Turning it on deletes for good: it is confirmed first.
         onChange={(e) =>
-          onChange(withField(config, DELETION, e.currentTarget.checked))
+          e.currentTarget.checked
+            ? setConfirmDeletion(true)
+            : onChange(withField(config, DELETION, false))
         }
+      />
+      <DeleteConfirmModal
+        opened={confirmDeletion}
+        onClose={() => setConfirmDeletion(false)}
+        onConfirm={() => {
+          setConfirmDeletion(false);
+          onChange(withField(config, DELETION, true));
+        }}
+        title="Supprimer les e-mails relevés"
+        message={
+          <>
+            Une fois relevés, les e-mails seront supprimés de la boîte de
+            réception. Voulez-vous vraiment activer cette option ?
+          </>
+        }
+        confirmLabel="Activer"
       />
     </Stack>
   );
@@ -277,19 +336,21 @@ export function ConfirmationActions({
 
 /**
  * Entering the four-digit code received by the inbox.
- * Several addresses are waiting: first choose which one.
+ * Several addresses are waiting: first choose which one — "initial" if given.
  */
 function ConfirmModal({
   scope,
   list,
   opened,
   addresses,
+  initial,
   onClose,
 }: {
   scope: ConfirmationScope;
   list: string;
   opened: boolean;
   addresses: string[];
+  initial?: string | null;
   onClose: () => void;
 }) {
   const [email, setEmail] = useState<string | null>(null);
@@ -297,10 +358,10 @@ function ConfirmModal({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  // Each opening starts from scratch, on the first address that is waiting.
+  // Each opening starts from scratch, on the address chosen or the first that is waiting.
   useEffect(() => {
     if (!opened) return;
-    setEmail(addresses[0] ?? null);
+    setEmail(initial && addresses.includes(initial) ? initial : (addresses[0] ?? null));
     setCode("");
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

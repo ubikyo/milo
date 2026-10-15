@@ -1,5 +1,6 @@
 import { Stack } from "@mantine/core";
 import { IconList } from "@tabler/icons-react";
+import { PROJECT_DEFAULT_COLUMNS } from "@milo/shared";
 import { PROJECT_COLUMNS, ProjectsListWidget } from "../../components/project/ProjectTable";
 import CopyPasteActions from "../../components/ui/CopyPasteActions";
 import ColumnFields, { LIST_COLUMNS } from "../../components/ui/ColumnFields";
@@ -22,18 +23,11 @@ export const projectsListIndicator: ProjectIndicatorWidget = {
   label: "Projets",
   icon: IconList,
   // Once placed, the widget shows these columns; the others are added from its
-  // drawer.
+  // drawer. The labels column shows the "Priorité" group: the server names it
+  // once the group exists (repositories/list-seeds.ts).
   defaultConfig: {
     ...PERCENT_HEIGHT,
-    [LIST_COLUMNS]: [
-      "number",
-      "name",
-      "category_name",
-      "actors",
-      "created_at",
-      "labels",
-      "status",
-    ].map((key) => ({ key })),
+    [LIST_COLUMNS]: PROJECT_DEFAULT_COLUMNS.map(({ groupName: _groupName, ...c }) => c),
   },
   ownClicks: true,
   fill: true,
@@ -46,7 +40,7 @@ function Settings(props: WidgetConfigProps) {
     <>
       <CopyPasteActions scope="projects" items={["labels", "categories"]} />
       <Stack gap="xl">
-        <ColumnFields columns={PROJECT_COLUMNS} {...props} />
+        <ColumnFields columns={PROJECT_COLUMNS} defaults={PROJECT_DEFAULT_COLUMNS} {...props} />
         {/* The widget's categories, labels and milestone types, under its
             columns: they go to saving, with the configuration. */}
         <ProjectCategoriesFields />

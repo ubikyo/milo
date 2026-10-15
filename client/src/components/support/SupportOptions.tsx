@@ -1,25 +1,31 @@
 import { Group, NumberInput, Stack } from "@mantine/core";
 import { IconMessageReply, IconSignature } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CURSOR_VARIABLE,
   SUPPORT_CONTENT_EVENTS,
   SUPPORT_DUE_DAYS_MAX,
+  SUPPORT_POLL_MINUTES_MAX,
+  SUPPORT_POLL_MINUTES_MIN,
   SUPPORT_REPLY_EVENTS,
 } from "@milo/shared";
+import type { Id, SupportContentEvent, SupportReplyEvent } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { useListRef } from "../../lib/list-ref";
 import SupportTemplates from "../settings/SupportTemplates";
 
 // Support's options, in the Tickets widget's drawer — they fall under the
-// Paramétrage, and apply to every list: the due date a request arriving by
-// e-mail receives automatically, in business days. Its labels are the list's
+// Paramétrage, and apply to every list: the time between two polls of the
+// inboxes, in minutes, and the due date a request arriving by e-mail receives
+// automatically, in business days. Its labels are the list's
 // own (NewMessageFields, widgets/support/list.tsx). Unlike the rest of the
-// drawer, the due date is sent to the server right away, on leaving the field.
+// drawer, both are sent to the server right away, on leaving the field.
 //
 // Next come the automatic replies — the replies an event
-// sends automatically to the sender —, then the default contents, which are
-// dropped into the editor of a team reply: a signature…
+// sends automatically to the sender —, then the predefined replies, which are
+// dropped into the editor of a team reply: a signature… Those are the
+// widget's own: a new one has none.
 /** A predefined reply's variable beyond Support's: where the cursor goes. */
 const CONTENT_VARIABLES = [CURSOR_VARIABLE];
 
@@ -33,17 +39,58 @@ interface SupportOptionsProps {
 }
 
 export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
+  const list = useListRef();
+  // The widget's automatic replies, then its predefined ones; none until it has its key.
+  const loadReplies = useCallback(
+    () => (list ? api.getSupportReplies(list) : Promise.resolve([])),
+    [list],
+  );
+  const createReply = useCallback(
+    (name: string, event: SupportReplyEvent | null) =>
+      list ? api.createSupportReply(list, name, event) : Promise.resolve(null),
+    [list],
+  );
+  const loadContents = useCallback(
+    () => (list ? api.getSupportContents(list) : Promise.resolve([])),
+    [list],
+  );
+  const createContent = useCallback(
+    (name: string, event: SupportContentEvent | null) =>
+      list ? api.createSupportContent(list, name, event) : Promise.resolve(null),
+    [list],
+  );
+  const reorderContents = useCallback(
+    (ids: Id[]) => (list ? api.reorderSupportContents(list, ids) : Promise.resolve([])),
+    [list],
+  );
   const [days, setDays] = useState<number | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
+  const [minutes, setMinutes] = useState<number | null>(null);
+  const [savedMinutes, setSavedMinutes] = useState<number | null>(null);
   useEffect(() => {
     api
       .getSupportSettings()
       .then((r) => {
         setDays(r.default_due_days);
         setSaved(r.default_due_days);
+        setMinutes(r.mail_poll_minutes);
+        setSavedMinutes(r.mail_poll_minutes);
       })
       .catch((e) => notifyError(errorMessage(e)));
   }, []);
+
+  const saveMinutes = async () => {
+    // Emptied, the field goes back to what was saved.
+    if (minutes === null || minutes === savedMinutes) return setMinutes(savedMinutes);
+    try {
+      const r = await api.updateSupportSettings({ mail_poll_minutes: minutes });
+      setMinutes(r.mail_poll_minutes);
+      setSavedMinutes(r.mail_poll_minutes);
+    } catch (e) {
+      notifyError(errorMessage(e));
+      setMinutes(savedMinutes);
+    }
+  };
 
   const save = async () => {
     const value = days ?? 0;
@@ -64,8 +111,8 @@ export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
         <SupportTemplates
           label="Réponses automatiques"
           events={SUPPORT_REPLY_EVENTS}
-          load={api.getSupportReplies}
-          create={api.createSupportReply}
+          load={loadReplies}
+          create={createReply}
           updateStatement={api.updateSupportReply}
           remove={api.deleteSupportReply}
           addTitle="Ajouter une réponse"
@@ -82,8 +129,8 @@ export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
         <SupportTemplates
           label="Réponses pré-définies"
           events={SUPPORT_CONTENT_EVENTS}
-          load={api.getSupportContents}
-          create={api.createSupportContent}
+          load={loadContents}
+          create={createContent}
           updateStatement={api.updateSupportContent}
           remove={api.deleteSupportContent}
           addTitle="Ajouter une réponse pré-définie"
@@ -98,7 +145,7 @@ export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
           extraVariables={CONTENT_VARIABLES}
           // Several contents per reply, placed in the list's order.
           uniqueEvents={false}
-          reorder={api.reorderSupportContents}
+          reorder={reorderContents}
         />
       </Stack>
     );
@@ -110,6 +157,24 @@ export default function SupportOptions({ canEdit, part }: SupportOptionsProps) {
           notifications, further down, take the panel's full width. */}
       <Group gap="xl" align="flex-start" wrap="nowrap">
         {/* The label above the field, as in the forms. */}
+        <NumberInput
+          label="Délai d'actualisation des e-mails"
+          // The width applies to the input alone: the label keeps its own.
+          styles={{ wrapper: { width: 120 } }}
+          suffix=" min"
+          min={SUPPORT_POLL_MINUTES_MIN}
+          max={SUPPORT_POLL_MINUTES_MAX}
+          allowDecimal={false}
+          allowNegative={false}
+          clampBehavior="strict"
+          value={minutes ?? ""}
+          onChange={(v) => setMinutes(v === "" ? null : Number(v))}
+          onBlur={() => void saveMinutes()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void saveMinutes();
+          }}
+          disabled={!canEdit || savedMinutes === null}
+        />
         <NumberInput
           label="Échéance par défaut"
           // The width applies to the input alone: the label keeps its own.

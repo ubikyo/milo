@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { WIDGET_MAIL_TEMPLATE_KEYS } from "@milo/shared";
 import type { MailTemplate, MailTemplateKey } from "@milo/shared";
 import { api } from "../../api";
+import type { ListRef } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import { RowButton, rowStyle } from "../ui/DrawerRows";
@@ -22,9 +23,11 @@ interface MailTemplatesProps {
   canEdit: boolean;
   /** The templates listed; by default, all but the widgets'. */
   only?: readonly MailTemplateKey[];
+  /** The Tickets widget whose own templates these are; without one, the Settings'. */
+  list?: ListRef | null;
 }
 
-export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
+export default function MailTemplates({ canEdit, only, list }: MailTemplatesProps) {
   const [all, setAll] = useState<MailTemplate[]>([]);
   const templates = all.filter((t) =>
     only ? only.includes(t.key) : !WIDGET_MAIL_TEMPLATE_KEYS.includes(t.key),
@@ -35,15 +38,15 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
   const reset = async (template: MailTemplate) => {
     setToReset(null);
     try {
-      setAll(await api.updateMailTemplate(template.key, ""));
+      setAll(await api.updateMailTemplate(template.key, "", list));
     } catch (e) {
       notifyError(errorMessage(e));
     }
   };
 
   useEffect(() => {
-    api.getMailTemplates().then(setAll, (e) => notifyError(errorMessage(e)));
-  }, []);
+    api.getMailTemplates(list).then(setAll, (e) => notifyError(errorMessage(e)));
+  }, [list]);
 
   const edited = templates.find((t) => t.key === editedKey) ?? null;
 
@@ -84,7 +87,7 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
         onClose={() => setEditedKey(null)}
         onSave={async (mjml) => {
           if (!edited) return;
-          setAll(await api.updateMailTemplate(edited.key, mjml));
+          setAll(await api.updateMailTemplate(edited.key, mjml, list));
         }}
         canEdit={canEdit}
       />

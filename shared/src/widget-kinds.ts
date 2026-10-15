@@ -27,8 +27,10 @@ export const WIDGET_KINDS = [
   { value: "application_asset", label: "Applications" },
   // The logistics: the contacts (contacts.ts), the products (products.ts),
   // the orders (orders.ts), the warehouses (warehouses.ts), the locations
-  // (locations.ts).
+  // (locations.ts), the taxes (taxes.ts).
   { value: "logistics", label: "Logistique" },
+  // The objects: the value lists (value-lists.ts).
+  { value: "objects", label: "Objets" },
   // The figures — a number, a breakdown — of the data any list widget
   // gives (client widgets/indicators).
   { value: "indicator", label: "Indicateurs" },
@@ -232,6 +234,8 @@ const OWN = {
   order: ["list"],
   warehouse: ["list"],
   location: ["list"],
+  tax: ["list"],
+  value: ["list"],
   project: ["list"],
   task: ["list"],
   // The figures of the data chosen (INDICATOR_DATA): they replace those each
@@ -250,6 +254,8 @@ const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
   order: "logistics",
   warehouse: "logistics",
   location: "logistics",
+  tax: "logistics",
+  value: "objects",
   project: "project",
   task: "task",
   indicator: "indicator",
@@ -310,6 +316,8 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
   "order.list",
   "warehouse.list",
   "location.list",
+  "tax.list",
+  "value.list",
 ];
 
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);

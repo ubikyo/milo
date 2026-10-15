@@ -4,6 +4,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { useListRef } from "../../lib/list-ref";
 import { MODAL_PADDING } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
@@ -120,6 +121,9 @@ export default function SupportReplyModal({
   // The message as typed, laid out by its e-mail template once typing pauses.
   const [content, setContent] = useState("");
   const [typed] = useDebouncedValue(content, PREVIEW_DELAY_MS);
+  // A Tickets widget's template is its own: the preview uses it.
+  const widgetList = useListRef();
+  const list = previewTemplate.startsWith("support_") ? widgetList : null;
   const [html, setHtml] = useState("");
   const { dark, setDark, scheme } = usePreviewTheme(reply);
   // The variables folded at each opening; a folded pane, a column of its name.
@@ -201,16 +205,15 @@ export default function SupportReplyModal({
     let current = true;
     api
       .previewReply(previewTemplate, {
-        content: isContent
-          ? inSampleReply(fill(typed))
-          : fill(typed),
+        // The reply's text at its cursor, before the cursor is filled in.
+        content: fill(isContent ? inSampleReply(typed) : typed),
         ticket: sample.ticket,
         subject: sample.subject,
         name: reply.name,
         status: sample.status,
         url: sample.url,
         requester: sample.sender,
-      })
+      }, list)
       .then(
       (r) => current && setHtml(r.html),
       (e) => current && notifyError(errorMessage(e)),
@@ -218,7 +221,7 @@ export default function SupportReplyModal({
     return () => {
       current = false;
     };
-  }, [reply, typed, previewTemplate, sample, fill, isContent]);
+  }, [reply, typed, previewTemplate, sample, fill, isContent, list]);
 
   const insert = (text: string) => editor?.chain().focus().insertContent(text).run();
   const variables: PaneVariable[] = SUPPORT_REPLY_VARIABLES.filter((v) =>

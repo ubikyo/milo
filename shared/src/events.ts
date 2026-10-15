@@ -38,6 +38,10 @@ export const RESOURCES = [
   "warehouses",
   /** The locations, and their labels (locations.ts). */
   "locations",
+  /** The taxes of the Taxes widgets (taxes.ts). */
+  "taxes",
+  /** The items of the Liste widgets (value-lists.ts). */
+  "value-lists",
   /** The styles the titles share. */
   "title-styles",
   /** The proxies, and whether each is connected (shared/proxies.ts). */

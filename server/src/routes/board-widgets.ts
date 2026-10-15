@@ -342,7 +342,7 @@ boardContentRoutes.post("/import", (req, res) => {
   // reads those of its type on the board.
   for (const widget of boardWidgets.all(board.id)) {
     if (isListWidgetType(widget.type) && !takenKeys.has(listKey(readConfig(widget.config)))) {
-      touchNow(res, ...seedListWidget(widget.type, widget.config, board.id));
+      touchNow(res, ...seedListWidget(widget, board.id));
     }
     const config = withSources(widget.type, widget.config, board.id);
     if (config !== widget.config) boardWidgets.update.run(config, widget.id);
@@ -395,7 +395,7 @@ boardSectionRoutes.post("/:id/duplicate", (req, res) => {
   const copy = boardSections.duplicate(existing);
   // Its lists got new keys: each brings its own default labels.
   for (const widget of boardWidgets.bySection(copy)) {
-    touchNow(res, ...seedListWidget(widget.type, widget.config, board.id));
+    touchNow(res, ...seedListWidget(widget, board.id));
   }
   announce(req, board.id, "a dupliqué une section");
   res.status(201).json(boardSections.byId(copy));
@@ -458,9 +458,10 @@ boardWidgetRoutes.post("/", (req, res) => {
   // A list widget brings its own default labels and milestone type
   // (repositories/list-seeds.ts).
   const created = boardWidgets.byId(id)!;
-  touchNow(res, ...seedListWidget(created.type, created.config, board.id));
+  touchNow(res, ...seedListWidget(created, board.id));
   announce(req, board.id, `a ajouté ${widgetName(created)}`);
-  res.status(201).json(renderedWidget(created));
+  // Re-read: seeding may have given it its columns.
+  res.status(201).json(renderedWidget(boardWidgets.byId(id)!));
 });
 
 // A widget's type cannot be changed: that would be another widget. Only its
@@ -515,6 +516,8 @@ const LIST_RESOURCES: Resource[] = [
   "orders",
   "warehouses",
   "locations",
+  "taxes",
+  "value-lists",
 ];
 
 /**

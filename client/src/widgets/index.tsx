@@ -24,6 +24,8 @@ import { contactListWidget } from "./contact";
 import { productListWidget } from "./product";
 import { orderListWidget } from "./order";
 import { warehouseListWidget } from "./warehouse";
+import { taxListWidget } from "./tax";
+import { valueListWidget } from "./value";
 import { locationListWidget } from "./location";
 import { declaredAssetWidgets } from "./declared-asset";
 import { INDICATOR_WIDGETS } from "./indicators";
@@ -402,7 +404,8 @@ export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
   ),
   ...MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS,
   // The logistics: the contacts, the products, the orders, the warehouses,
-  // the locations, then their indicator.
+  // the locations, the taxes; then the objects, the value lists; then the
+  // indicators.
   ...prefixed("contact", [contactListWidget], (w, _d, config, render) => (
     <w.Display config={config} {...render} />
   )),
@@ -416,6 +419,12 @@ export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
     <w.Display config={config} {...render} />
   )),
   ...prefixed("location", [locationListWidget], (w, _d, config, render) => (
+    <w.Display config={config} {...render} />
+  )),
+  ...prefixed("tax", [taxListWidget], (w, _d, config, render) => (
+    <w.Display config={config} {...render} />
+  )),
+  ...prefixed("value", [valueListWidget], (w, _d, config, render) => (
     <w.Display config={config} {...render} />
   )),
   // The "Indicateurs": a number, bars, a ring… of the data chosen in their

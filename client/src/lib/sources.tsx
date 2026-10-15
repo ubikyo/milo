@@ -5,7 +5,7 @@
 // board's are read here, and re-read when the server says they changed.
 
 import { useContext, useEffect, useMemo, useState } from "react";
-import { DECLARED_ASSET_RESOURCES, DECLARED_ASSET_WORDS, SOURCES, sourcesOf } from "@milo/shared";
+import { DECLARED_ASSET_RESOURCES, DECLARED_ASSET_WORDS, SOURCES, VALUE_LIST_TYPE, sourcesOf, valueListName } from "@milo/shared";
 import type {
   Contact,
   DeclaredAsset,
@@ -134,9 +134,15 @@ export const TYPE_LABELS: Record<string, string> = {
   "order.list": "Commandes",
   "warehouse.list": "Entrepôts",
   "location.list": "Emplacements",
+  "tax.list": "Taxes",
+  "value.list": "Liste",
   mail: "Messages",
   calendar: "Calendrier",
 };
+
+/** A widget's own name, when its type gives it one — a Liste's —; empty otherwise. */
+export const sourceName = (type: string, config: unknown): string =>
+  type === VALUE_LIST_TYPE ? valueListName(config) : "";
 
 // --- Their items -------------------------------------------------------------
 

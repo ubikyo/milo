@@ -10,6 +10,7 @@ import {
   MILO_ACTOR,
   SUPPORT_CHANNEL_GROUP,
   SUPPORT_CHANNEL_LABELS,
+  SUPPORT_DEFAULT_COLUMNS,
   SUPPORT_URGENCY_GROUP,
   SUPPORT_URGENCY_LABELS,
   supportTicketRef,
@@ -175,6 +176,25 @@ export const ensureSupportLabels = transaction((scope: ListScope): boolean => {
   return true;
 });
 
+/**
+ * A new Support widget's columns, its labels shown by group — the channel,
+ * then the priority. "undefined" when its configuration already names its
+ * own (a copy, an import).
+ */
+export const withSupportColumns = (
+  config: unknown,
+  scope: ListScope,
+): Record<string, unknown> | undefined => {
+  const current = (config ?? {}) as Record<string, unknown>;
+  if (Array.isArray(current.columns)) return undefined;
+  return {
+    ...current,
+    columns: SUPPORT_DEFAULT_COLUMNS.map(({ groupName, ...c }) =>
+      groupName ? { ...c, group: supportLabelGroups.named(scope, groupName) } : c,
+    ),
+  };
+};
+
 // --- Request actors --------------------------------------------------------
 
 const deleteActors = mutation("DELETE FROM support_request_actors WHERE request_id = ?");
@@ -320,6 +340,10 @@ const SUPPORT_COMMENT_SELECT = `
 export const supportComments = {
   byId: selection<WithAuthorColumns<SupportCommentRow>>(
     `${SUPPORT_COMMENT_SELECT} WHERE support_comments.id = ?`,
+  ),
+  /** The message an e-mail left in a request's thread: the one that opened it, for its quote. */
+  ofMail: selection<SupportCommentRow>(
+    "SELECT * FROM support_comments WHERE request_id = ? AND mail_id = ? ORDER BY id LIMIT 1",
   ),
   ofRequest: selection<WithAuthorColumns<SupportCommentRow>>(
     `${SUPPORT_COMMENT_SELECT} WHERE support_comments.request_id = ?

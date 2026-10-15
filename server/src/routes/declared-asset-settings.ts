@@ -10,6 +10,7 @@ import {
   DECLARED_ASSET_EXTRA_LISTS,
   DECLARED_ASSET_EXTRA_LIST_DEFAULTS,
   DECLARED_ASSET_LISTS,
+  DECLARED_ASSET_LIST_SOURCES,
   DECLARED_ASSET_NAME_MAX,
   DECLARED_ASSET_RESOURCES,
   DECLARED_ASSET_SUPPLIER,
@@ -17,6 +18,7 @@ import {
   accessIncludes,
   capitalized,
   declaredAssetListType,
+  sourcesOf,
 } from "@milo/shared";
 import type {
   DeclaredAssetEntry,
@@ -25,16 +27,18 @@ import type {
   DeclaredAssetLocation,
   DeclaredAssetProduct,
   DeclaredAssetSettings,
+  DeclaredAssetSourcedList,
 } from "@milo/shared";
 import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { Mutation } from "../db/query.js";
 import { HttpError, badRequest } from "../lib/http.js";
-import { touch } from "../middleware/events.js";
+import { touch, touchNow } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
 import { listInBoard } from "../repositories/lists.js";
 import type { ListScope } from "../repositories/lists.js";
 import { widgetRights } from "../repositories/users.js";
+import { addValueListNames, valueListNames } from "../repositories/value-list-names.js";
 
 type Lists = Record<(typeof DECLARED_ASSET_LISTS)[number] | DeclaredAssetExtraList, string>;
 
@@ -168,7 +172,46 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
     ]),
   ) as Record<keyof Lists, Mutation>;
 
-  const settingsOf = (scope: ListScope): DeclaredAssetSettings => {
+  const configOf = selection<{ config: string }>(
+    `SELECT w.config FROM board_widgets w JOIN board_sections s ON s.id = w.section_id
+     WHERE s.board_id = ? AND w.type = '${declaredAssetListType(kind)}' AND json_valid(w.config)
+       AND json_extract(w.config, '$.list_key') = ?
+     ORDER BY w.id LIMIT 1`,
+  );
+
+  /** The Liste widgets each list the widget takes from them comes from (DECLARED_ASSET_LIST_SOURCES), by key. */
+  const sourceKeys = (scope: ListScope): Partial<Record<DeclaredAssetSourcedList, string[]>> => {
+    const row = configOf.get(scope.board, scope.list);
+    let config: unknown = {};
+    try {
+      config = row ? (JSON.parse(row.config) as unknown) : {};
+    } catch {
+      config = {};
+    }
+    return Object.fromEntries(
+      Object.entries(DECLARED_ASSET_LIST_SOURCES[kind]).flatMap(([list, field]) => {
+        const keys = sourcesOf(config, field);
+        return keys.length ? [[list, keys]] : [];
+      }),
+    );
+  };
+
+  /** Those lists: their Liste widgets' names, in place of the widget's own — none named, none. */
+  const sourcedLists = (scope: ListScope): Partial<Record<DeclaredAssetSourcedList, DeclaredAssetEntry[]>> =>
+    Object.fromEntries(
+      Object.entries(sourceKeys(scope)).map(([list, keys]) => [
+        list,
+        valueListNames(keys).map((name) => ({ name })),
+      ]),
+    );
+
+  const settingsOf = (scope: ListScope): DeclaredAssetSettings => ({
+    ...ownSettingsOf(scope),
+    ...sourcedLists(scope),
+  });
+
+  /** The widget's own lists, as it records them. */
+  const ownSettingsOf = (scope: ListScope): DeclaredAssetSettings => {
     const row = read.get(scope.board, scope.list);
     return {
       categories: parsed<DeclaredAssetLocation>(row?.categories),
@@ -268,6 +311,16 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
     const body = (req.body ?? {}) as Record<string, unknown>;
     if ([...DECLARED_ASSET_LISTS, ...extraLists].every((list) => body[list] === undefined)) {
       badRequest("Rien à enregistrer");
+    }
+    // A list taken from Liste widgets is theirs: a name sent that none holds —
+    // a brand added from an asset's drawer — joins the first one's items, as
+    // it joined the widget's list before; the rest of what is sent is left.
+    for (const [list, keys] of Object.entries(sourceKeys(scope))) {
+      const sent = body[list];
+      delete body[list];
+      if (sent === undefined) continue;
+      const names = readEntries(sent, list === "makers" ? maker : { titles: list }).map((e) => e.name);
+      if (addValueListNames(keys[0]!, names)) touchNow(res, "value-lists");
     }
     const current = settingsOf(scope);
     // Everything is checked before writing: a rejected list does not leave

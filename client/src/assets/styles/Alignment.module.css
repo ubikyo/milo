@@ -10,9 +10,12 @@
 
 /*
  * A widget's frame (Frame, widgets/margins.tsx) is the place itself: it takes
- * its whole width and height, and the content moves inside it.
+ * its whole width and height, and the content moves inside it. So does a
+ * content marked "data-fill" — an empty screen (EmptyPanel), centered in the
+ * whole place.
  */
-.aligned > .frame {
+.aligned > .frame,
+.aligned > [data-fill] {
   align-self: stretch;
   flex: 1 1 auto !important;
   min-height: 0;

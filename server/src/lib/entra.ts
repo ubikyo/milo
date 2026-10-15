@@ -1304,7 +1304,9 @@ export const mailFiles = async (
 
 /**
  * Replies to a received e-mail, from the mailbox that received it (Mail.Send):
- * the reply goes in the same conversation, the original message quoted below.
+ * the reply goes in the same conversation. Its HTML is its whole body: given as
+ * a "comment", Exchange would quote the original message below it — the
+ * template quotes it where it cites it ({{ticket.original}}).
  * The message is found by its Internet id — the one Milo keeps —, Graph's id
  * changing when a message changes folder.
  *
@@ -1340,9 +1342,9 @@ export const replyByGraph = async (
   await graph(`${root}/${encodeURIComponent(message!.id)}/reply`, {
     method: "POST",
     body: {
-      comment: html,
       message: {
         subject: subject.trim(),
+        body: { contentType: "HTML", content: html },
         internetMessageHeaders: [{ name: "X-Milo-Ticket", value: ticket }],
         ccRecipients: copies.cc.map((address) => ({ emailAddress: { address } })),
         bccRecipients: copies.bcc.map((address) => ({ emailAddress: { address } })),

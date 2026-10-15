@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import {
   createContext,
+  useEffect,
   useRef,
   useState,
   type ComponentType,
@@ -270,6 +271,12 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   const [modified, setModified] = useState<Indicator<Type> | null>(null);
   /** The widget dropped from the left drawer, waiting for its settings. */
   const [created, setCreated] = useState<{ widget: P; sectionId: Id; index: number } | null>(null);
+  /**
+   * The list widget born from a drop, whose drawer opens once it is read
+   * ("opening"), then stays "born" until saved: closed without saving, it goes.
+   */
+  const [opening, setOpening] = useState<Id | null>(null);
+  const [born, setBorn] = useState<Id | null>(null);
 
   const [menu, setMenu] = useState<{
     indicator: Indicator<Type>;
@@ -375,9 +382,43 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
       );
       return;
     }
+    // A list widget is born at once: the server gives it its key and its own
+    // values — labels, columns… (server, list-seeds.ts) —, which its drawer
+    // then shows.
+    if (isListWidgetType(String(type))) {
+      await write(async () => {
+        const { id } = await createAt(
+          { section_id: section.id, type: widget.type, config: widget.defaultConfig },
+          index,
+        );
+        setBorn(id);
+        setOpening(id);
+      });
+      return;
+    }
     setModified(null);
     setCreated({ widget, sectionId: section.id, index });
     setDrawerOpened(true);
+  };
+
+  // The born widget, once read: its drawer opens on it.
+  useEffect(() => {
+    if (opening === null) return;
+    const indicator = indicators.find((i) => i.id === opening);
+    if (!indicator) return;
+    setOpening(null);
+    setCreated(null);
+    setModified(indicator);
+    setDrawerOpened(true);
+  }, [opening, indicators]);
+
+  /** The drawer closed: a widget born from a drop and never saved goes away. */
+  const closeDrawer = () => {
+    setDrawerOpened(false);
+    if (born === null) return;
+    const id = born;
+    setBorn(null);
+    void write(() => api.remove(id)).catch((e: unknown) => notifyError(errorMessage(e)));
   };
 
   /**
@@ -609,7 +650,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
 
       <IndicatorDrawer
         opened={drawerOpen}
-        onClose={() => setDrawerOpened(false)}
+        onClose={closeDrawer}
         indicator={modified}
         creating={created?.widget ?? null}
         sectionId={created?.sectionId ?? null}
@@ -618,6 +659,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         // Creation goes through the targeted place.
         api={{ ...api, create: (data) => createAt(data, created?.index ?? Number.MAX_SAFE_INTEGER) }}
         onSaved={async () => {
+          setBorn(null);
           setDrawerOpened(false);
           await onChanged();
         }}

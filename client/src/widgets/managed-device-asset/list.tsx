@@ -9,6 +9,7 @@ import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import LabelTemplatesFields from "../../components/ui/LabelTemplatesFields";
 import ReceptionField from "../../components/ui/ReceptionField";
+import { PERCENT_HEIGHT } from "../height";
 import type { IndicatorConfigProps } from "../support/types";
 import type { ManagedDeviceAssetIndicatorWidget } from "./types";
 
@@ -54,7 +55,7 @@ export const managedDeviceAssetListIndicator: ManagedDeviceAssetIndicatorWidget 
   kind: "managed_device_asset",
   label: "Équipements supervisés",
   icon: IconDeviceDesktopAnalytics,
-  defaultConfig: {},
+  defaultConfig: { ...PERCENT_HEIGHT },
   ownClicks: true,
   fill: true,
   Display: ({ config }) => <ManagedDeviceAssetsList config={config} />,

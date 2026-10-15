@@ -7,7 +7,7 @@
 
 import { Router } from "express";
 import type { Request } from "express";
-import { DEFAULT_MILESTONE_TYPE } from "@milo/shared";
+import { DEFAULT_MILESTONES, DEFAULT_MILESTONE_TYPE } from "@milo/shared";
 import type { Id, Milestone, MilestoneType, Right } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { MilestoneTypeRow } from "../db/rows.js";
@@ -35,7 +35,7 @@ const byName = selection<MilestoneTypeRow>(
 const createStatement = mutation(
   "INSERT INTO milestone_types (board_id, list_key, name, milestones) VALUES (?, ?, ?, ?)",
 );
-const create = (scope: ListScope, name: string, milestones: Milestone[] = []) =>
+const create = (scope: ListScope, name: string, milestones: readonly Milestone[] = []) =>
   createStatement.run(scope.board, scope.list, name, JSON.stringify(milestones));
 const rename = mutation("UPDATE milestone_types SET name = ? WHERE id = ?");
 const setMilestones = mutation("UPDATE milestone_types SET milestones = ? WHERE id = ?");
@@ -48,13 +48,6 @@ const uses = scalar<{ count: number }>(
 export const milestoneTypes = {
   byId: selection<MilestoneTypeRow>("SELECT * FROM milestone_types WHERE id = ?"),
 };
-
-/** The milestones of the "Défaut" type: the colors of a project's progress. */
-const DEFAULT_MILESTONES: Milestone[] = [
-  { value: 33, label: "", color: "red.6" },
-  { value: 66, label: "", color: "orange.6" },
-  { value: 100, label: "", color: "teal.6" },
-];
 
 /**
  * Sets the "Défaut" type of a "Projets" widget if it has none of that name —

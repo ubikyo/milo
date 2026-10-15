@@ -31,6 +31,7 @@ import {
   INDICATOR_PERIOD,
   INDICATOR_ZEROS,
   SOURCES,
+  sourcesOf,
 } from "@milo/shared";
 import type { IndicatorOrder, IndicatorType } from "@milo/shared";
 import {
@@ -43,7 +44,7 @@ import { textLine } from "../../components/ui/AppearanceFields";
 import { appearanceOf, TITLE, VALUE } from "../../components/ui/IndicatorTitle";
 import type { SettingRow } from "../../components/ui/SettingRows";
 import { insertRow } from "../../components/ui/SettingRows";
-import { useSources } from "../../lib/sources";
+import { useSourceWidgets, useSources } from "../../lib/sources";
 import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import { themeColor } from "../../lib/themeColors";
 import { RED } from "../../themes/colors";
@@ -156,6 +157,18 @@ const sourceOf = (needs: Needs, config: unknown): AnySource | null =>
   sourcesFor(needs).find((s) => s.data === text(config, INDICATOR_DATA)) ??
   null;
 
+/**
+ * True when none of the widgets it names exists any more — deleted, or no
+ * longer seen —, or it names none: its configuration waits, kept, for another
+ * to be associated. False while they are read.
+ */
+const useOrphan = (source: AnySource | null, config: unknown): boolean => {
+  const widgets = useSourceWidgets(source?.sourceType ?? null);
+  if (!source || !widgets) return false;
+  const keys = new Set(widgets.map((w) => w.key));
+  return !sourcesOf(config).some((k) => keys.has(k));
+};
+
 /** The source of a widget associated: its kind's. */
 const sourceOfWidget = (needs: Needs, type: string): AnySource | undefined =>
   sourcesFor(needs).find((s) => s.sourceType === type);
@@ -171,6 +184,7 @@ const additive = (source: AnySource) =>
  * type can show, on every board one sees — all of one kind. Those associated
  * give the data: another kind moves the indicator to it, and starts from its
  * own choices, those of the former one forgotten ("initial", the type's own).
+ * Unplugged, it keeps them.
  */
 function IndicatorSourcesField({
   needs,
@@ -197,12 +211,14 @@ function IndicatorSourcesField({
           [INDICATOR_DATE]: _date,
           ...rest
         } = base;
-        const same = source !== undefined && source === sourceOf(needs, base);
+        // None left: the configuration stays, greyed, until another is associated.
+        if (!source) return { ...base, [SOURCES]: [] };
+        const same = source === sourceOf(needs, base);
         return {
           ...(same ? base : rest),
-          ...(!same && source ? (initial?.(source) ?? {}) : {}),
-          [SOURCES]: source ? kept : [],
-          [INDICATOR_DATA]: source?.data ?? "",
+          ...(same ? {} : (initial?.(source) ?? {})),
+          [SOURCES]: kept,
+          [INDICATOR_DATA]: source.data,
         };
       }}
     />
@@ -277,6 +293,8 @@ function IndicatorFields({
   children?: ReactNode;
 }) {
   const source = sourceOf(needs, config);
+  // Its widgets gone, what depends on them is greyed: kept, not modified.
+  const orphan = useOrphan(source, config);
   return (
     <Stack gap="xl">
       <IndicatorSourcesField
@@ -285,13 +303,29 @@ function IndicatorFields({
         onChange={onChange}
         initial={initial}
       />
-      {source?.Config && <source.Config config={config} onChange={onChange} />}
+      {source?.Config && (
+        <Waiting orphan={orphan}>
+          <source.Config config={config} onChange={onChange} />
+        </Waiting>
+      )}
       <Stack gap="md">
         <NameField config={config} onChange={onChange} defaultValue={title} />
         {/* What the type asks for, once the widgets associated say the data. */}
-        {source && children}
+        {source && <Waiting orphan={orphan}>{children}</Waiting>}
       </Stack>
     </Stack>
+  );
+}
+
+/** The fields of an indicator whose widgets are gone: shown, greyed, disabled. */
+function Waiting({ orphan, children }: { orphan: boolean; children: ReactNode }) {
+  return (
+    <fieldset
+      disabled={orphan}
+      style={{ border: 0, padding: 0, margin: 0, minWidth: 0, opacity: orphan ? 0.5 : undefined }}
+    >
+      {children}
+    </fieldset>
   );
 }
 

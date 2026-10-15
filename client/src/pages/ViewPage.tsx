@@ -126,8 +126,9 @@ export default function ViewPage({
   loading,
   account,
 }: ViewPageProps) {
-  // The requests list keeps its state here — sort, filters, checked boxes —
-  // so that "Actions multiples" applies to what has been checked.
+  // The requests lists keep their checked boxes here, so that "Actions
+  // multiples" applies to what has been checked; sort and filters are each
+  // widget's own.
   const list = useSupportList(support.requests, "all");
   const { context, setContext, selection, setChecked } = list;
   // "Actions multiples", under the list, runs in "SupportActions", where its

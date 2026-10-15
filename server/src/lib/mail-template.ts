@@ -33,19 +33,17 @@ import {
   orderReferencesTable,
   systemTheme,
   themeColorHex,
+  withOriginal,
 } from "@milo/shared";
 import type { OrderMailView, SupportPerson } from "@milo/shared";
-import {
-  LOGO_CID,
-  LOGO_DARK_CID,
-  attachedDarkLogo,
-  attachedLogo,
-} from "./mail-logo.js";
+import { LOGO_CID, attachedLogo } from "./mail-logo.js";
 import { sendingAddress } from "./entra.js";
 import { badRequest } from "./http.js";
 import { miloUrl } from "./milo-url.js";
 import { themes } from "./theme-colors.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
+import { mutation, selection } from "../db/query.js";
+import type { ListScope } from "../repositories/lists.js";
 
 /** A reported fact, and the number of times it repeated in a row. */
 export interface Row {
@@ -291,8 +289,9 @@ const REPLY_MJML = `<mjml>
 
     <mj-attributes>
       <mj-all font-family="Arial, sans-serif" font-size="14px" color="#333333" line-height="1.5" />
-      <mj-text padding="10px 25px" />
-      <mj-section padding="20px" />
+      <mj-image padding="10px 0" />
+      <mj-text padding="10px 0" />
+      <mj-section padding="20px 0" />
     </mj-attributes>
 
     <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
@@ -303,11 +302,14 @@ const REPLY_MJML = `<mjml>
     <mj-section>
       <mj-column>
         <mj-image src="{{milo.logo}}" align="left" width="80px"/>
-        <mj-text padding="30px 25px 15px 25px" color="#333333">
+        <mj-text padding="30px 0 15px 0" color="#333333">
           <h1 style="margin: 0;">{{ticket.subject}}</h1>
         </mj-text>
-        <mj-text padding="0 25px 10px 25px" color="#333333">
+        <mj-text padding="0 0 10px 0" color="#333333">
           <p style="margin: 0;">{{model.content}}</p>
+        </mj-text>
+        <mj-text padding="10px 0 0 0" color="#333333">
+          {{ticket.original}}
         </mj-text>
       </mj-column>
     </mj-section>
@@ -425,8 +427,7 @@ const TEMPLATE: MailTemplateVariable[] = [{ group: "Modèle", label: "Titre", na
 
 // Every template's last two sources: Milo — its logo, its sending address,
 // its own address —, and its main colors, as the "Thèmes" section sets them.
-// One logo: its dark-background variant is added after compilation
-// (withDarkLogo). "{{logo}}", its former name, still fills a template saved
+// One logo, legible on both backgrounds (mail-logo.ts). "{{logo}}", its former name, still fills a template saved
 // with it (logo, in each view).
 const MILO: MailTemplateVariable[] = [
   { group: "Milo", label: "Logo", name: "{{milo.logo}}" },
@@ -586,7 +587,12 @@ const REQUESTER: MailTemplateVariable[] = [
   { group: "Demandeur", label: "Nom complet", name: "{{requester.full_name}}" },
   { group: "Demandeur", label: "Adresse e-mail", name: "{{requester.email}}" },
 ];
-const REPLY: MailTemplateVariable[] = [{ group: "Modèle", label: "Message", name: "{{model.content}}" }, ...TICKET];
+const REPLY: MailTemplateVariable[] = [
+  { group: "Modèle", label: "Message", name: "{{model.content}}" },
+  ...TICKET,
+  // Placed only where the template cites it: Exchange adds nothing (replyByGraph).
+  { group: "Ticket", label: "E-mail d'origine", name: "{{ticket.original}}" },
+];
 const REPLY_NAME: MailTemplateVariable = { group: "Modèle", label: "Nom du modèle", name: "{{model.name}}" };
 
 /**
@@ -952,7 +958,22 @@ export type ReplyView = {
   url?: string;
   /** Its requester; empty without one. */
   requester?: RequesterView;
+  /** The e-mail that opened it; nothing for a request entered in Milo. */
+  original?: OriginalMail | null;
 };
+
+/** The e-mail that opened a ticket, as a reply quotes it ({{ticket.original}}). */
+export interface OriginalMail {
+  from_name: string;
+  from_email: string;
+  /** When it arrived, ISO 8601. */
+  sent_at: string;
+  /** The inbox it arrived in. */
+  to: string;
+  subject: string;
+  /** Its body as the thread keeps it: cleaned HTML. */
+  html: string;
+}
 
 /** A ticket as its e-mails cite it ({{ticket.…}}). */
 export interface TicketView {
@@ -1036,14 +1057,74 @@ const asEdited = (content: string): string =>
         : `<p${attrs} style="margin:0">`,
     );
 
+/** "mercredi 15 octobre 2026 10:12", Paris time: as Outlook dates what it quotes. */
+const sentOn = (iso: string): string =>
+  new Date(iso)
+    .toLocaleString("fr-FR", {
+      timeZone: "Europe/Paris",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    .replace(" à ", " ");
+
+/**
+ * An e-mail's HTML without its document: what its head holds, apart from its
+ * style sheets, has no place inside another e-mail.
+ */
+const withoutDocument = (html: string): string =>
+  html
+    .replace(/<head\b[^>]*>([\s\S]*?)<\/head>/gi, (_m, head: string) =>
+      (head.match(/<style\b[\s\S]*?<\/style>/gi) ?? []).join(""),
+    )
+    .replace(/<\/?(?:html|body)\b[^>]*>/gi, "");
+
+/** The original e-mail as Outlook quotes it: its header under a rule, then its body. */
+const quoted = (o: OriginalMail): string => {
+  const from =
+    o.from_name && o.from_email
+      ? `${Mustache.escape(o.from_name)} &lt;${Mustache.escape(o.from_email)}&gt;`
+      : Mustache.escape(o.from_name || o.from_email);
+  const header = [
+    ["De", from],
+    ["Envoyé", o.sent_at ? Mustache.escape(sentOn(o.sent_at)) : ""],
+    ["À", Mustache.escape(o.to)],
+    ["Objet", Mustache.escape(o.subject)],
+  ]
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<b>${label}&nbsp;:</b> ${value}`)
+    .join("<br>");
+  const divider = commonView().colors["divider"];
+  return (
+    `<div style="border-top: 1px solid ${divider}; padding-top: 10px; margin-top: 10px">` +
+    `<p style="margin: 0 0 10px 0">${header}</p></div>${withoutDocument(o.html)}`
+  );
+};
+
+/**
+ * The message, the original e-mail where a predefined reply cites it
+ * ({{ticket.original}}) — laid out only then: its colors are read at that point.
+ */
+const contentOf = (r: ReplyView): string => {
+  const content = asEdited(r.content);
+  return /\{\{\s*ticket\.original\s*\}\}/.test(content)
+    ? withOriginal(content, r.original ? quoted(r.original) : "")
+    : content;
+};
+
 /** A reply's view, escaped — the message's HTML apart. */
 const replyViewOf = (r: ReplyView) => ({
-  model: { content: asEdited(r.content), name: Mustache.escape(r.name ?? "") },
+  model: { content: contentOf(r), name: Mustache.escape(r.name ?? "") },
   ticket: {
     number: Mustache.escape(r.ticket),
     subject: Mustache.escape(r.subject),
     status: Mustache.escape(r.status ?? ""),
     url: Mustache.escape(r.url ?? ""),
+    // Laid out when the template cites it: its colors are read then.
+    original: () => (r.original ? quoted(r.original) : ""),
   },
   requester: {
     first_name: Mustache.escape(r.requester?.first_name ?? ""),
@@ -1099,6 +1180,7 @@ const reply = (
       status: "En cours",
       url: `${SAMPLE_LINK.url}?support=12`,
       requester: SAMPLE_REQUESTER,
+      original: SAMPLE_ORIGINAL,
     });
   return {
     label,
@@ -1130,6 +1212,15 @@ const SAMPLE_REQUESTER: RequesterView = {
   last_name: "Martin",
   full_name: "Claire Martin",
   email: "claire.martin@exemple.fr",
+};
+
+const SAMPLE_ORIGINAL: OriginalMail = {
+  from_name: "Claire Martin",
+  from_email: "claire.martin@exemple.fr",
+  sent_at: "2026-10-14T08:12:00Z",
+  to: "support@exemple.fr",
+  subject: "Imprimante en panne",
+  html: "<p>Bonjour,</p><p>L'imprimante du 2e étage n'imprime plus : le voyant du toner clignote.</p><p>Claire Martin</p>",
 };
 
 /**
@@ -1403,12 +1494,33 @@ const defaultOf = (key: MailTemplateKey): string => DEFINITIONS[key].mjml;
 
 const SETTING = "mail_templates";
 
+// A Tickets widget's templates are its own: those it modified, by its list key.
+const widgetTemplates = selection<{ key: string; mjml: string }>(
+  "SELECT key, mjml FROM support_mail_templates WHERE board_id = ? AND list_key = ?",
+);
+const saveWidgetTemplate = mutation(
+  `INSERT INTO support_mail_templates (board_id, list_key, key, mjml) VALUES (?, ?, ?, ?)
+   ON CONFLICT (board_id, list_key, key) DO UPDATE SET mjml = excluded.mjml`,
+);
+const resetWidgetTemplate = mutation(
+  "DELETE FROM support_mail_templates WHERE board_id = ? AND list_key = ? AND key = ?",
+);
+
+/** What is stored: a widget's templates, or without one, the Settings'. */
+const stored = (scope?: ListScope): Partial<Record<MailTemplateKey, string>> =>
+  scope
+    ? (Object.fromEntries(
+        widgetTemplates.all(scope.board, scope.list).map((t) => [t.key, t.mjml]),
+      ) as Partial<Record<MailTemplateKey, string>>)
+    : readSetting<Partial<Record<MailTemplateKey, string>>>(SETTING, {});
+
 /**
- * The templates modified in the Settings; the others are Milo's own — as is
- * one saved identical to it, which Milo has since adopted.
+ * The templates modified — in the Settings, or in a widget's drawer
+ * ("scope"); the others are Milo's own — as is one saved identical to it,
+ * which Milo has since adopted.
  */
-const customized = (): Partial<Record<MailTemplateKey, string>> => {
-  const saved = readSetting<Partial<Record<MailTemplateKey, string>>>(SETTING, {});
+const customized = (scope?: ListScope): Partial<Record<MailTemplateKey, string>> => {
+  const saved = stored(scope);
   for (const key of MAIL_TEMPLATE_KEYS) {
     const mjml = saved[key];
     if (mjml === undefined) continue;
@@ -1419,8 +1531,8 @@ const customized = (): Partial<Record<MailTemplateKey, string>> => {
   return saved;
 };
 
-export const mailTemplates = (): MailTemplate[] => {
-  const custom = customized();
+export const mailTemplates = (scope?: ListScope): MailTemplate[] => {
+  const custom = customized(scope);
   return MAIL_TEMPLATE_KEYS.map((key) => {
     const d = DEFINITIONS[key];
     return {
@@ -1436,44 +1548,12 @@ export const mailTemplates = (): MailTemplate[] => {
 
 // --- Compilation ------------------------------------------------------------
 
-/** The logos as the message cites them: attached, by their identifier. */
+/** The logo as the message cites it: attached, by its identifier. */
 const LOGO_SRC = `cid:${LOGO_CID}`;
-const DARK_LOGO_SRC = `cid:${LOGO_DARK_CID}`;
 
-const DARK_LOGO_STYLE = `<style>@media (prefers-color-scheme: dark) {
-  .logo-light { display: none !important; }
-  .logo-dark { display: inline-block !important; }
-}</style>`;
-
-/**
- * Each logo the template places, doubled with its dark-background variant:
- * a client in dark mode shows the second, the others the first — Outlook,
- * which reads no media query, never sees the second ("mso-hide"). A template
- * thus cites one logo, and is right in both themes.
- */
-const withDarkLogo = (html: string): string => {
-  const logo = new RegExp(`<img\\b[^>]*\\bsrc="${LOGO_SRC}"[^>]*>`, "g");
-  let found = false;
-  const doubled = html.replace(logo, (tag) => {
-    found = true;
-    const classed = (cls: string, img: string) =>
-      /\bclass="/.test(img)
-        ? img.replace(/\bclass="/, `class="${cls} `)
-        : img.replace(/^<img\b/, `<img class="${cls}"`);
-    const hidden = /\bstyle="/.test(tag)
-      ? tag.replace(/\bstyle="([^"]*)"/, (_m, css: string) => `style="${css.replace(/;?\s*$/, "")};display:none;mso-hide:all"`)
-      : tag.replace(/^<img\b/, '<img style="display:none;mso-hide:all"');
-    return classed("logo-light", tag) + classed("logo-dark", hidden.replace(LOGO_SRC, DARK_LOGO_SRC));
-  });
-  return found ? doubled.replace("</head>", `${DARK_LOGO_STYLE}</head>`) : html;
-};
-
-/** In the preview, the logos are drawn from the page: there is no attachment. */
+/** In the preview, the logo is drawn from the page: there is no attachment. */
 const dataUri = (png: Buffer): string => `data:image/png;base64,${png.toString("base64")}`;
-const inPreview = (html: string): string =>
-  html
-    .replaceAll(`"${DARK_LOGO_SRC}"`, `"${dataUri(attachedDarkLogo())}"`)
-    .replaceAll(`"${LOGO_SRC}"`, `"${dataUri(attachedLogo())}"`);
+const inPreview = (html: string): string => html.replaceAll(`"${LOGO_SRC}"`, `"${dataUri(attachedLogo())}"`);
 
 /** The template filled in and compiled; what MJML objected to comes back with it. */
 const TEMPLATE_TITLE = /\{\{\s*template\.title\s*\}\}/g;
@@ -1510,7 +1590,7 @@ const compile = async (
   }
   try {
     const result = await mjml2html(filled, { validationLevel: "soft", keepComments: false });
-    return { html: withDarkLogo(result.html), errors: result.errors.map((e) => e.formattedMessage) };
+    return { html: result.html, errors: result.errors.map((e) => e.formattedMessage) };
   } catch (error) {
     return { html: "", errors: [error instanceof Error ? error.message : "MJML invalide"] };
   }
@@ -1520,8 +1600,12 @@ const compile = async (
  * The template's HTML. A modified template that no longer compiles gives way
  * to Milo's own: the e-mail still goes out.
  */
-const render = async (key: MailTemplateKey, view: Record<string, unknown>): Promise<string> => {
-  const custom = customized()[key];
+const render = async (
+  key: MailTemplateKey,
+  view: Record<string, unknown>,
+  scope?: ListScope,
+): Promise<string> => {
+  const custom = customized(scope)[key];
   const { raw } = DEFINITIONS[key];
   if (custom !== undefined) {
     const compiled = await compile(custom, view, raw);
@@ -1550,15 +1634,28 @@ export const previewMailTemplate = async (
   return { ...compiled, html: inPreview(compiled.html) };
 };
 
-/** Saved only if it compiles without error; the empty string goes back to Milo's own. */
-export const saveMailTemplate = async (key: MailTemplateKey, mjml: string): Promise<void> => {
-  const custom = customized();
-  if (!mjml.trim() || mjml === defaultOf(key)) delete custom[key];
-  else {
+/**
+ * Saved only if it compiles without error — in the Settings, or a widget's
+ * own ("scope"); the empty string goes back to Milo's own.
+ */
+export const saveMailTemplate = async (
+  key: MailTemplateKey,
+  mjml: string,
+  scope?: ListScope,
+): Promise<void> => {
+  const reset = !mjml.trim() || mjml === defaultOf(key);
+  if (!reset) {
     const { errors } = await previewMailTemplate(key, mjml);
     if (errors.length) badRequest(`Modèle invalide : ${errors[0]}`);
-    custom[key] = mjml;
   }
+  if (scope) {
+    if (reset) resetWidgetTemplate.run(scope.board, scope.list, key);
+    else saveWidgetTemplate.run(scope.board, scope.list, key, mjml);
+    return;
+  }
+  const custom = customized();
+  if (reset) delete custom[key];
+  else custom[key] = mjml;
   writeSetting(SETTING, custom);
 };
 
@@ -1572,8 +1669,8 @@ export interface MailAttachment {
 }
 
 /**
- * The two versions of the same message — HTML and text —, and the logos that
- * go with them. The caller has nothing to assemble: it passes the whole
+ * The two versions of the same message — HTML and text —, and the logo that
+ * goes with them. The caller has nothing to assemble: it passes the whole
  * thing to the send.
  */
 export const template = async (
@@ -1581,21 +1678,25 @@ export const template = async (
   m: Message,
   /** The template's own variables: a confirmation's address and code, the assignment's element. */
   extra: Record<string, unknown> = {},
+  /** The Tickets widget whose template it is; without one, the Settings'. */
+  scope?: ListScope,
 ): Promise<{ text: string; html: string; attachments: MailAttachment[] }> => ({
   text: toText(m),
-  ...(await withLogos(render(key, { ...viewOf(m), ...extra, ...commonView(), logo: LOGO_SRC }))),
+  ...(await withLogos(render(key, { ...viewOf(m), ...extra, ...commonView(), logo: LOGO_SRC }, scope))),
 });
 
-/** The HTML, and the logos it cites — up to the closing quote: one identifier begins the other. */
+/** The HTML, and the logo when it cites it. */
 const withLogos = async (rendering: Promise<string>) => {
   const html = await rendering;
-  return { html, attachments: logoAttachments().filter((a) => html.includes(`cid:${a.cid}"`)) };
+  return { html, attachments: html.includes(`"${LOGO_SRC}"`) ? [logoAttachment()] : [] };
 };
 
-const logoAttachments = (): MailAttachment[] => [
-  { filename: "milo.png", content: attachedLogo(), contentType: "image/png", cid: LOGO_CID },
-  { filename: "milo-sombre.png", content: attachedDarkLogo(), contentType: "image/png", cid: LOGO_DARK_CID },
-];
+const logoAttachment = (): MailAttachment => ({
+  filename: "milo.png",
+  content: attachedLogo(),
+  contentType: "image/png",
+  cid: LOGO_CID,
+});
 
 export { isReplyTemplateKey } from "@milo/shared";
 export type { ReplyTemplateKey } from "@milo/shared";
@@ -1605,15 +1706,24 @@ export type { ReplyTemplateKey } from "@milo/shared";
  * in the template that will lay it out, as saved: the support window's
  * preview, with the request it draws.
  */
-export const previewReply = async (key: ReplyTemplateKey, reply: ReplyView): Promise<string> =>
+export const previewReply = async (
+  key: ReplyTemplateKey,
+  reply: ReplyView,
+  scope?: ListScope,
+): Promise<string> =>
   inPreview(
-    await render(key, {
-      ...replyViewOf(reply),
-      // An order's e-mail: a sample order under the message.
-      ...(key.startsWith("order_") ? orderViewOf(ORDER_SAMPLE) : {}),
-      ...commonView(true),
-      logo: LOGO_SRC,
-    }),
+    await render(
+      key,
+      {
+        // Without a request — a predefined reply being edited —, the sample e-mail.
+        ...replyViewOf(reply.original === undefined ? { ...reply, original: SAMPLE_ORIGINAL } : reply),
+        // An order's e-mail: a sample order under the message.
+        ...(key.startsWith("order_") ? orderViewOf(ORDER_SAMPLE) : {}),
+        ...commonView(true),
+        logo: LOGO_SRC,
+      },
+      scope,
+    ),
   );
 
 /** The view of an order's e-mail: the message written, the order under it. */
@@ -1624,7 +1734,7 @@ const orderMailView = (content: string, order: OrderMailView) => ({
   logo: LOGO_SRC,
 });
 
-/** An order's e-mail to its supplier, laid out by its template — and its logos. */
+/** An order's e-mail to its supplier, laid out by its template — and its logo. */
 export const orderMailTemplate = async (
   content: string,
   order: OrderMailView,
@@ -1638,10 +1748,12 @@ export const previewOrderMail = async (content: string, order: OrderMailView): P
 
 /**
  * A support reply, team or automatic, laid out by its template — and the
- * logos, when the template cites them.
+ * logo, when the template cites it.
  */
 export const replyTemplate = async (
   key: ReplyTemplateKey,
   reply: ReplyView,
+  /** The Tickets widget of the request: its own template. */
+  scope?: ListScope,
 ): Promise<{ html: string; attachments: MailAttachment[] }> =>
-  withLogos(render(key, { ...replyViewOf(reply), ...commonView(true), logo: LOGO_SRC }));
+  withLogos(render(key, { ...replyViewOf(reply), ...commonView(true), logo: LOGO_SRC }, scope));

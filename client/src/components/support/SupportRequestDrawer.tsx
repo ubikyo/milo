@@ -156,6 +156,25 @@ interface SupportRequestDrawerProps {
   onToggleFollow: () => void | Promise<void>;
 }
 
+/** A content's blank lines, at its end and at its start. */
+const TRAILING_BLANKS = /(?:<p>\s*<\/p>)+$/;
+const LEADING_BLANKS = /^(?:<p>\s*<\/p>)+/;
+const blankCount = (run: string | undefined) => (run ? run.match(/<p>/g)!.length : 0);
+
+/**
+ * Two contents one after the other: between them, as many blank lines as the
+ * one of the two that has more — the signature's above it and the greeting's
+ * under it are the same lines.
+ */
+const joinContents = (before: string, after: string): string => {
+  const trailing = before.match(TRAILING_BLANKS)?.[0];
+  const leading = after.match(LEADING_BLANKS)?.[0];
+  const blanks = Math.max(blankCount(trailing), blankCount(leading));
+  return (
+    before.replace(TRAILING_BLANKS, "") + "<p></p>".repeat(blanks) + after.replace(LEADING_BLANKS, "")
+  );
+};
+
 export default function SupportRequestDrawer({
   opened,
   onClose,
@@ -261,13 +280,15 @@ export default function SupportRequestDrawer({
     if (opened) void reloadLabels();
   }, [opened, reloadLabels]);
 
+  // Its widget's predefined replies.
   useEffect(() => {
     if (!opened) return;
+    if (!ownList) return setContents([]);
     api
-      .getSupportContents()
+      .getSupportContents(ownList)
       .then(setContents)
       .catch((e) => notifyError(errorMessage(e)));
-  }, [opened]);
+  }, [opened, ownList]);
 
   const requestId = request?.id;
   useEffect(() => {
@@ -288,9 +309,10 @@ export default function SupportRequestDrawer({
 
   // What the reply carries by default: the contents for the moment in the thread and those
   // of any message, together in the list's order — a greeting above, a signature below,
-  // as Settings ranks them —, a blank line between each; their variables
-  // filled in with the Entra record of whoever writes, that of the sender, and the
-  // request. Before creation, it has neither a number nor a sender: these
+  // as Settings ranks them —, joined by their own blank lines: where one ends
+  // with some and the next starts with some, the longer run alone stays. Their
+  // variables filled in with the Entra record of whoever writes, that of the
+  // sender, and the request. Before creation, it has neither a number nor a sender: these
   // variables stay empty. Rendering waits for the records, so as not to place
   // a signature without a phone number that would fix itself before one's eyes.
   const contentFor = (events: SupportContentEvent[]) =>
@@ -298,7 +320,7 @@ export default function SupportRequestDrawer({
       .filter((c) => c.event !== null && events.includes(c.event))
       .map((c) => c.html)
       .filter(Boolean)
-      .join("<p></p>");
+      .reduce(joinContents, "");
   const replyValues = supportReplyValues({
     ...people,
     request: { number: request?.number ?? 0, subject, status },
@@ -327,10 +349,11 @@ export default function SupportRequestDrawer({
    */
   const input = (
     nextStatus: SupportStatus = status,
+    actors: string[] = actorIds,
   ): SupportRequestInput => ({
     subject: subject.trim(),
     status: nextStatus,
-    actor_ids: actorIds.map(Number),
+    actor_ids: actors.map(Number),
     due_date: due,
     label_ids: labelIds.map(Number),
   });
@@ -370,12 +393,15 @@ export default function SupportRequestDrawer({
   // closing or resolving the request. A new request with nothing said is
   // not created. If the server refuses, the drawer stays open with the
   // message rather than discarding the input.
-  const persist = async (nextStatus: SupportStatus = status) => {
+  const persist = async (
+    nextStatus: SupportStatus = status,
+    actors: string[] = actorIds,
+  ) => {
     if (!request && !isFilled) return onClose();
     setSaving(true);
     try {
       if (request) {
-        await api.updateSupportRequest(request.id, input(nextStatus));
+        await api.updateSupportRequest(request.id, input(nextStatus, actors));
         setStatus(nextStatus);
       } else {
         const created = await api.createSupportRequest({
@@ -415,6 +441,12 @@ export default function SupportRequestDrawer({
     }
   };
 
+  /** The actors with whoever writes: they take care of the request. */
+  const withMe = (actors: string[]): string[] => {
+    const me = String(currentUser.id);
+    return actors.includes(me) ? actors : [...actors, me];
+  };
+
   // Before creation, comments live locally and go to the server once
   // the request is saved — like those of a project being opened.
   const addComment = async (text: string, sending?: ReplySending) => {
@@ -422,8 +454,7 @@ export default function SupportRequestDrawer({
     if (sending) setStatus(sending.status);
     if (!request) {
       const instant = new Date().toISOString();
-      const me = String(currentUser.id);
-      setActorIds((already) => (already.includes(me) ? already : [...already, me]));
+      setActorIds(withMe);
       setComments((thread) => [
         ...thread,
         {
@@ -448,8 +479,7 @@ export default function SupportRequestDrawer({
     });
     // Whoever writes becomes an actor: the server set it, the form shows it — and
     // saving the form will not remove them.
-    const me = String(currentUser.id);
-    setActorIds((already) => (already.includes(me) ? already : [...already, me]));
+    setActorIds(withMe);
     await refreshComments();
   };
 
@@ -790,7 +820,8 @@ export default function SupportRequestDrawer({
                           status: request ? supportStatusLabel(request.status) : "",
                           url: request ? `${window.location.origin}/${itemLink("support", request.id)}` : "",
                           requester: people.sender,
-                        })
+                          request_id: request?.id ?? null,
+                        }, ownList)
                         .then((r) => r.html)
                     }
                     byEmail={Boolean(request?.sender_email)}
@@ -810,6 +841,12 @@ export default function SupportRequestDrawer({
                         // Retried: the editor thus keeps the refused text.
                         throw e;
                       }
+                      // Sent, the request is done with: saved with its new
+                      // status, the drawer closes. Before creation, the reply
+                      // only waits in the thread.
+                      // The actors as the server now has them, with whoever
+                      // just wrote: the form's state is not yet updated here.
+                      if (request) await persist(sending.status, withMe(actorIds));
                     }}
                   />
                 )}
@@ -855,8 +892,9 @@ export default function SupportRequestDrawer({
           onSave={readOnly ? undefined : () => persist()}
           saveLabel="Enregistrer"
           saveMenu={[
-            { label: "Fermer le ticket", onClick: () => void persist("closed") },
-            { label: "Définir comme résolu", onClick: () => void persist("resolved") },
+            { label: "Enregistrer et définir comme en attente", onClick: () => void persist("pending") },
+            { label: "Enregistrer et définir comme résolu", onClick: () => void persist("resolved") },
+            { label: "Enregistrer et définir comme fermé", onClick: () => void persist("closed") },
           ]}
           onClose={onClose}
           onDelete={

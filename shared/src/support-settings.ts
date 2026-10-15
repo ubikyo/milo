@@ -93,6 +93,8 @@ export const SUPPORT_REPLY_VARIABLES = [
   { group: "Ticket", key: "ticket.number", label: "Numéro" },
   { group: "Ticket", key: "ticket.subject", label: "Objet" },
   { group: "Ticket", key: "ticket.status", label: "Statut" },
+  // Not filled in: the e-mail sent puts the original there (ORIGINAL_TOKEN).
+  { group: "Ticket", key: "ticket.original", label: "E-mail d'origine" },
 ] as const satisfies readonly {
   group: SupportVariableGroup;
   key: string;
@@ -263,6 +265,22 @@ export const CURSOR_TOKEN = `{{${CURSOR_VARIABLE.key}}}`;
 export const withoutCursor = (html: string): string =>
   html.replace(/\{\{\s*cursor\s*\}\}/g, "");
 
+/**
+ * Where a reply quotes the e-mail that opened its request: left as is in the
+ * message, the e-mail sent puts the original in its place.
+ */
+export const ORIGINAL_TOKEN = "{{ticket.original}}";
+const ORIGINAL_PATTERN = /\{\{\s*ticket\.original\s*\}\}/g;
+/** The token alone in its paragraph: that paragraph is its place. */
+const ORIGINAL_PARAGRAPH = /<p\b[^>]*>\s*\{\{\s*ticket\.original\s*\}\}\s*<\/p>/g;
+
+/** A message with "replacement" where it quotes the original e-mail. */
+export const withOriginal = (html: string, replacement: string): string =>
+  html.replace(ORIGINAL_PARAGRAPH, () => replacement).replace(ORIGINAL_PATTERN, () => replacement);
+
+/** A message as its thread keeps it: the original e-mail is already there. */
+export const withoutOriginal = (html: string): string => withOriginal(html, "");
+
 export const fillSupportTemplate = (template: string, values: Record<string, string>): string =>
   template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) =>
     key in values ? escapeHtml(values[key]!) : match,
@@ -274,6 +292,8 @@ export interface SupportSettings {
    * days after its receipt. Zero: no due date.
    */
   default_due_days: number;
+  /** The time between two polls of the support inboxes, in minutes. */
+  mail_poll_minutes: number;
 }
 
 /** A Support default reply: a title, and its HTML template. */
@@ -288,8 +308,14 @@ export interface SupportReply {
 /** Beyond this, a "default" due date is no longer one. */
 export const SUPPORT_DUE_DAYS_MAX = 60;
 
+/** The inboxes' polling: every five minutes by default, from one to sixty. */
+export const SUPPORT_POLL_MINUTES_DEFAULT = 5;
+export const SUPPORT_POLL_MINUTES_MIN = 1;
+export const SUPPORT_POLL_MINUTES_MAX = 60;
+
 export const emptySupportSettings = (): SupportSettings => ({
   default_due_days: 0,
+  mail_poll_minutes: SUPPORT_POLL_MINUTES_DEFAULT,
 });
 
 /** A calendar date, without time or time zone. */
@@ -367,3 +393,29 @@ export const addBusinessDays = (start: CalendarDay, n: number): CalendarDay => {
   }
   return { year: date.getUTCFullYear(), months: date.getUTCMonth() + 1, day: date.getUTCDate() };
 };
+
+/**
+ * The automatic replies a new Tickets widget brings (those of #1Z78): each
+ * widget then keeps its own.
+ */
+export const SUPPORT_DEFAULT_REPLIES: readonly {
+  name: string;
+  event: SupportReplyEvent;
+  html: string;
+}[] = [
+  {
+    name: "Demande résolue",
+    event: "resolved",
+    html: "<p>Bonjour {{requester.first_name}},<br /><br />Votre ticket à été marqué comme résolu.<br /><br />Si vous pensez que ce n'est pas le cas, répondez à cet e-mail pour réouvrir automatiquement le ticket.</p><p></p><p>Cordialement,</p><p>L'équipe support</p>",
+  },
+  {
+    name: "Fermeture de la demande",
+    event: "closed",
+    html: "<p>Bonjour {{requester.full_name}},</p><p></p><p>Votre ticket <strong>{{ticket.number}}</strong> a été fermé.</p><p></p><p>Nous espérons que la résolution de la demande vous a satisfait. Si vous pensez que cette demande ne devrait pas être fermée, répondez à cet e-mail.</p><p></p><p>Cordialement,</p><p></p><p>L'équipe support.</p>",
+  },
+  {
+    name: "Nouvelle demande",
+    event: "new",
+    html: "<p>Bonjour {{requester.full_name}},</p><p></p><p>Nous avons bien reçu votre demande et elle sera traitée dans les meilleurs délais.</p><p></p><p>Merci pour votre patience.</p><p></p><p>Cordialement,</p><p></p><p>L'équipe support.</p>",
+  },
+];

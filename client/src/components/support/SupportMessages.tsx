@@ -29,13 +29,14 @@ import {
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { RED } from "../../themes/colors";
 import { PersonAvatar, SenderAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import { createBlockStore, withVariableBlocks } from "../ui/VariableBlock";
 import FileDropzone from "../ui/FileDropzone";
+import { pastedFiles } from "../../lib/useFilePaste";
 import MailPreview from "../settings/MailPreview";
 import { MAIL_SLOT_MARKER } from "../ui/MailFrame";
 import { useReplyEditor } from "../../lib/reply-editor";
@@ -641,43 +642,7 @@ const takeCursor = (editor: Editor): number | null => {
   // From the last: the positions before it stay right.
   for (const range of [...found].reverse()) chain.deleteRange(range);
   chain.setTextSelection(first.from).run();
-  return collapseAroundCursor(editor, first.from);
-};
-
-/**
- * The cursor's paragraph, left empty, is the only blank line where it stands:
- * the empty paragraphs just before and after it — the template's, the joins'
- * between contents — go. Returns where the cursor ends up.
- */
-const collapseAroundCursor = (editor: Editor, at: number): number => {
-  const { doc } = editor.state;
-  const $at = doc.resolve(at);
-  const block = $at.parent;
-  if (block.type.name !== "paragraph" || block.content.size > 0) return at;
-  const container = $at.node($at.depth - 1);
-  const index = $at.index($at.depth - 1);
-  const isBlank = (i: number) => {
-    const node = container.maybeChild(i);
-    return node?.type.name === "paragraph" && node.content.size === 0;
-  };
-  let first = index;
-  while (first > 0 && isBlank(first - 1)) first--;
-  let last = index;
-  while (last < container.childCount - 1 && isBlank(last + 1)) last++;
-  if (first === index && last === index) return at;
-  const start = $at.posAtIndex(first, $at.depth - 1);
-  // The empty paragraphs, the cursor's kept: each is two positions.
-  const before = (index - first) * 2;
-  const after = (last - index) * 2;
-  const blockStart = $at.before();
-  const blockEnd = $at.after();
-  editor
-    .chain()
-    .deleteRange({ from: blockEnd, to: blockEnd + after })
-    .deleteRange({ from: start, to: blockStart })
-    .setTextSelection(at - before)
-    .run();
-  return at - before;
+  return first.from;
 };
 
 /**
@@ -1004,6 +969,14 @@ export function SupportReply({
         onTransitionEnd={() => {
           stopFollowing();
           if (unfolded) unfoldedBox.current?.scrollIntoView({ block: "end" });
+        }}
+        // Files pasted while writing join the reply's attachments, not the
+        // drawer's (useFilePaste): its handler comes after this one.
+        onPaste={(e: ClipboardEvent<HTMLDivElement>) => {
+          const pasted = pastedFiles(e.clipboardData);
+          if (!withFiles || pasted.length === 0) return;
+          e.preventDefault();
+          setFiles((already) => [...already, ...pasted]);
         }}
       >
         <RichTextField

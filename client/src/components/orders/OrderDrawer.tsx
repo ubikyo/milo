@@ -12,7 +12,6 @@ import {
   Tabs,
   Text,
   Tooltip,
-  UnstyledButton,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -70,7 +69,6 @@ import type {
   OrderNumberFormat,
   OrderStatus,
   Product,
-  ProductTax,
 } from "@milo/shared";
 import { HttpError, api } from "../../api";
 import { runOrderNumberCode } from "../../lib/assetNumber";
@@ -79,11 +77,14 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { BARE_FIELDSET } from "../../lib/rights";
 import { lockedIds, senderIds, sentAddresses } from "../../lib/recipients";
 import { useSourceItems, useSources } from "../../lib/sources";
+import { taxChoice, useOfferedTaxes } from "../../lib/taxes";
 import { useFileDrag } from "../../lib/useFileDrag";
+import { useFilePaste } from "../../lib/useFilePaste";
 import CardAttachments from "../board/CardAttachments";
 import { ordered, pendingOf } from "../products/ProductDrawer";
 import type { Pending } from "../products/ProductDrawer";
-import { currencyUnit, useSuppliers } from "../../lib/suppliers";
+import { createSupplier, currencyUnit, useSuppliers } from "../../lib/suppliers";
+import CreateFromSearch, { wideDropdown } from "../ui/CreateFromSearch";
 import { useUsers } from "../../lib/users";
 import { tabStyle } from "../../themes/tabs";
 import ContactDrawer from "../contacts/ContactDrawer";
@@ -151,31 +152,6 @@ const INVOICE_WORDS = { title: "Facture", one: "la facture", many: "factures" };
 /** An order's invoice — a kept document is never one. */
 const isInvoice = (a: OrderAttachment | Pending): boolean => "kind" in a && a.kind === "invoice";
 
-/**
- * A choice's dropdown when what is typed is not found: "Créer « … »" and
- * "Créer et modifier « … »", "edit" true for the second.
- */
-function CreateFromSearch({ typed, onCreate }: { typed: string; onCreate: (edit: boolean) => void }) {
-  return (
-    <Stack gap={0} align="stretch" ta="left">
-      {[false, true].map((edit) => (
-        <UnstyledButton
-          key={String(edit)}
-          // The field keeps its focus: the dropdown stays until the choice.
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onCreate(edit)}
-          px={10}
-          py={6}
-          data-row
-        >
-          <Text size="sm" c="var(--mantine-color-text)">
-            {edit ? `Créer et modifier « ${typed} »` : `Créer « ${typed} »`}
-          </Text>
-        </UnstyledButton>
-      ))}
-    </Stack>
-  );
-}
 const VARIANTS_BUTTON_SIZE = 28;
 /** The exchanges' frame, above their editor: never less, whatever the editor holds. */
 const EXCHANGES_MIN_HEIGHT = 240;
@@ -391,6 +367,8 @@ export default function OrderDrawer({
   const invoiceField = useRef<HTMLInputElement>(null);
   // A file dragged over the page: the drop zone shows.
   const dragging = useFileDrag(opened && canSave);
+  // Files pasted into the page: they join the attachments, as if dropped.
+  useFilePaste(opened && canSave, (files) => void addAttachments(files));
   // What the supplier's search holds: a supplier not found is created from it.
   const [supplierSearch, setSupplierSearch] = useState("");
   // A supplier just created from its search, opened to be completed.
@@ -474,23 +452,9 @@ export default function OrderDrawer({
     const tax = product ? supplierTier(product.suppliers, supplierId, quantity === "" ? 1 : quantity)?.tax : null;
     return tax == null ? null : String(tax);
   };
-  // The taxes a line may take: the first Produits widget's.
-  const [taxes, setTaxes] = useState<ProductTax[]>([]);
-  const taxBoard = productSources[0]?.board_id;
-  const taxList = productSources[0]?.key;
-  useEffect(() => {
-    if (!opened || taxBoard === undefined || taxList === undefined) return;
-    api
-      .getProductSettings({ board: taxBoard, list: taxList })
-      .then((s) => setTaxes(s.taxes))
-      .catch((e) => notifyError(errorMessage(e)));
-  }, [opened, taxBoard, taxList]);
-  /** The taxes offered, in the widget's order; a line's still shows once it has left them. */
-  const taxData = (own: string | null) => {
-    const data = taxes.map((t) => ({ value: String(t.rate), label: taxLabel(t.rate) }));
-    if (own !== null && !data.some((d) => d.value === own)) data.push({ value: own, label: taxLabel(Number(own)) });
-    return data;
-  };
+  // The taxes a line may take: those of the Taxes widgets the first Produits
+  // widget is associated with — a line's still shows once it has left them.
+  const taxes = useOfferedTaxes(productSources[0]?.config);
 
   /** A product's lines by variant: those of one with variants. */
   const isVariantLine = (l: LineDraft, productId: string) => l.product_id === productId && l.variant.length > 0;
@@ -993,22 +957,7 @@ export default function OrderDrawer({
   const createSupplierFromSearch = async (name: string, edit: boolean) => {
     if (!supplierWidget) return;
     try {
-      const contact = await api.createContact({
-        first_name: "",
-        name,
-        type: "company",
-        job_title: "",
-        emails: [],
-        phones: [],
-        addresses: [],
-        websites: [],
-        payment_term: "",
-        currency: "",
-        member_ids: [],
-        label_ids: [],
-        board_id: supplierWidget.board_id,
-        list_key: supplierWidget.key,
-      });
+      const contact = await createSupplier(supplierWidget, name);
       setCreated(contact);
       setForm((f) => ({ ...f, supplier_id: String(contact.id), contact_actor_ids: [] }));
       setSupplierSearch("");
@@ -1248,6 +1197,8 @@ export default function OrderDrawer({
                             setForm((f) => ({ ...f, supplier_id: id, contact_actor_ids: [] }))
                           }
                           onSearchChange={setSupplierSearch}
+                          // Wider than the field, when its companies need it.
+                          {...wideDropdown(SUPPLIER_WIDTH)}
                           nothingFoundMessage={
                             // Not found: created from what is typed — at once, or opened to be completed.
                             supplierSearch.trim() && canAddSupplier ? (
@@ -1489,11 +1440,11 @@ export default function OrderDrawer({
                                 alignRight
                                 style={{ flexShrink: 0 }}
                               />
-                              {/* Its tax: its price's at the supplier, or one of the Produits widget's. */}
+                              {/* Its tax: its price's at the supplier, or one of the Produits widget's Taxes widgets'. */}
                               <RowSelect
                                 placeholder="TVA"
                                 aria-label="TVA"
-                                data={taxData(line.tax)}
+                                {...taxChoice(taxes, line.tax)}
                                 value={line.tax}
                                 onChange={(v) => change({ tax: v })}
                                 searchable={false}

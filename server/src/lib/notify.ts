@@ -481,7 +481,9 @@ const sendTicketUpdate = (person: UserRow, occurrence: Occurrence, link: string,
     rows: [{ text: `${occurrence.author.name || occurrence.author.email} ${occurrence.message}`, repetitions: 1 }],
     action: { url: link, label: "Ouvrir dans Milo" },
     footer: "Vous recevez ce message parce que vous êtes acteur de ce ticket dans Milo.",
-  }, request ? { ticket: ticketView(request, occurrence.base), requester } : {}))
+  }, request ? { ticket: ticketView(request, occurrence.base), requester } : {},
+  // The template of the ticket's own widget.
+  request ? { board: request.board_id, list: request.list_key } : undefined))
     .then((content) =>
       sendMail({ from: sender, to: person.email, subject: `Milo — ${occurrence.title}`, ...content }),
     )
@@ -744,7 +746,7 @@ export const notifyReminder = (r: DueReminder): void => {
 
 // --- Tickets' e-mails -------------------------------------------------------
 
-type TicketFields = Pick<SupportRequestRow, "id" | "number" | "subject" | "status">;
+type TicketFields = Pick<SupportRequestRow, "id" | "number" | "subject" | "status" | "board_id" | "list_key">;
 
 /** A ticket as its e-mails cite it ({{ticket.…}}). */
 const ticketView = (request: TicketFields, base: string): TicketView => ({
@@ -766,7 +768,7 @@ const requesterView = async (request: Pick<SupportRequestRow, "sender_name" | "s
 };
 
 const ticketById = selection<TicketFields & Pick<SupportRequestRow, "sender_name" | "sender_email">>(
-  "SELECT id, number, subject, status, sender_name, sender_email FROM support_requests WHERE id = ?",
+  "SELECT id, number, subject, status, sender_name, sender_email, board_id, list_key FROM support_requests WHERE id = ?",
 );
 
 // --- Ticket assignment ------------------------------------------------------
@@ -850,7 +852,9 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
         // where they wait in Support mode.
         action: { url: nounPhrase ? link : base, label: "Ouvrir dans Milo" },
         footer: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
-      }, assignedView(user, items)))
+      }, assignedView(user, items),
+      // The template of the first ticket's widget.
+      { board: requests[0]!.board_id, list: requests[0]!.list_key }))
         .then((content) =>
           sendMail({
             from: mailbox,
@@ -927,7 +931,7 @@ export const notifyNewTicket = ({ request, recipients, author, base }: NewTicket
         rows,
         action: { url: link, label: "Ouvrir dans Milo" },
         footer: "Vous recevez ce message parce que vous êtes désigné comme acteur des nouveaux tickets de cette liste.",
-      }, view))
+      }, view, { board: request.board_id, list: request.list_key }))
         .then((content) =>
           sendMail({ from: mailbox, to: person.email, subject: `Milo — Nouveau ticket ${title}`, ...content }),
         )

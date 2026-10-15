@@ -337,6 +337,13 @@ export interface Milestone {
 /** The milestone type placed with the first projects widget, which a new project receives. */
 export const DEFAULT_MILESTONE_TYPE = "Défaut";
 
+/** The milestones of the "Défaut" type: the colors of a project's progress. */
+export const DEFAULT_MILESTONES: readonly Milestone[] = [
+  { value: 33, label: "", color: "red.6" },
+  { value: 66, label: "", color: "orange.6" },
+  { value: 100, label: "", color: "teal.6" },
+];
+
 export interface MilestoneType {
   id: Id;
   /** The "Projets" widget that owns it: its board and its list key. */
@@ -756,26 +763,65 @@ export const SUPPORT_URGENCY_LABELS = [
 export const SUPPORT_CHANNEL_LABELS = [
   { name: "E-mail", color: "gray.7" },
   { name: "Téléphone", color: "gray.7" },
-  { name: "Teams", color: "gray.7" },
-  { name: "SMS", color: "gray.7" },
   { name: "Sur place", color: "gray.7" },
 ] as const;
 
 /**
  * The priority labels a board's first projects widget brings, from the most to
- * the least important, in the "Priorités" group (DEFAULT_LABEL_GROUP). Labels
- * like the others: renamed, recolored, deleted at will.
+ * the least important, in the "Priorité" group (PROJECT_PRIORITY_GROUP), in the
+ * application's colors (PALETTE: shade 8). Labels like the others: renamed,
+ * recolored, deleted at will.
  */
 export const PROJECT_PRIORITY_LABELS = [
-  { name: "Importante", color: "red.6" },
-  { name: "Haute", color: "orange.6" },
-  { name: "Normale", color: "blue.6" },
-  { name: "Faible", color: "gray.6" },
+  { name: "Importante", color: "red.8" },
+  { name: "Haute", color: "orange.8" },
+  { name: "Normale", color: "blue.8" },
+  { name: "Faible", color: "green.8" },
 ] as const;
+
+/** The group the projects' priority labels are gathered in. */
+export const PROJECT_PRIORITY_GROUP = "Priorité";
 
 /** The groups the urgency and channel labels are gathered in. */
 export const SUPPORT_URGENCY_GROUP = "Priorité";
 export const SUPPORT_CHANNEL_GROUP = "Canal";
+
+/**
+ * A column a list widget shows by default (its "Colonnes"): its width, its
+ * format, and for a labels column the name of the group it shows — its id is
+ * only known once the group exists. Placed by the server, and taken back by
+ * the drawer's "Réinitialiser".
+ */
+export interface DefaultListColumn {
+  key: string;
+  width?: number;
+  format?: string;
+  groupName?: string;
+}
+
+/** The columns a new projects widget shows, its priorities among them. */
+export const PROJECT_DEFAULT_COLUMNS: readonly DefaultListColumn[] = [
+  { key: "number", width: 90 },
+  { key: "name" },
+  { key: "category_name", format: "leaf" },
+  { key: "actors", width: 120, format: "avatar" },
+  { key: "updated_at", width: 160, format: "date" },
+  { key: "labels", width: 120, groupName: PROJECT_PRIORITY_GROUP },
+  { key: "status", width: 160 },
+];
+
+/** The columns a new Support widget shows, its labels by group — the channel, then the priority. */
+export const SUPPORT_DEFAULT_COLUMNS: readonly DefaultListColumn[] = [
+  { key: "ticket", width: 110 },
+  { key: "subject" },
+  { key: "requester", width: 160, format: "full_name" },
+  { key: "agents", width: 120, format: "avatar" },
+  { key: "labels", width: 120, groupName: SUPPORT_CHANNEL_GROUP },
+  { key: "labels", width: 150, groupName: SUPPORT_URGENCY_GROUP },
+  { key: "status", width: 150 },
+  { key: "received", width: 150, format: "datetime" },
+  { key: "due", width: 150 },
+];
 
 /**
  * What an incoming email receives automatically, as long as its list has not

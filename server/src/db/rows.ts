@@ -133,9 +133,11 @@ export interface MilestoneTypeRow {
   milestones: string;
 }
 
-/** A default Support reply. */
+/** A Tickets widget's automatic reply. */
 export interface SupportReplyRow {
   id: Id;
+  board_id: Id;
+  list_key: string;
   name: string;
   html: string;
   /** A SupportReplyEvent, or empty. */
@@ -143,16 +145,19 @@ export interface SupportReplyRow {
 }
 
 /** A default Support content. */
-export interface SupportContentRow {
+/** An order's default content: its event an OrderContentEvent, or empty. */
+export interface OrderContentRow {
   id: Id;
   name: string;
   html: string;
-  /** A SupportContentEvent, or empty. */
   event: string;
 }
 
-/** An order's default content, as a Support one: its event an OrderContentEvent, or empty. */
-export type OrderContentRow = SupportContentRow;
+/** A Tickets widget's predefined reply: its event a SupportContentEvent, or empty. */
+export interface SupportContentRow extends OrderContentRow {
+  board_id: Id;
+  list_key: string;
+}
 
 export interface CategoryRow {
   id: Id;

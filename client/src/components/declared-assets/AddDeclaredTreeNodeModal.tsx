@@ -124,6 +124,16 @@ export default function AddDeclaredTreeNodeModal({
           onChange={(path) => setParent(path?.at(-1) ?? "")}
           nothingFoundMessage={noun.none}
           {...TREE_CASCADER}
+          // The field's width: its levels share it, rather than cut short
+          // inside the modal.
+          comboboxProps={{ ...TREE_CASCADER.comboboxProps, width: "target" }}
+          columnWidth={undefined}
+          styles={{
+            ...TREE_CASCADER.styles,
+            column: { flex: "1 1 0", width: "auto", minWidth: 0 },
+          }}
+          // Focused as the modal opens: it waits for a click or a key.
+          openOnFocus={false}
           clearable
           searchable
         />

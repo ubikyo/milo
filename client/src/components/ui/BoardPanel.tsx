@@ -10,6 +10,7 @@ import { api } from "../../api";
 import { BOARD_WIDGETS, boardWidget, type BoardData } from "../../widgets";
 import IndicatorsPanel, { type IndicatorsApi } from "./IndicatorsPanel";
 import { SearchBoardContext, keepWidgets } from "../../lib/searchSources";
+import { GridScope, widgetScope } from "../../lib/gridStates";
 import type { BoardWidget, Id, IndicatorSection } from "@milo/shared";
 
 interface BoardPanelProps {
@@ -83,7 +84,12 @@ export default function BoardPanel({
         indicators={widgets}
         widgets={BOARD_WIDGETS}
         widgetOf={boardWidget}
-        render={(widget, config, render) => widget.show(data, config, render)}
+        // Each widget's grid keeps its sort and search in its own scope.
+        render={(widget, config, render) => (
+          <GridScope.Provider value={widgetScope(render.id)}>
+            {widget.show(data, config, render)}
+          </GridScope.Provider>
+        )}
         api={writings}
         onChanged={onChanged}
         locked={locked}

@@ -32,7 +32,7 @@ import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
 import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GridScroll";
+import GridWithAdd from "../ui/GridWithAdd";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
 import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
@@ -44,6 +44,7 @@ import { clearRequest, useRequestedItem } from "../../lib/searchSources";
 import { useContacts } from "../../lib/contacts";
 import { STRONG_TEXT } from "../../themes/colors";
 import { NewShortcut } from "../../lib/newShortcut";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The list of a Contact widget (widgets/contact): the people and companies
 // entered by hand. The same grid as the declared assets'
@@ -235,8 +236,8 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
   const { contacts: all, reload } = useContacts(boardId);
   // Those of this widget only.
   const contacts = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
-  const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "name", direction: "asc" }, readSort<Sort>(Object.keys(VALUES)));
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(contacts, labelsOf);
   const columnFilter = useColumnFilters(contacts, COLUMN_FILTERS);
@@ -464,16 +465,6 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
             </Table.Td>
           </Table.Tr>
         )}
-
-        {/* Last row: adding a contact happens where the list ends. Its
-            background neutralizes the hover: it is not a contact. */}
-        {canAdd && (
-          <Table.Tr style={{ backgroundColor: "transparent" }}>
-            <Table.Td colSpan={columns.length}>
-              <AddButton label="Ajouter un contact" onClick={() => setDrawer({ contact: null })} />
-            </Table.Td>
-          </Table.Tr>
-        )}
       </Table.Tbody>
     </Table>
   );
@@ -492,8 +483,13 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
           onAction={canAdd ? () => setDrawer({ contact: null }) : undefined}
         />
       ) : (
-        // A section narrower than the list makes it scroll sideways.
-        <GridScroll>{table}</GridScroll>
+        // Under the grid, "Ajouter", at the bottom of the widget (GridWithAdd).
+        <GridWithAdd
+          config={config}
+          add={canAdd && <AddButton label="Ajouter un contact" onClick={() => setDrawer({ contact: null })} />}
+        >
+          {table}
+        </GridWithAdd>
       )}
 
       <ContactDrawer

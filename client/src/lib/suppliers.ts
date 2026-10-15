@@ -84,3 +84,25 @@ export function useSuppliers(sources: SourceWidget[]): {
 /** The unit an amount reads with: the currency's symbol, or its code. */
 export const currencyUnit = (currency: ContactCurrency | null | undefined): string =>
   currency?.symbol || currency?.code || "";
+
+/**
+ * A supplier typed and not found: created in a Contact widget as a company
+ * with that name, nothing else — "Créer et modifier" opens it afterwards.
+ */
+export const createSupplier = (widget: SourceWidget, name: string): Promise<Contact> =>
+  api.createContact({
+    first_name: "",
+    name,
+    type: "company",
+    job_title: "",
+    emails: [],
+    phones: [],
+    addresses: [],
+    websites: [],
+    payment_term: "",
+    currency: "",
+    member_ids: [],
+    label_ids: [],
+    board_id: widget.board_id,
+    list_key: widget.key,
+  });

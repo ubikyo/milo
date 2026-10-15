@@ -76,11 +76,23 @@ export interface SupportSample {
  * goes into: a fixed text, the same at each opening.
  */
 export const DEFAULT_CONTENT_SUBJECT = "La physique des cordes";
-const DEFAULT_CONTENT_REPLY =
-  "<p>La théorie des cordes propose que les particules fondamentales soient en réalité de minuscules cordes vibrantes, dont chaque vibration correspond à une particule différente. Elle cherche notamment à unifier la mécanique quantique et la relativité générale au sein d’un même cadre théorique. Bien qu’encore non confirmée expérimentalement, elle constitue une piste majeure pour mieux comprendre les lois fondamentales de l’Univers.</p>";
+const DEFAULT_CONTENT_TEXT =
+  "La théorie des cordes propose que les particules fondamentales soient en réalité de minuscules cordes vibrantes, dont chaque vibration correspond à une particule différente. Elle cherche notamment à unifier la mécanique quantique et la relativité générale au sein d’un même cadre théorique. Bien qu’encore non confirmée expérimentalement, elle constitue une piste majeure pour mieux comprendre les lois fondamentales de l’Univers.";
 
-/** A default content after the reply's text, whatever its event. */
-export const inSampleReply = (content: string): string => DEFAULT_CONTENT_REPLY + content;
+/** Its cursor mark ("{{cursor}}"), alone in its paragraph or within a text. */
+const CURSOR_PARAGRAPH = /<p>\s*\{\{\s*cursor\s*\}\}\s*<\/p>/;
+const CURSOR_MARK = /\{\{\s*cursor\s*\}\}/;
+
+/**
+ * A default content around the reply's text, whatever its event: the text
+ * where its first "{{cursor}}" is, as when dropped in; without one, before it.
+ */
+export const inSampleReply = (content: string): string => {
+  if (CURSOR_PARAGRAPH.test(content))
+    return content.replace(CURSOR_PARAGRAPH, () => `<p>${DEFAULT_CONTENT_TEXT}</p>`);
+  if (CURSOR_MARK.test(content)) return content.replace(CURSOR_MARK, () => DEFAULT_CONTENT_TEXT);
+  return `<p>${DEFAULT_CONTENT_TEXT}</p>` + content;
+};
 
 /** A sample for the preview of a reply sent on "event" — or of a default content. */
 export const supportSample = (

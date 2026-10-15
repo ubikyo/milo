@@ -1,7 +1,7 @@
 import { Box, Button, Checkbox, Group, Radio, Text, TextInput, type ButtonProps } from "@mantine/core";
 import { useRef, useState } from "react";
 import { IconGripVertical, IconTrash } from "@tabler/icons-react";
-import type { ComponentType, CSSProperties, DragEvent, FocusEvent, KeyboardEvent } from "react";
+import type { ComponentType, CSSProperties, DragEvent, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import AddButton from "./AddButton";
 import EmptyPanel from "./EmptyPanel";
 import { GREEN, RED } from "../../themes/colors";
@@ -447,16 +447,22 @@ export function ListHeader({
   columns,
   kind = "checkbox",
   handle = false,
+  gap = "sm",
+  action,
 }: {
   columns: ListColumn[];
+  /** A button at the right of the header, over the last title's empty end: a reset. */
+  action?: ReactNode;
   kind?: RowKind;
   /** Its rows open on a handle (Handle): the header keeps its room. */
   handle?: boolean;
+  /** Its rows' gap: "xs" for a drawer's editable lists (EditableRows). */
+  gap?: "xs" | "sm";
 }) {
   return (
     <Group
       wrap="nowrap"
-      gap="sm"
+      gap={gap}
       // The Settings set its look ("Formulaire" > "Liste").
       data-list-header
       style={{
@@ -467,29 +473,57 @@ export function ListHeader({
         backgroundColor: HEADER_BACKGROUND,
         borderTopLeftRadius: RADIUS,
         borderTopRightRadius: RADIUS,
+        ...(action ? { position: "relative" } : {}),
       }}
     >
       {handle && <Box w={16} style={{ flexShrink: 0 }} />}
       {kind === "checkbox" && <Box style={{ ...checkboxStyle(handle), width: CHECKBOX_SIZE }} />}
-      {columns.map(({ label, style, end = false, inset = FIELD_INSET }, i) => (
+      {columns.map((column, i) => (
+        <HeaderTitle key={i} {...column} />
+      ))}
+      {action && (
         <Box
-          key={i}
           style={{
-            flexShrink: 0,
-            minWidth: 0,
-            ...style,
-            textAlign: end ? "right" : "left",
-            [end ? "paddingRight" : "paddingLeft"]: inset,
+            position: "absolute",
+            right: ROW_INSET,
+            top: 0,
+            bottom: 0,
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          <Text size="xs" c="#ffffff" fw={500} truncate>
-            {label}
-          </Text>
+          {action}
         </Box>
-      ))}
+      )}
     </Group>
   );
 }
+
+/** A column's title in a header row (ListHeader), over its field. */
+export function HeaderTitle({ label, style, end = false, inset = FIELD_INSET }: ListColumn) {
+  return (
+    <Box
+      style={{
+        flexShrink: 0,
+        minWidth: 0,
+        ...style,
+        textAlign: end ? "right" : "left",
+        [end ? "paddingRight" : "paddingLeft"]: inset,
+      }}
+    >
+      <Text size="xs" c="#ffffff" fw={500} truncate>
+        {label}
+      </Text>
+    </Box>
+  );
+}
+
+/** A header row's look over a row's (rowStyle): the header's gray, narrower. */
+export const HEADER_ROW: CSSProperties = {
+  paddingTop: 6,
+  paddingBottom: 6,
+  backgroundColor: HEADER_BACKGROUND,
+};
 
 /** What each row field held when it was entered, for Escape (editKeys). */
 const entryValues = new WeakMap<HTMLInputElement, string>();

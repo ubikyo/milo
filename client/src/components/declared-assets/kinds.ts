@@ -30,6 +30,9 @@ export interface DeclaredAssetLook {
   productIcon: Icon;
   /** Its labels, in the widget's drawer (LabelGroupFields). */
   labels: "unmanaged-device-asset-labels" | "application-asset-labels";
+  /** The list's button that adds one, and its empty state. */
+  add: string;
+  none: string;
 }
 
 export const DECLARED_ASSET_LOOKS: Record<DeclaredAssetKind, DeclaredAssetLook> = {
@@ -40,6 +43,8 @@ export const DECLARED_ASSET_LOOKS: Record<DeclaredAssetKind, DeclaredAssetLook> 
     makerIcon: IconBuildingFactory2,
     productIcon: IconDeviceLaptop,
     labels: "unmanaged-device-asset-labels",
+    add: "Ajouter un équipement",
+    none: "Aucun équipement",
   },
   application_asset: {
     words: DECLARED_ASSET_WORDS.application_asset,
@@ -48,6 +53,8 @@ export const DECLARED_ASSET_LOOKS: Record<DeclaredAssetKind, DeclaredAssetLook> 
     makerIcon: IconBuildingStore,
     productIcon: IconAppWindow,
     labels: "application-asset-labels",
+    add: "Ajouter une application",
+    none: "Aucune application",
   },
 };
 

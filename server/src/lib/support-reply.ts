@@ -1,6 +1,7 @@
 // The team's reply to a request received by e-mail: the message written in
 // Milo goes to the sender, from the inbox where their request arrived, in
-// reply to their e-mail — in the same conversation, the original quoted below.
+// reply to their e-mail — in the same conversation, the original quoted where
+// its template cites it ({{ticket.original}}).
 //
 // The reply carries the ticket number: a reply from the sender comes back to
 // it (lib/support-mail.ts). With MILO_SUPPORT_REPLY=simulate, sending is
@@ -17,6 +18,7 @@ import { entraConfigured, replyByGraph } from "./entra.js";
 import { replyTemplate } from "./mail-template.js";
 import { ticketReference, withReference } from "./mail-reference.js";
 import { miloUrl } from "./milo-url.js";
+import { sentOriginalMail } from "./support-original.js";
 import { senderPerson } from "./support-variables.js";
 
 /**
@@ -70,6 +72,7 @@ export const replyByEmail = async (
     const content = withReference(html, ticketReference(ticket));
     const base = miloUrl();
     const requester = await senderPerson(request);
+    const { original, images } = sentOriginalMail(request);
     const laidOut = await replyTemplate(kind, {
       content,
       ticket,
@@ -78,7 +81,8 @@ export const replyByEmail = async (
       status: supportStatusLabel(request.status as SupportStatus),
       url: base ? `${base}/${itemLink("support", request.id)}` : "",
       requester: requester ?? undefined,
-    });
+      original,
+    }, { board: request.board_id, list: request.list_key });
     // The logos its template cites go with it, inline.
     const logos = laidOut.attachments.map((a) => ({
       name: a.filename,
@@ -86,13 +90,15 @@ export const replyByEmail = async (
       content: a.content,
       contentId: a.cid,
     }));
+    // The original e-mail's images, if its template quotes it.
+    const quoted = images.filter((i) => laidOut.html.includes(`cid:${i.contentId}`));
     await replyByGraph(
       mailbox,
       request.mail_id,
       laidOut.html || html,
       ticket,
       copies,
-      [...attachments, ...logos],
+      [...attachments, ...logos, ...quoted],
     );
     return record("sent");
   } catch (error) {

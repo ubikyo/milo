@@ -17,8 +17,8 @@ import { flushSync } from "react-dom";
 import type { CSSProperties, DragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { sourcesOf } from "@milo/shared";
 import type { Id, SourceWidget } from "@milo/shared";
-import { TYPE_LABELS, useSourceWidgetsOf } from "../../lib/sources";
-import { GREEN } from "../../themes/colors";
+import { TYPE_LABELS, sourceName, useSourceWidgetsOf } from "../../lib/sources";
+import { GREEN, RED } from "../../themes/colors";
 import classes from "../../assets/styles/WidgetLinks.module.css";
 import inset from "../../assets/styles/AccessNumber.module.css";
 import drawerStyles from "../../assets/styles/WidgetDrawer.module.css";
@@ -108,7 +108,8 @@ const savedLayout = (layout: Layout) => ({
 
 /**
  * The drawer's field: a prompt to associate widgets, saying in green how many
- * are; a click opens the screen. "apply" writes the widgets associated into
+ * are — in red how many no longer exist: their configuration waits for
+ * another to be associated —; a click opens the screen. "apply" writes the widgets associated into
  * the configuration, when it does more than name them under each field — an
  * indicator follows their kind.
  */
@@ -135,6 +136,10 @@ export function WidgetLinksField({
   const byKey = useMemo(() => (widgets ? new Map(widgets.map((w) => [w.key, w])) : null), [widgets]);
   const links = linksOf(inputs, config, byKey);
   const count = new Set(Object.values(links).flat()).size;
+  // The widgets named that one no longer finds: deleted — or no longer seen.
+  const lost = byKey
+    ? new Set(inputs.flatMap((i) => sourcesOf(config, i.field)).filter((k) => !byKey.has(k))).size
+    : 0;
 
   const save = (next: WidgetLinks, layout: Layout) => {
     const base = (config ?? {}) as Record<string, unknown>;
@@ -148,18 +153,20 @@ export function WidgetLinksField({
   return (
     <>
       <Input.Wrapper label={label}>
-        {/* Once associated, only how many, in green. */}
+        {/* Once associated, only how many, in green; in red when some no longer exist. */}
         <UnstyledButton
           className={classes.prompt}
-          data-linked={count > 0 || undefined}
-          style={{ "--milo-links-green": GREEN } as CSSProperties}
+          data-linked={count > 0 || lost > 0 || undefined}
+          style={{ "--milo-links-green": lost > 0 ? RED : GREEN } as CSSProperties}
           onClick={() => setOpened(true)}
         >
           <IconPlugConnected size={28} stroke={1.5} />
-          <Text size="sm" c={count > 0 ? "inherit" : "dimmed"} fw={count > 0 ? 600 : undefined}>
-            {count > 0
-              ? `${plural(count, "widget")} ${count > 1 ? "connectés" : "connecté"}`
-              : "Associer un widget"}
+          <Text size="sm" c={count > 0 || lost > 0 ? "inherit" : "dimmed"} fw={count > 0 || lost > 0 ? 600 : undefined}>
+            {lost > 0
+              ? `${plural(lost, "widget")} ${lost > 1 ? "introuvables" : "introuvable"} : associer un autre widget`
+              : count > 0
+                ? `${plural(count, "widget")} ${count > 1 ? "connectés" : "connecté"}`
+                : "Associer un widget"}
           </Text>
         </UnstyledButton>
       </Input.Wrapper>
@@ -349,7 +356,7 @@ const snap = (p: Point, grid: boolean): Point =>
   grid ? { x: Math.round(p.x / GRID) * GRID, y: Math.round(p.y / GRID) * GRID } : p;
 
 /** A widget read as the board draws it, still: the ghost of one dragged from the list. */
-function NodeFace({ widget, looks }: { widget: SourceWidget; looks: { label: string; icon: DrawerWidget["icon"] } }) {
+function NodeFace({ widget, looks }: { widget: SourceWidget; looks: { label: string; output: string; icon: DrawerWidget["icon"] } }) {
   return (
     <div className={classes.node} data-referenced>
       <looks.icon size={28} stroke={1.5} />
@@ -358,7 +365,7 @@ function NodeFace({ widget, looks }: { widget: SourceWidget; looks: { label: str
       </Text>
       <div className={classes.port} data-side="out" style={{ top: NODE / 2 }}>
         <span className={classes.connector} />
-        <span className={classes.portLabel}>{TYPE_LABELS[widget.type] ?? looks.label}</span>
+        <span className={classes.portLabel}>{looks.output}</span>
       </div>
       <div className={classes.caption}>
         <div className={classes.reference}>{widget.reference}</div>
@@ -697,9 +704,16 @@ function LinksBoard({
     return [...views.values()];
   }, [offered]);
 
-  const looksOf = (type: string) => {
+  // A widget's title: its own name when it has one — a Liste's —, else its
+  // type's.
+  const looksOf = ({ type, config }: Pick<SourceWidget, "type" | "config">) => {
     const found = self?.widgetOf(type);
-    return { label: found?.label ?? TYPE_LABELS[type] ?? type, icon: found?.icon ?? IconApps };
+    return {
+      label: sourceName(type, config) || found?.label || TYPE_LABELS[type] || type,
+      // What it gives, at its output: its name too, else its type's output.
+      output: sourceName(type, config) || TYPE_LABELS[type] || found?.label || type,
+      icon: found?.icon ?? IconApps,
+    };
   };
 
   /** The state a connector shows, while a cable is held. */
@@ -730,7 +744,7 @@ function LinksBoard({
           browser draws it under the pointer (setDragImage). */}
       {ghost && (
         <div ref={ghostRef} className={classes.ghost}>
-          <NodeFace widget={ghost} looks={looksOf(ghost.type)} />
+          <NodeFace widget={ghost} looks={looksOf(ghost)} />
         </div>
       )}
       {/* The widgets one may associate: the widgets drawer's panel, its width,
@@ -780,7 +794,7 @@ function LinksBoard({
                         {board.label}
                       </Text>
                       {board.widgets.map((w) => {
-                        const looks = looksOf(w.type);
+                        const looks = looksOf(w);
                         const isPlaced = !!layout.nodes[w.key];
                         // Of another type than the widgets placed for an input of one type.
                         const blocked = !isPlaced && !compatible(w.type);
@@ -915,7 +929,7 @@ function LinksBoard({
           {placed.map(([key, at]) => {
             const w = byKey.get(key);
             if (!w) return null;
-            const looks = looksOf(w.type);
+            const looks = looksOf(w);
             const end: End = { side: "out", key };
             return (
               <div
@@ -944,7 +958,7 @@ function LinksBoard({
                     {...connectorState(end)}
                     onPointerDown={(e) => grab(end, e)}
                   />
-                  <span className={classes.portLabel}>{TYPE_LABELS[w.type] ?? looks.label}</span>
+                  <span className={classes.portLabel}>{looks.output}</span>
                 </div>
                 {/* Its reference right under its frame, the whole width; its board under it. */}
                 <div className={classes.caption}>

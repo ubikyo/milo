@@ -65,9 +65,11 @@ export const declaredAssetTables = (kind: DeclaredAssetKind): DeclaredAssetTable
 });
 
 /**
- * One kind's tables. An asset's category, supplier, maker and product are
- * names from its board's lists — a device type, a brand and a model; a
- * software type, a publisher and an application —; price NULL: not given.
+ * One kind's tables. An asset's category, maker and product are names from
+ * its board's lists — a device type, a brand and a model; a software type, a
+ * publisher and an application —; its supplier, a company of a Contact
+ * widget, with its name as it was chosen; price NULL: not given — before
+ * tax, its tax's rate beside it.
  * Its labels, in their groups, are its board's own: they name no GLPI tag.
  * Some kinds carry more: a device, its identifications and its location — a
  * place of its board's locations tree —; an application, its version,
@@ -105,10 +107,12 @@ const schemaOf = (kind: DeclaredAssetKind): string => {
     name TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT '',
     supplier TEXT NOT NULL DEFAULT '',
+    supplier_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
     maker TEXT NOT NULL DEFAULT '',
     product TEXT NOT NULL DEFAULT '',
     quantity INTEGER NOT NULL DEFAULT 1,
     price REAL,
+    tax REAL,
     purchase_date TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',

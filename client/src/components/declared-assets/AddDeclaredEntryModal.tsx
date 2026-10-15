@@ -16,7 +16,8 @@ import Footer from "../ui/Footer";
 
 // A supplier added from an asset's drawer, or a maker from the product's
 // window, without leaving what is being typed: its name. It goes to the
-// board's lists (DeclaredAssetTablesFields) on "Enregistrer"; "Fermer" leaves
+// board's lists (DeclaredAssetTablesFields) on "Enregistrer" — a maker taken
+// from a Liste widget joins its items, on the server —; "Fermer" leaves
 // everything as before. One already listed, case aside, is not added twice:
 // the asset takes it as it is spelled.
 

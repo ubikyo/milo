@@ -161,6 +161,9 @@ import type {
   OrderAttachment,
   OrderComment,
   OrderInput,
+  Tax,
+  ValueItem,
+  ValueItemInput,
   Warehouse,
   WarehouseInput,
   WarehouseSettings,
@@ -177,6 +180,8 @@ import {
   DECLARED_ASSET_ROUTES,
   ORDER_ROUTES,
   PRODUCT_ROUTES,
+  TAX_ROUTES,
+  VALUE_LIST_ROUTES,
   WAREHOUSE_ROUTES,
   LOCATION_ROUTES,
 } from "@milo/shared";
@@ -378,6 +383,10 @@ export const api = {
   // The signed-in person's favorite actors: they come first in
   // the actor lists.
   getFavorites: () => get<Id[]>("/users/favorites"),
+  /** The sort and search of the grids, kept for the signed-in person, by scope (lib/gridStates). */
+  getGridStates: () => get<Record<string, Record<string, unknown>>>("/grid-states"),
+  saveGridState: (scope: string, state: Record<string, unknown>) =>
+    put<null>(`/grid-states/${encodeURIComponent(scope)}`, { state }),
   addFavorite: (id: Id) => put<Id[]>(`/users/favorites/${id}`),
   removeFavorite: (id: Id) => request<Id[]>(`/users/favorites/${id}`, { method: "DELETE" }),
   // Who can be an actor in the current workspace: those who read this widget
@@ -920,10 +929,10 @@ export const api = {
   getSupportSettings: () => get<SupportSettings>("/support-settings"),
   updateSupportSettings: (data: Partial<SupportSettings>) =>
     put<SupportSettings>("/support-settings", data),
-  // The default replies: the title and the template are modified separately.
-  getSupportReplies: () => get<SupportReply[]>("/support-replies"),
-  createSupportReply: (name: string, event: SupportReplyEvent | null = null) =>
-    post<SupportReply>("/support-replies", { name, event }),
+  // A Tickets widget's automatic replies: the title and the template are modified separately.
+  getSupportReplies: (ref: ListRef) => get<SupportReply[]>(`/support-replies${scopeQuery(ref)}`),
+  createSupportReply: (ref: ListRef, name: string, event: SupportReplyEvent | null = null) =>
+    post<SupportReply>("/support-replies", { ...listBody(ref), name, event }),
   updateSupportReply: (
     id: Id,
     data: { name?: string; html?: string; event?: SupportReplyEvent | null },
@@ -944,16 +953,18 @@ export const api = {
   deleteOrderContent: (id: Id) => del(`/order-contents/${id}`),
   /** The contents in this order. */
   reorderOrderContents: (ids: Id[]) => put<OrderContent[]>("/order-contents/order", { ids }),
-  getSupportContents: () => get<SupportContent[]>("/support-contents"),
-  createSupportContent: (name: string, event: SupportContentEvent | null = null) =>
-    post<SupportContent>("/support-contents", { name, event }),
+  // A Tickets widget's predefined replies: its own.
+  getSupportContents: (ref: ListRef) => get<SupportContent[]>(`/support-contents${scopeQuery(ref)}`),
+  createSupportContent: (ref: ListRef, name: string, event: SupportContentEvent | null = null) =>
+    post<SupportContent>("/support-contents", { ...listBody(ref), name, event }),
   updateSupportContent: (
     id: Id,
     data: { name?: string; html?: string; event?: SupportContentEvent | null },
   ) => put<SupportContent>(`/support-contents/${id}`, data),
   deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
   /** The contents in this order. */
-  reorderSupportContents: (ids: Id[]) => put<SupportContent[]>("/support-contents/order", { ids }),
+  reorderSupportContents: (ref: ListRef, ids: Id[]) =>
+    put<SupportContent[]>("/support-contents/order", { ...listBody(ref), ids }),
   // An Asset widget's settings: the templates table, the VLAN one.
   getManagedDeviceAssetSettings: (ref: ListRef) =>
     get<ManagedDeviceAssetSettings>(`/managed-device-asset-settings${scopeQuery(ref)}`),
@@ -1049,6 +1060,13 @@ export const api = {
       { name },
     ),
   // An Entrepôts widget's lists.
+  // A Taxes widget's taxes, in their order (shared, taxes.ts).
+  getTaxes: (ref: ListRef) => get<Tax[]>(`${TAX_ROUTES.taxes}${scopeQuery(ref)}`),
+  updateTaxes: (ref: ListRef, taxes: Tax[]) => put<Tax[]>(`${TAX_ROUTES.taxes}${scopeQuery(ref)}`, taxes),
+  // A Liste widget's items, in their order (shared, value-lists.ts).
+  getValueItems: (ref: ListRef) => get<ValueItem[]>(`${VALUE_LIST_ROUTES.items}${scopeQuery(ref)}`),
+  updateValueItems: (ref: ListRef, items: ValueItemInput[]) =>
+    put<ValueItem[]>(`${VALUE_LIST_ROUTES.items}${scopeQuery(ref)}`, items),
   getWarehouseSettings: (ref: ListRef) =>
     get<WarehouseSettings>(`${WAREHOUSE_ROUTES.settings}${scopeQuery(ref)}`),
   updateWarehouseSettings: (ref: ListRef, data: WarehouseSettings) =>
@@ -1149,10 +1167,12 @@ export const api = {
   deleteOrderComment: (id: Id) => del(`${ORDER_ROUTES.orders}/comments/${id}`),
   getMiloSettings: () => get<MiloSettings>("/milo-settings"),
   updateMiloSettings: (data: Partial<MiloSettings>) => put<MiloSettings>("/milo-settings", data),
-  getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),
+  // Without a list, the Settings' templates; with a Tickets widget, its own.
+  getMailTemplates: (ref?: ListRef | null) =>
+    get<MailTemplate[]>(`/mail-templates${ref ? scopeQuery(ref) : ""}`),
   // The empty template goes back to Milo's own.
-  updateMailTemplate: (key: MailTemplateKey, mjml: string) =>
-    put<MailTemplate[]>(`/mail-templates/${key}`, { mjml }),
+  updateMailTemplate: (key: MailTemplateKey, mjml: string, ref?: ListRef | null) =>
+    put<MailTemplate[]>(`/mail-templates/${key}`, { mjml, ...(ref ? listBody(ref) : {}) }),
   // A support content — or an order's — in its reply template, as saved.
   previewReply: (
     key: ReplyTemplateKey,
@@ -1164,8 +1184,16 @@ export const api = {
       status?: string;
       url?: string;
       requester?: Pick<SupportPerson, "first_name" | "last_name" | "full_name" | "email"> | null;
+      /** The request whose e-mail it quotes; left out, a sample e-mail. */
+      request_id?: Id | null;
     },
-  ) => post<{ html: string }>(`/mail-templates/${key}/reply-preview`, reply),
+    /** The Tickets widget whose template lays it out. */
+    ref?: ListRef | null,
+  ) =>
+    post<{ html: string }>(`/mail-templates/${key}/reply-preview`, {
+      ...reply,
+      ...(ref ? listBody(ref) : {}),
+    }),
   previewMailTemplate: (key: MailTemplateKey, mjml: string) =>
     post<MailTemplatePreview>(`/mail-templates/${key}/preview`, { mjml }),
   getDisplaySettings: () => get<DisplaySettings>("/display-settings"),

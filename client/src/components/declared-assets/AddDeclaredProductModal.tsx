@@ -112,6 +112,16 @@ export default function AddDeclaredProductModal({
             onChange={(path) => setForm((f) => ({ ...f, category: path?.at(-1) ?? "" }))}
             nothingFoundMessage={category.none}
             {...TREE_CASCADER}
+            // The field's width: its levels share it, rather than cut short
+            // inside the modal.
+            comboboxProps={{ ...TREE_CASCADER.comboboxProps, width: "target" }}
+            columnWidth={undefined}
+            // Focused as the modal opens: it waits for a click or a key.
+            openOnFocus={false}
+            styles={{
+              ...TREE_CASCADER.styles,
+              column: { flex: "1 1 0", width: "auto", minWidth: 0 },
+            }}
             searchable
             required
           />

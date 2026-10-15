@@ -97,8 +97,17 @@ const FIRST_POLL_LIMIT = 15;
 const DELTA_KEY = "support_mail_delta";
 type LinksDelta = Record<string, string>;
 
-/** The time between two polls. */
-export const POLL_INTERVAL = 5 * 60 * 1000;
+/** How often the time between two polls (Support's settings) is checked. */
+export const POLL_CHECK_INTERVAL = 60 * 1000;
+
+let lastPoll = 0;
+
+/** True once the time the settings set between two polls has gone by. */
+export const pollIsDue = (): boolean => {
+  if (Date.now() - lastPoll < supportSettings().mail_poll_minutes * 60 * 1000) return false;
+  lastPoll = Date.now();
+  return true;
+};
 
 
 /** The received date, converted to the database's ISO; the present moment by default. */
@@ -475,7 +484,7 @@ const receive = async (
       base: miloUrl(),
     });
   }
-  // The Settings' default replies: the acknowledgement of receipt of a new
+  // The list's automatic replies: the acknowledgement of receipt of a new
   // request, or the note saying a closed request is reopened. The sender
   // receives them only once, even if several lists have the inbox.
   let replied = false;

@@ -23,6 +23,8 @@ import type { DeclaredAssetLocation, Id, Label } from "@milo/shared";
 import { useLabelColors } from "./LabelChip";
 import AddButton from "./AddButton";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { RESET_LABEL_STYLE, ResetTitle } from "./ResetDefaults";
+import type { ResetDefaultsProps } from "./ResetDefaults";
 import { DeleteSelectedButton, EmptyList, ROW_BACKGROUND, ROW_INSET } from "./DrawerRows";
 import { NEUTRAL_TEXT } from "../../themes/colors";
 
@@ -215,6 +217,8 @@ interface EditableTreeProps<N extends Node> {
    * choice on each root's row. Without them, none.
    */
   rootLabels?: Label[];
+  /** The tree a new widget brings: the title then offers to put it back. */
+  reset?: ResetDefaultsProps;
 }
 
 /**
@@ -291,6 +295,7 @@ export default function EditableTree<N extends Node = Node>({
   trailing,
   words = PLACE_WORDS,
   rootLabels,
+  reset,
 }: EditableTreeProps<N>) {
   const labelColors = useLabelColors();
   // The labels by group, as the root's choice offers them.
@@ -380,9 +385,10 @@ export default function EditableTree<N extends Node = Node>({
     // The board's data, not the widget's: say so under the label, at 20 px
     // from the tree.
     <Input.Wrapper
-      label={title}
+      label={title ? <ResetTitle title={title} reset={reset} /> : undefined}
+      labelElement="div"
       description={description}
-      styles={{ description: { paddingBottom: description ? 20 : 0 } }}
+      styles={{ label: RESET_LABEL_STYLE, description: { paddingBottom: description ? 20 : 0 } }}
     >
       {nodes.length === 0 ? (
         <EmptyList icon={words.icon} message={words.none} />

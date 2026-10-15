@@ -10,7 +10,8 @@ import { useLabelGroups } from "../../lib/label-groups";
 import type { ColumnWidthEditing } from "./useResizableColumns";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
-import type { Id, LabelsBase } from "@milo/shared";
+import type { DefaultListColumn, Id, LabelsBase } from "@milo/shared";
+import { ResetDefaults } from "./ResetDefaults";
 import {
   ROUNDING,
   INPUT_BACKGROUND,
@@ -331,11 +332,59 @@ export const useColumnWidthEditing = (
   };
 };
 
+/**
+ * The entries a reset brings back: the widget's default columns, or else
+ * those its catalog shows by default, at their default width. A labels
+ * column's group is found by its name; gone, it shows them all.
+ */
+const resetEntries = (
+  columns: ListColumn[],
+  defaults: readonly DefaultListColumn[] | undefined,
+  groups: { id: Id; name: string }[],
+): Entry[] =>
+  (
+    defaults ??
+    columns.filter((c) => c.byDefault !== false).map((c): DefaultListColumn => ({ key: c.key, width: c.defaultWidth }))
+  )
+    .filter((d) => columns.some((c) => c.key === d.key))
+    .map((d) => {
+      const width = readWidth(d.width, minOf(columns, d.key));
+      const group = d.groupName
+        ? groups.find((g) => g.name.trim().toLowerCase() === d.groupName!.toLowerCase())?.id
+        : undefined;
+      return {
+        key: d.key,
+        ...(width !== undefined ? { width } : {}),
+        ...(group !== undefined ? { group } : {}),
+        ...(formatOf(columns, d.key, d.format) ? { format: d.format } : {}),
+      };
+    });
+
+/**
+ * The list once reset. Replacing: the defaults alone. Otherwise each column
+ * shown by default — same key, same group — takes back its width and format,
+ * where it is; the others stay, and the default ones missing join the end.
+ */
+const resetList = (list: Entry[], defaults: Entry[], replace: boolean): Entry[] => {
+  if (replace) return defaults;
+  const left = [...defaults];
+  const kept = list.map((e) => {
+    const i = left.findIndex((d) => d.key === e.key && d.group === e.group);
+    return i === -1 ? e : left.splice(i, 1)[0]!;
+  });
+  return [...kept, ...left];
+};
+
 export default function ColumnFields({
   columns,
   config,
   onChange,
-}: IndicatorConfigProps & { columns: ListColumn[] }) {
+  defaults,
+}: IndicatorConfigProps & {
+  columns: ListColumn[];
+  /** The columns a new widget shows (shared); absent, those its catalog shows by default. */
+  defaults?: readonly DefaultListColumn[];
+}) {
   const list = entries(columns, config);
   const ids = identifiers(list);
   /** The rank of the row being dragged. */
@@ -446,8 +495,14 @@ export default function ColumnFields({
 
   const options = columns.map((c) => ({ value: c.key, label: c.label }));
 
+  const reset = (replace: boolean) => {
+    const next = resetList(list, resetEntries(columns, defaults, groups), replace);
+    if (next.length > 0) store(next);
+    selection.reset();
+  };
+
   return (
-    <Input.Wrapper label="Colonnes">
+    <Input.Wrapper label="Colonnes" labelElement="div">
       {/* The same gap under the label as the other fields have. */}
       <Stack gap={1}>
         {/* The columns' titles, as in the Settings' lists: the name, its
@@ -458,6 +513,7 @@ export default function ColumnFields({
             { label: "Colonne", style: { flex: 1, marginLeft: -NAME_INSET }, inset: INPUT_INSET },
             { label: "Largeur", style: { width: 100, marginLeft: -6 } },
           ]}
+          action={<ResetDefaults what="les colonnes" onReset={reset} />}
         />
         {rows.map((entry, rank) => {
           // The added row has no column yet.

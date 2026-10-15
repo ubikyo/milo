@@ -54,6 +54,7 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import type { CSSProperties } from "react";
 import { IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { useFileDrag } from "../../lib/useFileDrag";
+import { useFilePaste } from "../../lib/useFilePaste";
 import { taskReference } from "@milo/shared";
 import type {
   Attachment,
@@ -211,6 +212,8 @@ export default function CardDrawer({
    * equipment's photos and documents).
    */
   const dragging = useFileDrag(opened && !creation && !readOnly);
+  // Files pasted into the page: they join the attachments, as if dropped.
+  useFilePaste(opened && !creation && !readOnly, (files) => void dropFiles(files));
 
   /**
    * An image pasted into the description: it is sent to the server, and

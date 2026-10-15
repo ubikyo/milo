@@ -2424,7 +2424,12 @@ export default function TaskBoard({
   ).length;
 
   return (
-    <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
+    <Stack
+      gap="md"
+      style={{ flex: 1, minHeight: 0 }}
+      // Without a list, the prompt fills the widget's place (Alignment.module.css).
+      data-fill={(columns.length === 0 && !composing) || undefined}
+    >
 
       {/* A board with no list: the prompt fills the panel's whole
           height, like the other empty screens. During a read, nothing is

@@ -43,16 +43,6 @@
   filter: invert(1) hue-rotate(180deg);
 }
 
-/* The logo's dark-background variant, as the dark preview shows it
-   (logoFor): the light one, written visible, gives way. */
-.dark .body :global(.logo-light) {
-  display: none !important;
-}
-
-.dark .body :global(.logo-dark) {
-  display: inline-block !important;
-}
-
 /* Only the text written takes the pointer: the template is only shown. */
 .body {
   pointer-events: none;

@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import dayjs from "dayjs";
 import { ALL_OPTION, ChoiceFilter, TextFilter, type FilterOption } from "./ColumnFilters";
+import { readTexts, useGridState } from "../../lib/gridStates";
 
 // The funnels of the lists' other columns, whatever they hold: a text is
 // searched, a choice picked from the values the rows carry, a number
@@ -151,14 +152,19 @@ const filters = (value: string | undefined): value is string =>
 
 /**
  * The column filters of a list. "specs" describes its columns: declared
- * outside the component, so that it does not change at each render.
+ * outside the component, so that it does not change at each render. They are
+ * kept for the person, in the widget's scope (lib/gridStates).
  */
 export function useColumnFilters<T, K extends string>(
   rows: readonly T[] | null | undefined,
   specs: Record<K, ColumnFilterSpec<T>>,
 ) {
   // The value set in each column: a column without one is absent.
-  const [values, setValues] = useState<Partial<Record<K, string>>>({});
+  const [values, setValues] = useGridState<Partial<Record<K, string>>>(
+    "columns",
+    {},
+    readTexts<K>(Object.keys(specs)),
+  );
 
   /** True when the row passes every column's filter. */
   const keep = useMemo(() => {

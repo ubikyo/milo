@@ -1,7 +1,14 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useListRef } from "../../lib/list-ref";
 import type { ComponentType } from "react";
-import { DECLARED_ASSET_EXTRA_LISTS, DECLARED_ASSET_NAME_MAX } from "@milo/shared";
+import {
+  DECLARED_ASSET_DEFAULT_CATEGORIES,
+  DECLARED_ASSET_EXTRA_LISTS,
+  DECLARED_ASSET_EXTRA_LIST_DEFAULTS,
+  DECLARED_ASSET_LIST_SOURCES,
+  DECLARED_ASSET_NAME_MAX,
+  sourcesOf,
+} from "@milo/shared";
 import type {
   DeclaredAssetEntry,
   DeclaredAssetKind,
@@ -12,6 +19,7 @@ import type {
 } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { resetRows, resetTree } from "../../lib/reset-defaults";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { DrawerRegistrationsContext } from "../ui/IndicatorDrawer";
 import { pluralize } from "../ui/DrawerRows";
@@ -21,16 +29,14 @@ import type { TreeWords } from "../ui/EditableTree";
 import type { Column, Row } from "../ui/EditableRows";
 import {
   DECLARED_ASSET_LOOKS,
-  DECLARED_ASSET_SUPPLIER,
   EXTRA_ENTRY_LISTS,
   LOCATIONS_LOOK,
-  SUPPLIER_ICON,
   usedBy,
 } from "./kinds";
 
 // The open board's lists of one declared asset kind, in the drawer of its
 // widget: categories — a tree (EditableTree), as a "Projets" widget's —,
-// suppliers, makers, and products — each of a category and a maker —, in the
+// makers, and products — each of a category and a maker —, in the
 // kind's words: device types, brands and models; software types, publishers
 // and applications. Like the managed device asset tables
 // (ManagedDeviceAssetTablesFields), they are not widget settings but board
@@ -41,7 +47,8 @@ import {
 // products. A category or a maker still named by a product cannot be
 // deleted. Some kinds have more lists, after those: a device's identification
 // types and its locations — a tree too —, an application's license
-// information types.
+// information types. A list the widget takes from Liste widgets — its
+// makers, its types — is edited there, and not shown here.
 
 /** The width of the category column — a path, "Écran > Moniteur" —, in the products list. */
 const CATEGORY_WIDTH = 150;
@@ -58,7 +65,14 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 const entries = (list: Row[]): DeclaredAssetEntry[] => list.map(([name = ""]) => ({ name }));
 
-export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAssetKind }) {
+export default function DeclaredAssetTablesFields({
+  kind,
+  config,
+}: {
+  kind: DeclaredAssetKind;
+  /** The widget's configuration: the lists it takes from Liste widgets are not edited here. */
+  config: unknown;
+}) {
   const look = DECLARED_ASSET_LOOKS[kind];
   const { category, maker, product } = look.words;
   const board = useContext(CopyPasteContext);
@@ -127,6 +141,12 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
 
   if (list === null || !register) return null;
 
+  /** A list taken from Liste widgets: edited there, not here (DECLARED_ASSET_LIST_SOURCES). */
+  const sourced = (name: string): boolean => {
+    const field = (DECLARED_ASSET_LIST_SOURCES[kind] as Record<string, string | undefined>)[name];
+    return field !== undefined && sourcesOf(config, field).length > 0;
+  };
+
   /**
    * The makers change: a renamed one — same place, another name — is renamed
    * in its products; one still named by a product stays.
@@ -177,22 +197,17 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
     plural: category.titles.toLowerCase(),
   };
 
-  /** The lists made of names alone, in the order the drawer shows them. */
+  /**
+   * The lists made of names alone, in the order the drawer shows them. The
+   * suppliers are not among them: they are the companies of the Contact
+   * widgets associated with the widget.
+   */
   const nameLists: {
-    key: "suppliers" | "makers";
+    key: "makers";
     noun: DeclaredAssetNoun;
     icon: ComponentType<{ size?: number }>;
     save: (list: Row[]) => Promise<boolean>;
   }[] = [
-    {
-      key: "suppliers",
-      noun: DECLARED_ASSET_SUPPLIER,
-      icon: SUPPLIER_ICON,
-      save: async (list) => {
-        setSettings((s) => ({ ...s, suppliers: entries(list) }));
-        return true;
-      },
-    },
     {
       key: "makers",
       noun: maker,
@@ -226,8 +241,15 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
         nodes={settings.categories}
         onChange={changeCategories}
         words={categoryWords}
+        // The tree a new widget brings (shared): a category a product still
+        // names cannot go, and the reset is refused, as a deletion.
+        reset={{
+          what: `les ${category.titles.toLowerCase()}`,
+          onReset: (replace) =>
+            changeCategories(resetTree(settings.categories, DECLARED_ASSET_DEFAULT_CATEGORIES[kind], replace)),
+        }}
       />
-      {nameLists.map((l) => (
+      {nameLists.filter((l) => !sourced(l.key)).map((l) => (
         <ListRows
           key={l.key}
           title={l.noun.titles}
@@ -277,7 +299,7 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
             // are offered what is under it (DeclaredAssetDrawer).
             rootLabels={labels}
           />
-        ) : (
+        ) : sourced(list) ? null : (
           <ListRows
             key={list}
             title={EXTRA_ENTRY_LISTS[list].title}
@@ -292,6 +314,18 @@ export default function DeclaredAssetTablesFields({ kind }: { kind: DeclaredAsse
             addLabel={EXTRA_ENTRY_LISTS[list].add}
             deleteTitle={EXTRA_ENTRY_LISTS[list].remove}
             several={(n) => pluralize(n, EXTRA_ENTRY_LISTS[list].word)}
+            reset={{
+              what: `les ${EXTRA_ENTRY_LISTS[list].title.toLowerCase()}`,
+              onReset: (replace) =>
+                setSettings((s) => ({
+                  ...s,
+                  [list]: resetRows(
+                    s[list] ?? [],
+                    DECLARED_ASSET_EXTRA_LIST_DEFAULTS[list] as DeclaredAssetEntry[],
+                    replace,
+                  ),
+                })),
+            }}
           />
         ),
       )}

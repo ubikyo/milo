@@ -1,9 +1,14 @@
 // The templates of Milo's e-mails, in the "Notifications" section of
-// "Paramétrage" (see lib/mail-template.ts).
+// "Paramétrage" (see lib/mail-template.ts). Those of a Tickets widget are its
+// own: the request names it (board, list).
 
 import { Router } from "express";
+import type { Request } from "express";
 import { isMailTemplateKey } from "@milo/shared";
-import type { MailTemplateKey } from "@milo/shared";
+import type { MailTemplateKey, Right } from "@milo/shared";
+import { supportScope } from "../lib/support-scope.js";
+import { originalMail } from "../lib/support-original.js";
+import { supportRequests } from "../repositories/support.js";
 import { notFound } from "../lib/http.js";
 import {
   isReplyTemplateKey,
@@ -20,14 +25,19 @@ const keyOf = (value: unknown): MailTemplateKey =>
 
 const mjmlOf = (body: unknown): string => String((body as { mjml?: unknown } | null)?.mjml ?? "");
 
-mailTemplateRoutes.get("/", (_req, res) => {
-  res.json(mailTemplates());
+/** The Tickets widget named, if one is: its templates are its own. */
+const scopeOf = (req: Request, board: unknown, list: unknown, right: Right) =>
+  list ? supportScope(req, board, list, right) : undefined;
+
+mailTemplateRoutes.get("/", (req, res) => {
+  res.json(mailTemplates(scopeOf(req, req.query.board, req.query.list, "view")));
 });
 
 // The empty template goes back to Milo's own.
 mailTemplateRoutes.put("/:key", (req, res, next) => {
-  saveMailTemplate(keyOf(req.params.key), mjmlOf(req.body))
-    .then(() => res.json(mailTemplates()))
+  const scope = scopeOf(req, req.body?.board_id, req.body?.list_key, "update");
+  saveMailTemplate(keyOf(req.params.key), mjmlOf(req.body), scope)
+    .then(() => res.json(mailTemplates(scope)))
     .catch(next);
 });
 
@@ -50,6 +60,17 @@ mailTemplateRoutes.post("/:key/reply-preview", (req, res, next) => {
   if (!isReplyTemplateKey(key)) return notFound("Modèle de réponse introuvable");
   const body = (req.body ?? {}) as Record<string, unknown>;
   const text = (field: string) => String(body[field] ?? "");
+  const scope = scopeOf(req, body["board_id"], body["list_key"], "view");
+  // A request's reply quotes its e-mail — one of the widget's own, which the
+  // scope has just opened; without "request_id", the sample's.
+  const request =
+    body["request_id"] && scope ? supportRequests.byId.get(Number(body["request_id"])) : undefined;
+  const original =
+    "request_id" in body
+      ? request && request.board_id === scope?.board && request.list_key === scope.list
+        ? originalMail(request)
+        : null
+      : undefined;
   previewReply(key, {
     content: text("content"),
     ticket: text("ticket"),
@@ -58,7 +79,8 @@ mailTemplateRoutes.post("/:key/reply-preview", (req, res, next) => {
     status: text("status"),
     url: text("url"),
     requester: requesterOf(body["requester"]),
-  })
+    original,
+  }, scope)
     .then((html) => res.json({ html }))
     .catch(next);
 });

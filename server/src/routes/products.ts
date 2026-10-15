@@ -19,9 +19,7 @@ import {
   PRODUCT_PRICE_MAX,
   PRODUCT_QUANTITY_MAX,
   PRODUCT_SUPPLIERS_MAX,
-  PRODUCT_TAXES_MAX,
-  PRODUCT_TAX_DEFAULTS,
-  PRODUCT_TAX_MAX,
+  TAX_RATE_MAX,
   PRODUCT_VALUES_MAX,
   PRODUCT_VARIANTS_MAX,
   accessIncludes,
@@ -40,7 +38,6 @@ import type {
   ProductPhoto,
   ProductSettings,
   ProductSupplier,
-  ProductTax,
   ProductTracking,
   ProductVariant,
   SqliteBool,
@@ -177,24 +174,10 @@ export const priceOf = (value: unknown, max: number): number | null => {
 export const rateOf = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") return null;
   const read = Number(value);
-  if (!Number.isFinite(read) || read < 0 || read > PRODUCT_TAX_MAX) {
-    badRequest(`Une taxe est un pourcentage entre 0 et ${PRODUCT_TAX_MAX}`);
+  if (!Number.isFinite(read) || read < 0 || read > TAX_RATE_MAX) {
+    badRequest(`Une taxe est un pourcentage entre 0 et ${TAX_RATE_MAX}`);
   }
   return Math.round(read * 100) / 100;
-};
-
-/** The taxes received: each a rate, once; in their order. */
-const taxesOf = (received: unknown): ProductTax[] => {
-  if (!Array.isArray(received)) badRequest("Les taxes sont une liste");
-  const rates: number[] = [];
-  for (const entry of received as unknown[]) {
-    const rate = rateOf(((entry ?? {}) as Record<string, unknown>).rate);
-    if (rate === null) return badRequest("Une taxe demande son taux");
-    if (rates.includes(rate)) badRequest(`La taxe ${rate.toLocaleString("fr-FR")} % figure deux fois`);
-    rates.push(rate);
-  }
-  if (rates.length > PRODUCT_TAXES_MAX) badRequest(`Un widget tient en ${PRODUCT_TAXES_MAX} taxes`);
-  return rates.map((rate) => ({ rate }));
 };
 
 /** A minimum quantity: a positive number; null, none. */
@@ -382,26 +365,18 @@ const oneProduct = (row: ProductRow): Product =>
 
 // --- A widget's lists -------------------------------------------------------
 
-const readSettings = selection<{ categories: string; taxes: string }>(
-  "SELECT categories, taxes FROM board_product_settings WHERE board_id = ? AND list_key = ?",
-);
-const writeTaxes = mutation(
-  `INSERT INTO board_product_settings (board_id, list_key, taxes) VALUES (?, ?, ?)
-   ON CONFLICT (board_id, list_key) DO UPDATE SET taxes = excluded.taxes`,
+const readSettings = selection<{ categories: string }>(
+  "SELECT categories FROM board_product_settings WHERE board_id = ? AND list_key = ?",
 );
 const writeCategories = mutation(
   `INSERT INTO board_product_settings (board_id, list_key, categories) VALUES (?, ?, ?)
    ON CONFLICT (board_id, list_key) DO UPDATE SET categories = excluded.categories`,
 );
 
-/** A "Produits" widget's lists; without a row, no category and the default taxes. */
-const settingsOf = (scope: ListScope): ProductSettings => {
-  const row = readSettings.get(scope.board, scope.list);
-  return {
-    categories: parsed<ProductCategory>(row?.categories),
-    taxes: row ? parsed<ProductTax>(row.taxes) : PRODUCT_TAX_DEFAULTS,
-  };
-};
+/** A "Produits" widget's lists; without a row, no category. */
+const settingsOf = (scope: ListScope): ProductSettings => ({
+  categories: parsed<ProductCategory>(readSettings.get(scope.board, scope.list)?.categories),
+});
 
 /** What the thread notes about a product when its record changes (lib/history.ts). */
 const fieldsRead = (product: Product): Field[] => [
@@ -811,7 +786,7 @@ productRoutes.delete("/comments/:comment", (req, res) => {
 });
 
 /**
- * The lists of a Produits widget — its categories tree, its taxes —: not its
+ * The lists of a Produits widget — its categories tree —: not its
  * configuration but its own data (ListScope), named by "?board=&list=".
  */
 export const productSettingsRoutes = Router();
@@ -830,13 +805,7 @@ productSettingsRoutes.put("/", (req, res) => {
   requireBoardControl(board, req.user);
   const scope = listInBoard(board.id, "product.list", req.query.list);
   const body = (req.body ?? {}) as Record<string, unknown>;
-  if (body.categories === undefined && body.taxes === undefined) badRequest("Rien à enregistrer");
-  // Each list read first: a refused one writes nothing.
-  const categories = body.categories === undefined ? undefined : categoriesOf(body.categories);
-  const taxes = body.taxes === undefined ? undefined : taxesOf(body.taxes);
-  transaction(() => {
-    if (categories) writeCategories.run(scope.board, scope.list, JSON.stringify(categories));
-    if (taxes) writeTaxes.run(scope.board, scope.list, JSON.stringify(taxes));
-  })();
+  if (body.categories === undefined) badRequest("Rien à enregistrer");
+  writeCategories.run(scope.board, scope.list, JSON.stringify(categoriesOf(body.categories)));
   res.json(settingsOf(scope));
 });

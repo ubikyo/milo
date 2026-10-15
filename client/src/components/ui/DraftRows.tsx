@@ -1,17 +1,21 @@
-import { Group, Input, NumberInput, Select, Stack, Tooltip } from "@mantine/core";
+import { Box, Group, Input, NumberInput, Select, Stack, Tooltip } from "@mantine/core";
 import type { NumberInputProps, SelectProps } from "@mantine/core";
 import { useState } from "react";
 import type { ComponentType, CSSProperties, DragEvent, ReactNode } from "react";
+import { useElementSize } from "@mantine/hooks";
 import AddButton from "./AddButton";
+import { wideDropdown } from "./CreateFromSearch";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import {
   EmptyList,
+  HEADER_ROW,
   Handle,
   ListFooter,
   NAME_INSET,
   ROUNDING,
   ROW_INSET,
   RowCheckbox,
+  RowCheckboxSpace,
   move,
   nameFieldStyle,
   pluralize,
@@ -45,8 +49,25 @@ export function RowSelect({ onChange, alignRight = false, ...props }: SelectProp
       }}
       onFocus={() => setFocus(true)}
       onBlur={() => setFocus(false)}
-      styles={{ input: { ...nameFieldStyle(focus), ...(alignRight && { textAlign: "right" as const }) } }}
+      // Its own styles kept — a dropdown's width (wideDropdown) —, its field's over them.
+      styles={{
+        ...(props.styles as Record<string, CSSProperties> | undefined),
+        input: { ...nameFieldStyle(focus), ...(alignRight && { textAlign: "right" as const }) },
+      }}
     />
+  );
+}
+
+/**
+ * A row's choice taking the rest of the row, its dropdown as wide as what it
+ * lists (wideDropdown) — a product's supplier.
+ */
+export function WideRowSelect(props: SelectProps) {
+  const { ref, width } = useElementSize();
+  return (
+    <div ref={ref} style={{ flex: 1, minWidth: 0 }}>
+      <RowSelect {...props} {...wideDropdown(width)} />
+    </div>
   );
 }
 
@@ -132,6 +153,7 @@ export default function DraftRows<T>({
   reorderable = true,
   sort,
   ready = () => true,
+  header,
 }: {
   label: string;
   value: T[];
@@ -175,6 +197,12 @@ export default function DraftRows<T>({
    */
   sort?: (a: T, b: T) => number;
   ready?: (row: T) => boolean;
+  /**
+   * The columns' titles above the rows, as the other lists' (ListHeader),
+   * laid out as a row: over its fields, then over its trailing field
+   * (HeaderTitle each). Shown only while the list has rows.
+   */
+  header?: { fields: ReactNode; trailing?: ReactNode };
 }) {
   const selection = useRowSelection(value.map((_, rank) => rank));
   const [toDelete, setToDelete] = useState<number[]>([]);
@@ -241,6 +269,21 @@ export default function DraftRows<T>({
         <EmptyList icon={emptyIcon} message={emptyText} />
       ) : (
         <Stack gap={1}>
+          {header && (
+            <Group
+              gap="xs"
+              wrap="nowrap"
+              data-list-header
+              style={{ ...rowStyle(0, value.length + 1, false), ...HEADER_ROW }}
+            >
+              {reorderable && <Box w={16} style={{ flexShrink: 0 }} />}
+              <RowCheckboxSpace afterHandle={reorderable} />
+              <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}>
+                {header.fields}
+              </Group>
+              {header.trailing}
+            </Group>
+          )}
           {value.map((row, rank) => (
             <Group
               key={rank}
@@ -257,7 +300,8 @@ export default function DraftRows<T>({
                 })
               }
               style={{
-                ...rowStyle(rank, value.length, held === rank),
+                // The header opens the stack: the rows count it.
+                ...rowStyle(rank + (header ? 1 : 0), value.length + (header ? 1 : 0), held === rank),
                 ...rowLook?.(row),
               }}
             >

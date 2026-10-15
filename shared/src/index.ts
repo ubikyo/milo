@@ -28,6 +28,8 @@ export * from "./printers.js";
 export * from "./products.js";
 export * from "./orders.js";
 export * from "./warehouses.js";
+export * from "./taxes.js";
+export * from "./value-lists.js";
 export * from "./locations.js";
 export * from "./proxies.js";
 export * from "./roles.js";

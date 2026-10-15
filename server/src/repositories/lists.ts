@@ -185,6 +185,9 @@ const OWNED: [table: string, type: string][] = [
   ["milestone_types", "project.list"],
   ["support_labels", "support.list"],
   ["support_label_groups", "support.list"],
+  ["support_contents", "support.list"],
+  ["support_replies", "support.list"],
+  ["support_mail_templates", "support.list"],
   ["managed_device_asset_labels", "managed_device_asset.list"],
   ["managed_device_asset_label_groups", "managed_device_asset.list"],
   ["board_managed_device_asset_settings", "managed_device_asset.list"],
@@ -200,6 +203,8 @@ const OWNED: [table: string, type: string][] = [
   ["warehouse_labels", "warehouse.list"],
   ["warehouse_label_groups", "warehouse.list"],
   ["board_warehouse_settings", "warehouse.list"],
+  ["board_tax_settings", "tax.list"],
+  ["board_value_lists", "value.list"],
   ["location_labels", "location.list"],
   ["location_label_groups", "location.list"],
   ...DECLARED_ASSET_KINDS.flatMap((kind): [string, string][] => {

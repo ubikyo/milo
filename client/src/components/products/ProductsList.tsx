@@ -38,7 +38,7 @@ import {
 } from "../ui/ColumnFilters";
 import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GridScroll";
+import GridWithAdd from "../ui/GridWithAdd";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
 import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
@@ -58,6 +58,7 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { STRONG_TEXT } from "../../themes/colors";
 import { NewShortcut } from "../../lib/newShortcut";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The list of a Produits widget (widgets/product): the products entered by
 // hand. The same grid as the contacts' (ContactsList): its header, its sort,
@@ -294,8 +295,8 @@ export default function ProductsList({
         })) ?? null
     );
   }, [all, config, categories]);
-  const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "name", direction: "asc" }, readSort<Sort>(Object.keys(VALUES)));
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(products, labelsOf);
   const columnFilter = useColumnFilters(products, COLUMN_FILTERS);
@@ -602,19 +603,6 @@ export default function ProductsList({
             </Table.Td>
           </Table.Tr>
         )}
-
-        {/* Last row: adding a product happens where the list ends. Its
-            background neutralizes the hover: it is not a product. */}
-        {canAdd && (
-          <Table.Tr style={{ backgroundColor: "transparent" }}>
-            <Table.Td colSpan={columns.length}>
-              <AddButton
-                label="Ajouter un produit"
-                onClick={() => setDrawer({ product: null })}
-              />
-            </Table.Td>
-          </Table.Tr>
-        )}
       </Table.Tbody>
     </Table>
   );
@@ -633,8 +621,13 @@ export default function ProductsList({
           onAction={canAdd ? () => setDrawer({ product: null }) : undefined}
         />
       ) : (
-        // A section narrower than the list makes it scroll sideways.
-        <GridScroll>{table}</GridScroll>
+        // Under the grid, "Ajouter", at the bottom of the widget (GridWithAdd).
+        <GridWithAdd
+          config={config}
+          add={canAdd && <AddButton label="Ajouter un produit" onClick={() => setDrawer({ product: null })} />}
+        >
+          {table}
+        </GridWithAdd>
       )}
 
       <ProductDrawer

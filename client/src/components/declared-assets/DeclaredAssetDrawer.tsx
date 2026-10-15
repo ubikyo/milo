@@ -7,6 +7,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Text,
   Textarea,
   TextInput,
 } from "@mantine/core";
@@ -19,6 +20,7 @@ import {
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DatePickerInput } from "@mantine/dates";
+import { useElementSize } from "@mantine/hooks";
 import { IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import {
   DECLARED_ASSET_DESCRIPTION_MAX,
@@ -26,14 +28,18 @@ import {
   DECLARED_ASSET_NAME_MAX,
   DECLARED_ASSET_PRICE_MAX,
   DECLARED_ASSET_QUANTITY_MAX,
-  DECLARED_ASSET_SUPPLIER,
+  DECLARED_ASSET_SUPPLIER_SOURCES,
   DECLARED_ASSET_TYPED_VALUE_MAX,
   DECLARED_ASSET_VERSION_MAX,
   DECLARED_ASSET_WEBSITE_MAX,
   DECLARED_ASSET_WORDS,
+  TAX_SOURCES,
+  accessIncludes,
+  sourcesOf,
 } from "@milo/shared";
 import type { TreeNodeData } from "@mantine/core";
 import type {
+  Contact,
   DeclaredAsset,
   DeclaredAssetAttachment,
   DeclaredAssetInput,
@@ -49,7 +55,14 @@ import { listOf } from "../../lib/list-ref";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { BARE_FIELDSET } from "../../lib/rights";
 import { shrinkImage } from "../../lib/shrinkImage";
+import { useSources } from "../../lib/sources";
+import { taxChoice, useOfferedTaxes } from "../../lib/taxes";
+import { createSupplier, useSuppliers } from "../../lib/suppliers";
+import { useWidgetAccess } from "../../lib/rights";
+import ContactDrawer from "../contacts/ContactDrawer";
+import CreateFromSearch, { wideDropdown } from "../ui/CreateFromSearch";
 import { useFileDrag } from "../../lib/useFileDrag";
+import { useFilePaste } from "../../lib/useFilePaste";
 import { useUsers } from "../../lib/users";
 import CardAttachments from "../board/CardAttachments";
 import CardCovers from "../board/CardCovers";
@@ -65,7 +78,6 @@ import { ListRows } from "../ui/EditableRows";
 import LabelPicker, { declaredAssetLabelsApi } from "../ui/LabelPicker";
 import PrintLabelButton from "../ui/PrintLabelButton";
 import AddDeclaredProductModal from "./AddDeclaredProductModal";
-import AddDeclaredEntryModal from "./AddDeclaredEntryModal";
 import AddDeclaredTreeNodeModal from "./AddDeclaredTreeNodeModal";
 import GenerateNumberButton from "./GenerateNumberButton";
 
@@ -73,8 +85,8 @@ import GenerateNumberButton from "./GenerateNumberButton";
 // and labels first, then its name; its product — a model, an application —,
 // picked in a Cascader through its category and its maker — a device type
 // and a brand; a software type and a publisher —, or added from under it;
-// its supplier, quantity and price on another line — the names chosen in the
-// board's lists (DeclaredAssetTablesFields) —; a description
+// its supplier — a company of the Contact widgets its widget names —,
+// quantity and price on another line; a description
 // and notes. A device has more after its supplier: its location — a place of
 // its board's locations tree, Société > Bâtiment > Baie > Position, picked in
 // a Cascader —, and its identifications — typed values, a serial number, a
@@ -135,9 +147,16 @@ const NAME_BUTTONS_WIDTH = 2 * 28 + 2 * NAME_BUTTONS_GAP;
 /** The purchase date's width, beside the asset's number. */
 const PURCHASE_DATE_WIDTH = 160;
 
-// The widths of the quantity and the price, on the supplier's line.
-const QUANTITY_WIDTH = 100;
-const PRICE_WIDTH = 140;
+/** The quantity, the price and its tax on the right, their labels too, as in the list. */
+const NUMBER_STYLES = {
+  label: { display: "block", textAlign: "right" as const },
+  input: { textAlign: "right" as const },
+};
+/** The quantity, 10px away from its arrows. */
+const QUANTITY_STYLES = {
+  ...NUMBER_STYLES,
+  input: { ...NUMBER_STYLES.input, paddingInlineEnd: "calc(var(--input-padding-inline-end) + 10px)" },
+};
 
 /** A device's places, as the window that adds one names them. */
 const LOCATION_NOUN = { a: "un emplacement", ofThe: "de l'emplacement", none: "Aucun emplacement" };
@@ -150,11 +169,17 @@ interface Form {
   actor_ids: string[];
   label_ids: string[];
   category: string;
+  /** A company of the associated Contact widgets, by its id as a string. */
+  supplier_id: string | null;
+  /** The name kept by an asset from before the link, without an id. */
   supplier: string;
   maker: string;
   product: string;
   quantity: number | "";
+  /** Before tax. */
   price: number | "";
+  /** Its tax's rate, as a string — the choice's value —; null, none. */
+  tax: string | null;
   /** "2026-10-12"; empty, none. */
   purchase_date: string;
   description: string;
@@ -172,11 +197,13 @@ const EMPTY: Form = {
   actor_ids: [],
   label_ids: [],
   category: "",
+  supplier_id: null,
   supplier: "",
   maker: "",
   product: "",
   quantity: 1,
   price: "",
+  tax: null,
   purchase_date: "",
   description: "",
   notes: "",
@@ -192,11 +219,13 @@ const formOf = (asset: DeclaredAsset): Form => ({
   actor_ids: asset.actors.map((a) => String(a.id)),
   label_ids: asset.labels.map((l) => String(l.id)),
   category: asset.category,
+  supplier_id: asset.supplier_id == null ? null : String(asset.supplier_id),
   supplier: asset.supplier,
   maker: asset.maker,
   product: asset.product,
   quantity: asset.quantity,
   price: asset.price ?? "",
+  tax: asset.tax == null ? null : String(asset.tax),
   purchase_date: asset.purchase_date ?? "",
   description: asset.description,
   notes: asset.notes,
@@ -216,20 +245,18 @@ const inputOf = (kind: DeclaredAssetKind, form: Form): DeclaredAssetInput => ({
   website: undefined,
   license_infos: undefined,
   ...Object.fromEntries(DECLARED_ASSET_EXTRAS[kind].map((f) => [f, form[f]])),
+  supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
   actor_ids: form.actor_ids.map(Number),
   label_ids: form.label_ids.map(Number),
   quantity: form.quantity === "" ? 1 : form.quantity,
   price: form.price === "" ? null : form.price,
+  tax: form.tax === null ? null : Number(form.tax),
 });
 
-const NO_LISTS: DeclaredAssetSettings = { categories: [], suppliers: [], makers: [], products: [] };
+/** The choice standing for the name an asset from before the link was given. */
+const LEGACY_SUPPLIER = "legacy";
 
-/**
- * A choice among names, which keeps the current one even if it has left its
- * list: an asset keeps the maker it was given.
- */
-const options = (names: string[], current: string): string[] =>
-  current && !names.includes(current) ? [current, ...names] : names;
+const NO_LISTS: DeclaredAssetSettings = { categories: [], suppliers: [], makers: [], products: [] };
 
 /** A level of the products Cascader: a category, a maker, a product — unique in the tree. */
 const categoryValue = (id: string) => JSON.stringify(["c", id]);
@@ -298,6 +325,8 @@ interface DeclaredAssetDrawerProps {
   boardId: Id;
   /** The widget it is added from (LIST_KEY). */
   listKey: string;
+  /** Its widget's configuration: the Contact widgets its suppliers come from. */
+  config: unknown;
   /** The asset shown; null to add one. */
   asset: DeclaredAsset | null;
   /** After a write: the list re-reads. */
@@ -312,6 +341,7 @@ export default function DeclaredAssetDrawer({
   onClose,
   boardId,
   listKey,
+  config,
   asset,
   onSaved,
   canSave,
@@ -331,15 +361,53 @@ export default function DeclaredAssetDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** The window that adds a product to the board's lists. */
   const [addingProduct, setAddingProduct] = useState(false);
-  /** The window that adds a supplier to the board's lists. */
-  const [addingSupplier, setAddingSupplier] = useState(false);
   /** The window that adds a place to the board's locations tree. */
   const [addingLocation, setAddingLocation] = useState(false);
   const photoField = useRef<HTMLInputElement>(null);
   const fileField = useRef<HTMLInputElement>(null);
   // Files dragged over the page: the drop zones show, even under full lists.
   const dragging = useFileDrag(opened && canSave);
+  // Files pasted into the page: they join the attachments, as if dropped.
+  useFilePaste(opened && canSave, (files) => void addAttachments(files));
   const readOnly = !canSave;
+
+  // The suppliers: the companies of the Contact widgets its widget names.
+  // The field's width: its dropdown is never narrower, and widens with what it shows.
+  const { ref: supplierField, width: supplierWidth } = useElementSize();
+  const supplierSources = useSources("contact.list", config, DECLARED_ASSET_SUPPLIER_SOURCES);
+  // The taxes offered: those of the associated Taxes widgets, in their order.
+  const taxes = useOfferedTaxes(config);
+  const { suppliers, contacts } = useSuppliers(opened ? supplierSources : []);
+  // What the supplier's search holds: a company not found is created from it,
+  // in the first Contact widget named — opened afterwards, to be completed.
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [editedSupplier, setEditedSupplier] = useState<Contact | null>(null);
+  const supplierWidget = supplierSources[0];
+  const logistics = useWidgetAccess()("logistics");
+  const canAddSupplier = !readOnly && Boolean(supplierWidget) && accessIncludes(logistics, "update");
+  const createSupplierFromSearch = async (name: string, edit: boolean) => {
+    if (!supplierWidget) return;
+    try {
+      const contact = await createSupplier(supplierWidget, name);
+      setForm((f) => ({ ...f, supplier_id: String(contact.id), supplier: contact.name }));
+      setSupplierSearch("");
+      (document.activeElement as HTMLElement | null)?.blur();
+      if (edit) setEditedSupplier(contact);
+    } catch (e) {
+      notifyError(errorMessage(e));
+    }
+  };
+  const supplierData = useMemo(() => {
+    const data = (suppliers ?? []).map((s) => ({ value: String(s.contact.id), label: s.contact.name }));
+    // One no longer among them still shows, by its name; an asset from
+    // before the link, the name it was given.
+    if (form.supplier_id && !data.some((d) => d.value === form.supplier_id)) {
+      data.unshift({ value: form.supplier_id, label: form.supplier || `#${form.supplier_id}` });
+    } else if (!form.supplier_id && form.supplier) {
+      data.unshift({ value: LEGACY_SUPPLIER, label: form.supplier });
+    }
+    return data;
+  }, [suppliers, form.supplier_id, form.supplier]);
 
   // Its labels and lists are its widget's: the asset's own, or the one it is
   // added from.
@@ -709,31 +777,50 @@ export default function DeclaredAssetDrawer({
               )}
 
 
-              <Group align="flex-start" gap="md" wrap="nowrap">
-                {/* One missing from the lists is added from under the field,
-                    as the product is. */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Select
-                    label="Fournisseur"
-                    placeholder="Choisir un fournisseur"
-                    data={options(
-                      lists.suppliers.map((s) => s.name),
-                      form.supplier,
-                    )}
-                    value={form.supplier || null}
-                    onChange={(v) => set("supplier", v ?? "")}
-                    nothingFoundMessage="Aucun fournisseur"
-                    clearable
-                    searchable
-                  />
-                  {!readOnly && (
-                    <AddButton
-                      label="Ajouter un fournisseur"
-                      onClick={() => setAddingSupplier(true)}
-                      mt={4}
-                    />
-                  )}
-                </div>
+              {/* A company of the Contact widgets its widget names, on its own
+                  line; one typed and not found is created there. */}
+              <div ref={supplierField}>
+                <Select
+                  label="Fournisseur"
+                  {...wideDropdown(supplierWidth)}
+                  placeholder={
+                    suppliers === null && supplierSources.length ? "Lecture…" : "Choisir un fournisseur"
+                  }
+                  data={supplierData}
+                  value={form.supplier_id ?? (form.supplier ? LEGACY_SUPPLIER : null)}
+                  onChange={(v) =>
+                    setForm((f) =>
+                      v === LEGACY_SUPPLIER
+                        ? f
+                        : {
+                            ...f,
+                            supplier_id: v,
+                            supplier: (v && supplierData.find((d) => d.value === v)?.label) || "",
+                          },
+                    )
+                  }
+                  onSearchChange={setSupplierSearch}
+                  nothingFoundMessage={
+                    // Not found: created from what is typed — at once, or opened to be completed.
+                    supplierSearch.trim() && canAddSupplier ? (
+                      <CreateFromSearch
+                        typed={supplierSearch.trim()}
+                        onCreate={(edit) => void createSupplierFromSearch(supplierSearch.trim(), edit)}
+                      />
+                    ) : (
+                      // On the left, on one line — the dropdown widens to it —: it is centered otherwise.
+                      <Text size="sm" ta="left" style={{ whiteSpace: "nowrap" }}>
+                        {supplierSources.length ? "Aucune société" : "Aucun widget Contact associé"}
+                      </Text>
+                    )
+                  }
+                  clearable
+                  searchable
+                />
+              </div>
+
+              {/* Under it, its quantity, its price before tax and its tax, in three columns. */}
+              <SimpleGrid cols={3} spacing="md">
                 <NumberInput
                   label="Quantité"
                   value={form.quantity}
@@ -742,10 +829,10 @@ export default function DeclaredAssetDrawer({
                   max={DECLARED_ASSET_QUANTITY_MAX}
                   allowDecimal={false}
                   allowNegative={false}
-                  w={QUANTITY_WIDTH}
+                  styles={QUANTITY_STYLES}
                 />
                 <NumberInput
-                  label="Prix"
+                  label="Prix HT"
                   placeholder="0,00"
                   value={form.price}
                   onChange={(v) => set("price", typeof v === "number" ? v : "")}
@@ -757,9 +844,23 @@ export default function DeclaredAssetDrawer({
                   allowNegative={false}
                   suffix=" €"
                   hideControls
-                  w={PRICE_WIDTH}
+                  styles={NUMBER_STYLES}
                 />
-              </Group>
+                {/* The price's tax: one of the associated Taxes widgets'. */}
+                <Select
+                  label="TVA"
+                  placeholder="—"
+                  {...taxChoice(taxes, form.tax)}
+                  value={form.tax}
+                  onChange={(v) => set("tax", v)}
+                  nothingFoundMessage={
+                    <Text size="sm" ta="left" style={{ whiteSpace: "nowrap" }}>
+                      {sourcesOf(config, TAX_SOURCES).length ? "Aucune taxe" : "Aucun widget Taxes associé"}
+                    </Text>
+                  }
+                  styles={NUMBER_STYLES}
+                />
+              </SimpleGrid>
 
               {/* A device's place, then its identifications; an
                   application's license information: lists of typed values. */}
@@ -918,6 +1019,22 @@ export default function DeclaredAssetDrawer({
         />
       </Drawer>
 
+      {supplierWidget && (
+        <ContactDrawer
+          // A supplier created from its search, to complete.
+          opened={editedSupplier !== null}
+          onClose={() => setEditedSupplier(null)}
+          boardId={supplierWidget.board_id}
+          listKey={supplierWidget.key}
+          contact={editedSupplier}
+          contacts={(contacts ?? []).filter((c) => c.board_id === supplierWidget.board_id)}
+          initialType="company"
+          onSaved={() => {}}
+          canSave={canAddSupplier}
+          canDelete={false}
+        />
+      )}
+
       <AddDeclaredProductModal
         kind={kind}
         opened={addingProduct}
@@ -929,20 +1046,6 @@ export default function DeclaredAssetDrawer({
           // The asset takes the product just added.
           setLists(saved);
           setForm((f) => ({ ...f, category: added.category, maker: added.maker, product: added.name }));
-        }}
-      />
-      <AddDeclaredEntryModal
-        kind={kind}
-        entries="suppliers"
-        noun={DECLARED_ASSET_SUPPLIER}
-        opened={addingSupplier}
-        onClose={() => setAddingSupplier(false)}
-        list={list}
-        lists={lists}
-        onSaved={(saved, supplier) => {
-          // The asset takes the supplier just added.
-          setLists(saved);
-          set("supplier", supplier);
         }}
       />
       <AddDeclaredTreeNodeModal

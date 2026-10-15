@@ -23,6 +23,7 @@ import {
   SUPPORT_STATUSES,
   isSupportStatus,
   supportTicketRef,
+  withoutOriginal,
 } from "@milo/shared";
 import type { Id, Right, SupportStatus } from "@milo/shared";
 import { transaction } from "../db/query.js";
@@ -553,7 +554,9 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
   const { lastInsertRowid } = supportComments.create.run(
     existing.id,
     req.user.id,
-    text,
+    // The original e-mail a predefined reply quotes goes in the e-mail alone:
+    // the thread already shows it.
+    withoutOriginal(text),
     timestamp,
     timestamp,
   );

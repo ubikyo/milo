@@ -1,0 +1,11 @@
+/* The reset button: the icons' gray; on hover, a grayer icon on a grayer
+   background still — the text's on the scrollbars' gray on light, the dimmed
+   text's on the gray buttons' hover on dark. */
+.button.button {
+  color: var(--milo-field-icon);
+}
+
+.button.button:hover {
+  color: light-dark(var(--mantine-color-text), var(--mantine-color-dimmed));
+  background-color: light-dark(var(--milo-scrollbar), var(--milo-sunken-bg));
+}

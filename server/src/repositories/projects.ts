@@ -1,6 +1,6 @@
 // Projects, and what comes with them: their actors and labels.
 
-import { DEFAULT_LABEL_GROUP, PROJECT_PRIORITY_LABELS } from "@milo/shared";
+import { DEFAULT_LABEL_GROUP, PROJECT_PRIORITY_GROUP, PROJECT_PRIORITY_LABELS } from "@milo/shared";
 import type { Actor, Id, Project, ProjectLabel } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { IdRow, NextRow, ProjectJoinedRow, ProjectRow } from "../db/rows.js";
@@ -216,13 +216,13 @@ const priorityGroup = selection<IdRow>(
 );
 
 /**
- * A projects widget brings the "Priorités" group and its labels
+ * A projects widget brings the "Priorité" group and its labels
  * (PROJECT_PRIORITY_LABELS), when it has no group of that name yet: each
  * widget has its own. True when they were created.
  */
 export const ensureProjectPriorities = transaction((scope: ListScope): boolean => {
-  if (!scope.list || priorityGroup.get(scope.board, scope.list, DEFAULT_LABEL_GROUP)) return false;
-  const group = projectLabelGroups.create(scope, DEFAULT_LABEL_GROUP);
+  if (!scope.list || priorityGroup.get(scope.board, scope.list, PROJECT_PRIORITY_GROUP)) return false;
+  const group = projectLabelGroups.create(scope, PROJECT_PRIORITY_GROUP);
   const timestamp = new Date().toISOString();
   let position = nextLabelRank(scope).next;
   for (const label of PROJECT_PRIORITY_LABELS) {
@@ -231,6 +231,27 @@ export const ensureProjectPriorities = transaction((scope: ListScope): boolean =
   projectLabelGroups.renumber(scope);
   return true;
 });
+
+/**
+ * A new projects widget's labels column, limited to its "Priorité" group —
+ * only now is that group known. "undefined" when the column already names a
+ * group, or when the configuration shows no labels column.
+ */
+export const withProjectPriorityColumn = (
+  config: unknown,
+  scope: ListScope,
+): Record<string, unknown> | undefined => {
+  const current = (config ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(current.columns)) return undefined;
+  const group = priorityGroup.get(scope.board, scope.list, PROJECT_PRIORITY_GROUP)?.id;
+  const columns = current.columns as Record<string, unknown>[];
+  const index = columns.findIndex((c) => c?.key === "labels" && c.group === undefined);
+  if (group === undefined || index === -1) return undefined;
+  return {
+    ...current,
+    columns: columns.map((c, i) => (i === index ? { ...c, group } : c)),
+  };
+};
 
 /** The twin, created in the group of the same name — itself created if needed. */
 const createTwin = (

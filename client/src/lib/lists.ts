@@ -20,6 +20,8 @@ export const LIST_ITEMS: Record<string, string> = {
   "order.list": "Les commandes qu'il montre, leurs commentaires et ses étiquettes",
   "warehouse.list": "Les entrepôts qu'il montre et ses étiquettes",
   "location.list": "Les emplacements qu'il montre, ses étiquettes et ses formats",
+  "tax.list": "Les taxes qu'il montre",
+  "value.list": "Les lignes qu'il montre",
 };
 
 /** The filter of a widget's items, from its configuration. */

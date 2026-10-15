@@ -24,7 +24,7 @@ import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
 import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GridScroll";
+import GridWithAdd from "../ui/GridWithAdd";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
 import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
@@ -36,6 +36,7 @@ import { clearRequest, useRequestedItem } from "../../lib/searchSources";
 import { useWarehouses } from "../../lib/warehouses";
 import { STRONG_TEXT } from "../../themes/colors";
 import { NewShortcut } from "../../lib/newShortcut";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The list of an Entrepôts widget (widgets/warehouse): the warehouses entered
 // by hand. The same grid as the contacts' (ContactsList): its header, its
@@ -200,8 +201,8 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
   const { warehouses: all, reload } = useWarehouses(boardId);
   // Those of this widget only.
   const warehouses = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
-  const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "name", direction: "asc" }, readSort<Sort>(Object.keys(VALUES)));
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(warehouses, labelsOf);
   const columnFilter = useColumnFilters(warehouses, COLUMN_FILTERS);
@@ -420,16 +421,6 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
             </Table.Td>
           </Table.Tr>
         )}
-
-        {/* Last row: adding a warehouse happens where the list ends. Its
-            background neutralizes the hover: it is not a warehouse. */}
-        {canAdd && (
-          <Table.Tr style={{ backgroundColor: "transparent" }}>
-            <Table.Td colSpan={columns.length}>
-              <AddButton label="Ajouter un entrepôt" onClick={() => setDrawer({ warehouse: null })} />
-            </Table.Td>
-          </Table.Tr>
-        )}
       </Table.Tbody>
     </Table>
   );
@@ -448,8 +439,13 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
           onAction={canAdd ? () => setDrawer({ warehouse: null }) : undefined}
         />
       ) : (
-        // A section narrower than the list makes it scroll sideways.
-        <GridScroll>{table}</GridScroll>
+        // Under the grid, "Ajouter", at the bottom of the widget (GridWithAdd).
+        <GridWithAdd
+          config={config}
+          add={canAdd && <AddButton label="Ajouter un entrepôt" onClick={() => setDrawer({ warehouse: null })} />}
+        >
+          {table}
+        </GridWithAdd>
       )}
 
       <WarehouseDrawer

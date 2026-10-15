@@ -301,14 +301,6 @@ const PREVIEW_BG = { light: "#ffffff", dark: PREVIEW_DARK_BG };
 const DARK_FILTER = "invert(1) hue-rotate(180deg)";
 
 /**
- * The logo of the theme shown — the switch decides, not the browser's own
- * preference, which the template's dark-mode rule would otherwise follow.
- */
-const logoFor = (dark: boolean): string =>
-  `.logo-light{display:${dark ? "none" : "inline-block"}!important}` +
-  `.logo-dark{display:${dark ? "inline-block" : "none"}!important}`;
-
-/**
  * An image wider than the pane fits it: the preview scrolls only down, and a
  * pasted screenshot shows whole. Mail clients mostly do the same.
  */
@@ -322,7 +314,7 @@ const previewed = (html: string, dark: boolean, scheme: "light" | "dark"): strin
         ? `body>*{filter:${DARK_FILTER}}img,.${MAIL_DARK_CLASS},.${MAIL_NOTE_CLASS}{filter:${DARK_FILTER}}` +
           `.${MAIL_NOTE_CLASS}{background-color:${MAIL_NOTE_DARK_BG}!important;color:#ffffff!important}`
         : ""
-    }${logoFor(dark)}</style></head>`,
+    }</style></head>`,
   );
 
 /**

@@ -10,6 +10,7 @@
 import { randomInt } from "node:crypto";
 import { optins, pair } from "../repositories/optins.js";
 import type { OptinTable } from "../repositories/optins.js";
+import type { Id } from "@milo/shared";
 import { listMailboxes } from "../repositories/inboxes.js";
 import { sendingAddress, entraConfigured } from "./entra.js";
 import { fail } from "./http.js";
@@ -38,10 +39,11 @@ export const missingLabel = (): string => {
 };
 
 /**
- * Sends a new code to the inbox, for the list "list";
- * "usage" says where its requests will go. Throws whatever prevented sending.
+ * Sends a new code to the inbox, for the list "list" of the board "board" —
+ * in its own template; "usage" says where its requests will go. Throws
+ * whatever prevented sending.
  */
-const send = async (list: string, email: string, usage = ""): Promise<void> => {
+const send = async (board: Id | undefined, list: string, email: string, usage = ""): Promise<void> => {
   const reason = missingLabel();
   if (reason) throw new Error(reason);
   const code = newCode();
@@ -54,7 +56,7 @@ const send = async (list: string, email: string, usage = ""): Promise<void> => {
       intro: `Milo doit relever les e-mails de ${email} pour en faire des tickets${usage ? ` (${usage})` : ""}. Pour confirmer que cette boîte vous appartient, saisissez ce code dans Milo : Actions → Confirmer une adresse. Rien n'en sera importé avant.`,
       rows: [{ text: `Code de confirmation : ${code}`, repetitions: 1 }],
       footer: "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
-    }, { email, code })),
+    }, { email, code }, board !== undefined ? { board, list } : undefined)),
   });
   // Stored once sent: a failed send does not replace the previous code.
   optins.sent(list, email, code);
@@ -73,7 +75,7 @@ export const askForConfirmations = (): void => {
   optins.forgetExcept(new Set(mailboxes.map((b) => pair(b.list, b.value))));
   for (const mailbox of mailboxes) {
     if (!optins.create(mailbox.list, mailbox.value)) continue;
-    send(mailbox.list, mailbox.value, mailbox.usage).catch((error: unknown) =>
+    send(mailbox.board_id, mailbox.list, mailbox.value, mailbox.usage).catch((error: unknown) =>
       console.error(`Confirmation of ${mailbox.value}:`, error),
     );
   }
@@ -115,12 +117,11 @@ export const resendCodes = async (
  * number of e-mails sent; throws when none could be sent.
  */
 export const retry = (list: string, emails: string[]): Promise<number> => {
-  const usages = new Map(
-    listMailboxes()
-      .filter((b) => b.list === list)
-      .map((b) => [b.value.toLowerCase(), b.usage]),
-  );
-  return resendCodes(optins, list, emails, (email) => send(list, email, usages.get(email)));
+  const mailboxes = listMailboxes().filter((b) => b.list === list);
+  const usages = new Map(mailboxes.map((b) => [b.value.toLowerCase(), b.usage]));
+  // Its board, for the widget's own template.
+  const board = mailboxes[0]?.board_id;
+  return resendCodes(optins, list, emails, (email) => send(board, list, email, usages.get(email)));
 };
 
 /**

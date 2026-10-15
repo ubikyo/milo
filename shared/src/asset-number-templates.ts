@@ -32,17 +32,14 @@ export interface AssetNumberTemplates {
   variables: AssetNumberVariable[];
 }
 
-/**
- * What a new template starts from: the company — the asset's label in the
- * group "Société" —, "-pc-", then 5 characters drawn at random.
- */
-export const DEFAULT_ASSET_NUMBER_CODE = `// Le numéro d'asset : la société, « -pc- », puis 5 caractères aléatoires.
+/** What a new template starts from: 6 alphanumeric characters drawn at random. */
+export const DEFAULT_ASSET_NUMBER_CODE = `// Le numéro d'asset : 6 caractères alphanumériques aléatoires.
 //
 // Les variables de gauche — {{label.Groupe}} — sont remplacées, avant
 // l'exécution, par l'étiquette de l'asset dans ce groupe, entre guillemets :
 // une chaîne de caractères, vide si l'asset n'en a pas.
 
-const CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 function randomCharacters(length: number): string {
   let text = "";
@@ -53,11 +50,12 @@ function randomCharacters(length: number): string {
 }
 
 function ${ASSET_NUMBER_FUNCTION}(): string {
-  const company: string = {{label.Société}};
-  console.log("Société :", company);
-  return \`\${company}-pc-\${randomCharacters(5)}\`;
+  return randomCharacters(6);
 }
 `;
+
+/** The template a new widget of declared equipment brings. */
+export const DEFAULT_ASSET_NUMBER_TEMPLATE_NAME = "Aléatoire";
 
 /** True when a template's code is no longer the one a new template starts from. */
 export const isCustomAssetNumberCode = (code: string): boolean =>

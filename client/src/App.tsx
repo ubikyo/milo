@@ -55,6 +55,7 @@ import { requestOpening } from "./lib/searchSources";
 import { FollowsContext } from "./lib/follows-context";
 import { ReplyEditorContext } from "./lib/reply-editor";
 import { SearchPreferencesContext } from "./lib/search-preferences";
+import { forgetGridStates } from "./lib/gridStates";
 import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
@@ -235,11 +236,6 @@ export default function App() {
   const background = useRef<HTMLDivElement>(null);
   const [backgroundMenu, setBackgroundMenu] = useState<PointMenuPosition | null>(null);
   const [layout, setLayout] = useState<"export" | "import" | null>(null);
-
-  // The project list filters.
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [actorFilter, setActorFilter] = useState("all");
 
   // The account's rights. The server checks them; here, they hide what one
   // doesn't see and remove what one can't do.
@@ -472,6 +468,8 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    // The grids' last changes leave while the session still holds.
+    forgetGridStates();
     try {
       await api.logout();
     } catch {
@@ -532,15 +530,10 @@ export default function App() {
   const loadProjects = useCallback(async () => {
     if (!boardId || !projectsNeed) return setProjectsRead(null);
     const data = await read(() =>
-      api.getProjects({
-        board: boardId,
-        category: categoryFilter,
-        status: statusFilter,
-        actor: actorFilter,
-      }),
+      api.getProjects({ board: boardId }),
     );
     setProjectsRead({ key: boardId, items: data });
-  }, [boardId, projectsNeed, categoryFilter, statusFilter, actorFilter, read]);
+  }, [boardId, projectsNeed, read]);
 
   // The actors offered by the "Acteurs" filter: those of the projects of the
   // chosen context. Read separately, they don't delay the list.
@@ -734,23 +727,6 @@ export default function App() {
     if (!first) return setBoardId(null);
     if (!shownBoards.some((b) => String(b.id) === boardId)) setBoardId(String(first.id));
   }, [shownBoards, boardId, viewId]);
-
-  // A filter can point to a category or an actor that has just
-  // disappeared.
-  useEffect(() => {
-    if (
-      categoryFilter !== "all" &&
-      categories.length &&
-      !categories.some((c) => String(c.id) === categoryFilter)
-    ) {
-      setCategoryFilter("all");
-    }
-  }, [categories, categoryFilter]);
-  useEffect(() => {
-    if (actorFilter !== "all" && users.length && !users.some((u) => String(u.id) === actorFilter)) {
-      setActorFilter("all");
-    }
-  }, [users, actorFilter]);
 
   /**
    * Follow or stop following. The server returns the whole list, which replaces
@@ -967,6 +943,10 @@ export default function App() {
       orders: announceOrders,
       warehouses: announceWarehouses,
       locations: announceLocations,
+      // The Taxes widgets, and what offers their taxes, re-read on this.
+      taxes: () => announceResource("taxes"),
+      // The Liste widgets re-read their items on this.
+      "value-lists": () => announceResource("value-lists"),
       "title-styles": loadTitleStyles,
       // Read by the Settings only, which re-read on this.
       proxies: announceProxies,
@@ -1679,16 +1659,8 @@ export default function App() {
                       followedIds: follows.project,
                       onToggleFollow: (project) => toggleFollow("project", project.id),
                       categories,
-                      categoryFilter,
-                      onCategoryFilterChange: setCategoryFilter,
-                      statusFilter,
-                      onStatusFilterChange: setStatusFilter,
-                      // The selected actor stays offered even if they no longer have a project.
-                      users: users.filter(
-                        (u) => projectActorIds.includes(u.id) || String(u.id) === actorFilter,
-                      ),
-                      actorFilter,
-                      onActorFilterChange: setActorFilter,
+                      users,
+                      actorIds: projectActorIds,
                     }}
                     tasks={{
                       boardId,

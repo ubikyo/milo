@@ -16,7 +16,7 @@ import {
   IconSelector,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { Fragment, createContext, useContext, useMemo, useState } from "react";
+import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ALL_OPTION, ChoiceFilter, TextFilter, type FilterOption } from "../ui/ColumnFilters";
 import { useLabelFilter } from "../ui/LabelFilter";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar, showsNames } from "../ui/ActorAvatars";
@@ -41,13 +41,13 @@ import { NewShortcut } from "../../lib/newShortcut";
 import { isSized } from "../../widgets/height";
 import scroll from "../../assets/styles/ListScroll.module.css";
 import { SupportBulkMenu, type BulkAction } from "./SupportActions";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The Support mode's request list: a section widget, like the
-// indicators (widgets/support/list.tsx). What it shows and what can be done in it —
-// the open tab, sorting, filters, checked boxes, the right-click
-// menu — belongs to the page: "Actions multiples", under the list,
-// acts on the requests checked here. The page provides it through
-// "SupportListContext"; the widget only chooses its columns.
+// indicators (widgets/support/list.tsx). The open tab, the checked boxes and
+// the right-click menu belong to the page: "Actions multiples", under the
+// list, acts on the requests checked here. The page provides them through
+// "SupportListContext". The sort and the filters are each widget's own.
 
 /** The tab that filters nothing: it shows the requests of all statuses. */
 export const ALL = "all";
@@ -434,7 +434,7 @@ export const MAILBOXES = "mailboxes";
 
 /** The columns the list can show, in order. */
 export const SUPPORT_COLUMNS: ListColumn[] = [
-  { key: "ticket", label: "Ticket" },
+  { key: "ticket", label: "Ticket", defaultWidth: 110 },
   { key: "subject", label: "Objet" },
   { key: "requester", label: "Demandeur", formats: REQUESTER_FORMATS, defaultWidth: 160 },
   { key: "agents", label: "Agents", formats: ACTOR_FORMATS, defaultWidth: 120 },
@@ -442,9 +442,9 @@ export const SUPPORT_COLUMNS: ListColumn[] = [
   { key: "actors", label: "Acteurs", formats: ACTOR_FORMATS, byDefault: false },
   // It picks the group it shows.
   { key: "labels", label: "Étiquettes", labelGroups: "/support-labels" },
-  { key: "status", label: "Statut" },
-  { key: "received", label: "Reçu le", formats: DATE_FORMATS },
-  { key: "due", label: "Échéance" },
+  { key: "status", label: "Statut", defaultWidth: 150 },
+  { key: "received", label: "Reçu le", formats: DATE_FORMATS, defaultWidth: 150 },
+  { key: "due", label: "Échéance", defaultWidth: 150 },
 ];
 
 /** A people filter's choices: those the requests show, by name. */
@@ -462,17 +462,15 @@ const personOptions = (
   ];
 };
 
-/**
- * The list's state, held by the page: what is seen in the open tab,
- * sorted and filtered, and what has been checked in it.
- */
 /** A request's labels, for the labels filters (useLabelFilter). */
 const labelsOf = (d: SupportRequest) => d.labels;
 
+/**
+ * What the page holds for all the requests lists: the open tab, what has
+ * been checked — "Actions multiples" applies to it —, the right-click menu.
+ * The sort and the filters are each widget's (useSupportGrid).
+ */
 export const useSupportList = (requests: SupportRequest[] | null, tab: string) => {
-  // By default, the most recent first: it is the server's order.
-  const [sort, setSort] = useState<Sort>({ key: "received", direction: "desc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   /** The row whose right-click menu is open, and where it opens. */
   const [context, setContext] = useState<{
@@ -485,6 +483,34 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
       !requests ? [] : tab === ALL ? requests : requests.filter((r) => r.status === tab),
     [requests, tab],
   );
+
+  // A request moved to another tab does not blindly undergo an action; each
+  // list unchecks what its filters hide.
+  const selection = inTab.filter((d) => checked.has(d.id));
+
+  return {
+    tab,
+    checked,
+    setChecked,
+    context,
+    setContext,
+    inTab,
+    selection,
+  };
+};
+
+/**
+ * A requests widget's sort and filters, kept for the person in its own scope
+ * (lib/gridStates): what it shows of its requests in the tab.
+ */
+const useSupportGrid = (inTab: SupportRequest[]) => {
+  // By default, the most recent first: it is the server's order.
+  const [sort, setSort] = useGridState<Sort>(
+    "sort",
+    { key: "received", direction: "desc" },
+    readSort<Sort>(Object.keys(VALUES)),
+  );
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
 
   // What the funnels offer: what is in the tab, nothing more.
   const actorOptions = useMemo(() => personOptions(inTab, shownActors), [inTab]);
@@ -517,23 +543,12 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
       });
   }, [inTab, filters, sort, labelFilter.keep]);
 
-  // Checked boxes only apply to what is seen: a request that is filtered out
-  // or moved to another tab does not blindly undergo an action.
-  const selection = shown.filter((d) => checked.has(d.id));
-
   return {
-    tab,
     sort,
     setSort,
     filters,
     setFilters,
-    checked,
-    setChecked,
-    context,
-    setContext,
-    inTab,
     shown,
-    selection,
     actorOptions,
     requesterOptions,
     agentOptions,
@@ -576,20 +591,11 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
 function RequestsList({ config, list }: { config: unknown; list: SupportList }) {
   const {
     tab,
-    sort,
-    setSort,
-    filters,
-    setFilters,
     checked,
     setChecked,
     context,
     setContext,
-    shown: allShown,
     inTab: allInTab,
-    actorOptions,
-    requesterOptions,
-    agentOptions,
-    labelFilter,
     loading,
     onOpenRequest,
     onAddRequest: addRequest,
@@ -600,9 +606,30 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   // The board's requests, of the chosen context, that the page has read — those
   // of this widget only (lib/lists.ts). A request added here is
   // its own.
-  const ofThisWidget = inList(config);
-  const shown = allShown.filter(ofThisWidget);
-  const inTab = allInTab.filter(ofThisWidget);
+  const inTab = useMemo(() => allInTab.filter(inList(config)), [allInTab, config]);
+  const {
+    sort,
+    setSort,
+    filters,
+    setFilters,
+    shown,
+    actorOptions,
+    requesterOptions,
+    agentOptions,
+    labelFilter,
+  } = useSupportGrid(inTab);
+  // Checked boxes only apply to what is seen: a request this list's filters
+  // hide is unchecked.
+  useEffect(() => {
+    const seen = new Set(shown.map((d) => d.id));
+    const hidden = inTab.filter((d) => checked.has(d.id) && !seen.has(d.id));
+    if (hidden.length === 0) return;
+    setChecked((already) => {
+      const next = new Set(already);
+      for (const d of hidden) next.delete(d.id);
+      return next;
+    });
+  }, [shown, inTab, checked, setChecked]);
   const onAddRequest = addRequest && (() => addRequest(listKey(config)));
   const isEditing = useIsEditing();
 

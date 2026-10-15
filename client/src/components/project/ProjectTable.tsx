@@ -24,7 +24,7 @@ import {
   IconSquarePlus,
   IconTrash,
 } from "@tabler/icons-react";
-import { createContext, Fragment, useContext, useMemo, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useState } from "react";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
@@ -52,17 +52,14 @@ import { useIsEditing } from "../../lib/editing";
 import { NewShortcut } from "../../lib/newShortcut";
 import { isSized } from "../../widgets/height";
 import scroll from "../../assets/styles/ListScroll.module.css";
+import { readChoice, readSort, useGridState } from "../../lib/gridStates";
 
 /** What the table asks for its column funnels. */
 export interface ProjectFiltersProps {
   categories: Category[];
-  categoryFilter: string;
-  onCategoryFilterChange: (value: string) => void;
-  statusFilter: string;
-  onStatusFilterChange: (value: string) => void;
   users: PublicUser[];
-  actorFilter: string;
-  onActorFilterChange: (value: string) => void;
+  /** The accounts that are an actor on a project of the board: the "Acteurs" funnel offers them. */
+  actorIds: Id[];
 }
 
 /** The column keys: what is sorted on and what gets hidden. */
@@ -632,20 +629,60 @@ export default function ProjectTable({
   followedIds,
   onToggleFollow,
   categories,
-  categoryFilter,
-  onCategoryFilterChange,
-  statusFilter,
-  onStatusFilterChange,
   users,
-  actorFilter,
-  onActorFilterChange,
+  actorIds,
 }: ProjectTableProps) {
   // By default: the most advanced projects first.
-  const [sort, setSort] = useState<Sort>({ key: "status", direction: "desc" });
+  const [sort, setSort] = useGridState<Sort>(
+    "sort",
+    { key: "status", direction: "desc" },
+    readSort<Sort>(COLUMNS.map((c) => c.key)),
+  );
   // The labels filters, one per labels column, limited to its group. Unlike
   // the others, they are applied here, on the projects read — as in Support.
   const labelFilter = useLabelFilter(projects, labelsOf);
   const columnFilter = useColumnFilters(projects, COLUMN_FILTERS);
+  // The category — with those under it —, the progress and the actor.
+  const [categoryFilter, setCategoryFilter] = useGridState("category", "all", readChoice());
+  const [statusFilter, setStatusFilter] = useGridState(
+    "status",
+    "all",
+    readChoice(STATUS_OPTIONS.map((o) => o.value)),
+  );
+  const [actorFilter, setActorFilter] = useGridState("actor", "all", readChoice());
+  // A filter can point to a category or an actor that has just disappeared.
+  useEffect(() => {
+    if (
+      categoryFilter !== "all" &&
+      categories.length &&
+      !categories.some((c) => String(c.id) === categoryFilter)
+    ) {
+      setCategoryFilter("all");
+    }
+  }, [categories, categoryFilter, setCategoryFilter]);
+  useEffect(() => {
+    if (actorFilter !== "all" && users.length && !users.some((u) => String(u.id) === actorFilter)) {
+      setActorFilter("all");
+    }
+  }, [users, actorFilter, setActorFilter]);
+  const keepChosen = useMemo(() => {
+    // The chosen category and those under it.
+    const under = new Set<string>(categoryFilter === "all" ? [] : [categoryFilter]);
+    for (let grown = under.size > 0; grown; ) {
+      grown = false;
+      for (const c of categories) {
+        if (c.parent_id !== null && under.has(String(c.parent_id)) && !under.has(String(c.id))) {
+          under.add(String(c.id));
+          grown = true;
+        }
+      }
+    }
+    return (p: Project) =>
+      (categoryFilter === "all" || under.has(String(p.category_id))) &&
+      (statusFilter !== "in_progress" || p.status < 100) &&
+      (statusFilter !== "done" || p.status === 100) &&
+      (actorFilter === "all" || p.actors.some((a) => String(a.id) === actorFilter));
+  }, [categories, categoryFilter, statusFilter, actorFilter]);
   // The columns the widget shows, in the set order; without a setting,
   // all of them.
   // A column can come back: "id" distinguishes each occurrence.
@@ -684,7 +721,10 @@ export default function ProjectTable({
 
   const actorOptions: FilterOption[] = [
     { value: "all", label: "Tous" },
-    ...users.map((u) => ({ value: String(u.id), label: u.name })),
+    // The chosen actor stays offered even if they no longer have a project.
+    ...users
+      .filter((u) => actorIds.includes(u.id) || String(u.id) === actorFilter)
+      .map((u) => ({ value: String(u.id), label: u.name })),
   ];
 
   // Each category of the widget by its path, in the tree's order: one takes
@@ -706,7 +746,7 @@ export default function ProjectTable({
           label="catégorie"
           options={categoryOptions}
           value={categoryFilter}
-          onChange={onCategoryFilterChange}
+          onChange={setCategoryFilter}
         />
       );
     }
@@ -716,7 +756,7 @@ export default function ProjectTable({
           label="acteur"
           options={actorOptions}
           value={actorFilter}
-          onChange={onActorFilterChange}
+          onChange={setActorFilter}
         />
       );
     }
@@ -726,7 +766,7 @@ export default function ProjectTable({
           label="progression"
           options={STATUS_OPTIONS}
           value={statusFilter}
-          onChange={onStatusFilterChange}
+          onChange={setStatusFilter}
         />
       );
     }
@@ -746,7 +786,7 @@ export default function ProjectTable({
     const column =
       columns.find((c) => sameSort(sort, c.key, c.group)) ??
       COLUMNS.find((c) => c.key === sort.key);
-    const filtered = projects.filter(labelFilter.keep).filter(columnFilter.keep);
+    const filtered = projects.filter(keepChosen).filter(labelFilter.keep).filter(columnFilter.keep);
     if (!column) return filtered;
     const factor = sort.direction === "asc" ? 1 : -1;
 
@@ -768,7 +808,7 @@ export default function ProjectTable({
     // "columns" is rebuilt on each render: the configuration it comes from is
     // what changes it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, sort, config, labelFilter.keep, columnFilter.keep]);
+  }, [projects, sort, config, keepChosen, labelFilter.keep, columnFilter.keep]);
 
   // With no project to show, the table has no reason to exist: only the empty
   // state is displayed. It then carries what is needed to undo the filters. During

@@ -1,10 +1,11 @@
 import { IconCoin, IconReceipt } from "@tabler/icons-react";
 import { useListRef } from "../../lib/list-ref";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { CONTACT_CODE_MAX, CONTACT_FIELD_MAX, CONTACT_SYMBOL_MAX } from "@milo/shared";
+import { CONTACT_CODE_MAX, CONTACT_FIELD_MAX, CONTACT_SETTINGS_DEFAULTS, CONTACT_SYMBOL_MAX } from "@milo/shared";
 import type { ContactSettings } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { resetRows } from "../../lib/reset-defaults";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { DrawerRegistrationsContext } from "../ui/IndicatorDrawer";
 import { pluralize } from "../ui/DrawerRows";
@@ -102,6 +103,14 @@ export default function ContactTablesFields() {
         deleteTitle="Supprimer la condition"
         several={(n) => pluralize(n, "condition")}
         reorderable
+        reset={{
+          what: "les conditions de paiement",
+          onReset: (replace) =>
+            setSettings((s) => ({
+              ...s,
+              payment_terms: resetRows(s.payment_terms, CONTACT_SETTINGS_DEFAULTS.payment_terms, replace),
+            })),
+        }}
       />
       <ListRows
         title="Devises"
@@ -124,10 +133,25 @@ export default function ContactTablesFields() {
         deleteTitle="Supprimer la devise"
         several={(n) => pluralize(n, "devise")}
         reorderable
+        // A currency is matched by its code: its name and symbol come back.
+        reset={{
+          what: "les devises",
+          onReset: (replace) =>
+            setSettings((s) => ({
+              ...s,
+              currencies: resetRows(
+                s.currencies,
+                CONTACT_SETTINGS_DEFAULTS.currencies,
+                replace,
+                (a, b) => a.code.trim().toUpperCase() === b.code.trim().toUpperCase(),
+              ),
+            })),
+        }}
       />
       <CountryRows
         value={settings.countries}
         onChange={(countries) => setSettings((s) => ({ ...s, countries }))}
+        defaults={CONTACT_SETTINGS_DEFAULTS.countries}
       />
     </>
   );

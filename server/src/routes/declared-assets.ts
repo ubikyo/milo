@@ -35,6 +35,7 @@ import type {
   Label,
   WidgetAccess,
 } from "@milo/shared";
+import { rateOf } from "./products.js";
 import { JSON_EXTRAS, declaredAssetTables } from "../db/declared-asset-tables.js";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { NextRow } from "../db/rows.js";
@@ -169,6 +170,24 @@ const purchaseDateOf = (value: unknown): string => {
   return read;
 };
 
+const contactById = selection<{ id: Id; name: string; type: string }>(
+  "SELECT id, name, type FROM contacts WHERE id = ?",
+);
+
+/**
+ * The supplier chosen, a company of a Contact widget, with its name; none
+ * chosen, the name an asset from before the link was given, kept as is.
+ */
+const supplierOf = (body: Record<string, unknown>) => {
+  const value = body.supplier_id;
+  if (value === null || value === undefined || value === "") {
+    return { supplier_id: null, supplier: text(body.supplier, DECLARED_ASSET_NAME_MAX, "Un nom") };
+  }
+  const contact = orNotFound(contactById.get(Number(value)), "Fournisseur introuvable");
+  if (contact.type !== "company") badRequest("Un fournisseur est une société");
+  return { supplier_id: contact.id, supplier: contact.name };
+};
+
 /** The fields an asset is written with, read from the request. */
 const fieldsOf = (kind: DeclaredAssetKind, body: Record<string, unknown>) => ({
   ...Object.fromEntries(DECLARED_ASSET_EXTRAS[kind].map((f) => [f, EXTRA_READERS[f](body[f])])),
@@ -179,11 +198,12 @@ const fieldsOf = (kind: DeclaredAssetKind, body: Record<string, unknown>) => ({
   ),
   // A node of the board's categories tree, by its id: one no longer in it shows none.
   category: text(body.category, NODE_ID_MAX, "Une catégorie"),
-  supplier: text(body.supplier, DECLARED_ASSET_NAME_MAX, "Un nom"),
+  ...supplierOf(body),
   maker: text(body.maker, DECLARED_ASSET_NAME_MAX, "Un nom"),
   product: text(body.product, DECLARED_ASSET_NAME_MAX, "Un nom"),
   quantity: quantityOf(body.quantity),
   price: priceOf(body.price),
+  tax: rateOf(body.tax),
   purchase_date: purchaseDateOf(body.purchase_date),
   description: text(body.description, DECLARED_ASSET_DESCRIPTION_MAX, "Une description"),
   notes: text(body.notes, DECLARED_ASSET_DESCRIPTION_MAX, "Des notes"),
@@ -235,8 +255,11 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
 
   // --- Reading -------------------------------------------------------------
 
+  // The supplier reads with its company's name as it is now.
   const ofBoard = selection<DeclaredAssetRow>(
-    `SELECT * FROM ${t.assets} WHERE board_id = ? ORDER BY name COLLATE NOCASE, id`,
+    `SELECT x.*, COALESCE(c.name, x.supplier) AS supplier FROM ${t.assets} x
+     LEFT JOIN contacts c ON c.id = x.supplier_id
+     WHERE x.board_id = ? ORDER BY x.name COLLATE NOCASE, x.id`,
   );
   const byId = selection<DeclaredAssetRow>(`SELECT * FROM ${t.assets} WHERE id = ?`);
 
@@ -290,15 +313,15 @@ export const declaredAssetRoutes = (kind: DeclaredAssetKind): Router => {
   // --- Writing -------------------------------------------------------------
 
   const insert = mutation(
-    `INSERT INTO ${t.assets} (board_id, list_key, name, category, supplier, maker, product,
-       quantity, price, purchase_date, description, notes${extraColumns}, created_at, updated_at)
-     VALUES (@board_id, @list_key, @name, @category, @supplier, @maker, @product,
-       @quantity, @price, @purchase_date, @description, @notes${extraValues}, @at, @at)`,
+    `INSERT INTO ${t.assets} (board_id, list_key, name, category, supplier, supplier_id, maker,
+       product, quantity, price, tax, purchase_date, description, notes${extraColumns}, created_at, updated_at)
+     VALUES (@board_id, @list_key, @name, @category, @supplier, @supplier_id, @maker, @product,
+       @quantity, @price, @tax, @purchase_date, @description, @notes${extraValues}, @at, @at)`,
   );
   const update = mutation(
     `UPDATE ${t.assets} SET name = @name, category = @category, supplier = @supplier,
-       maker = @maker, product = @product, quantity = @quantity, price = @price,
-       purchase_date = @purchase_date,
+       supplier_id = @supplier_id, maker = @maker, product = @product, quantity = @quantity, price = @price,
+       tax = @tax, purchase_date = @purchase_date,
        description = @description, notes = @notes${extraSets}, updated_at = @at
      WHERE id = @id`,
   );

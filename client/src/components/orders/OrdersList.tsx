@@ -38,7 +38,7 @@ import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
 import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GridScroll";
+import GridWithAdd from "../ui/GridWithAdd";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
 import { useColumnFilters, type ColumnFilterSpec } from "../ui/useColumnFilters";
@@ -52,6 +52,7 @@ import { useFollows } from "../../lib/follows-context";
 import { useOrders } from "../../lib/orders";
 import { STRONG_TEXT } from "../../themes/colors";
 import { NewShortcut } from "../../lib/newShortcut";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The list of a Commandes widget (widgets/order): the orders, quotes and
 // cancelled ones. The same grid as the products' (ProductsList): its header,
@@ -284,8 +285,8 @@ export default function OrdersList({
   const boardId = board?.id;
   const { orders: all, reload } = useOrders(boardId);
   const orders = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
-  const [sort, setSort] = useState<Sort>({ key: "created_at", direction: "desc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "created_at", direction: "desc" }, readSort<Sort>(Object.keys(VALUES)));
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(orders, labelsOf);
   const columnFilter = useColumnFilters(orders, COLUMN_FILTERS);
@@ -300,7 +301,7 @@ export default function OrdersList({
   /** The drawer: closed, adding (null), or showing an order. */
   const [drawer, setDrawer] = useState<{ order: Order | null } | null>(null);
   // The row whose menu is open, where the pointer was.
-  const [menu, setMenu] = useState<{ order: Order; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ order: Order; x: number; y: number; } | null>(null);
   const follows = useFollows();
 
   // An order chosen in the search opens here, once read.
@@ -530,14 +531,6 @@ export default function OrdersList({
             </Table.Td>
           </Table.Tr>
         )}
-
-        {canAdd && (
-          <Table.Tr style={{ backgroundColor: "transparent" }}>
-            <Table.Td colSpan={columns.length}>
-              <AddButton label="Ajouter une demande de devis" onClick={() => setDrawer({ order: null })} />
-            </Table.Td>
-          </Table.Tr>
-        )}
       </Table.Tbody>
     </Table>
   );
@@ -555,7 +548,12 @@ export default function OrdersList({
           onAction={canAdd ? () => setDrawer({ order: null }) : undefined}
         />
       ) : (
-        <GridScroll>{table}</GridScroll>
+        <GridWithAdd
+          config={config}
+          add={canAdd && <AddButton label="Ajouter une demande de devis" onClick={() => setDrawer({ order: null })} />}
+        >
+          {table}
+        </GridWithAdd>
       )}
 
       <OrderDrawer

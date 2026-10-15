@@ -7,7 +7,7 @@
 // inbox, in the original e-mail's conversation (lib/support-reply.ts) — so a
 // request entered in Milo receives none.
 
-import { fillSupportTemplate, supportReplyValues } from "@milo/shared";
+import { fillSupportTemplate, supportReplyValues, withoutOriginal } from "@milo/shared";
 import type { Id, SupportReplyEvent, SupportStatus } from "@milo/shared";
 import { signalWrite } from "../middleware/events.js";
 import { supportComments, supportRequests } from "../repositories/support.js";
@@ -33,7 +33,8 @@ export const sendAutoReply = async (
   try {
     const request = supportRequests.byId.get(requestId);
     if (!request || !replyMailbox(request)) return;
-    const reply = replyFor(event);
+    // The reply of the request's own widget.
+    const reply = replyFor({ board: request.board_id, list: request.list_key }, event);
     if (!reply) return;
 
     if (!hasContent(reply.html)) return;
@@ -47,7 +48,8 @@ export const sendAutoReply = async (
     const instant = now();
     const { lastInsertRowid } = supportComments.createAuto.run(
       request.id,
-      html,
+      // The original e-mail it may quote goes in the e-mail alone.
+      withoutOriginal(html),
       event,
       instant,
       instant,

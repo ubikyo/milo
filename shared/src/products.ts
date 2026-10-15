@@ -6,12 +6,19 @@
 // A product's variants are its own: its attributes ("Couleur"), each with its
 // values ("Noir", "Rouge", "Bleu"), colored and ordered as labels in their
 // groups — and edited the same way. Its category is a place of its board's
-// categories tree, as a declared device's location (declared-assets.ts).
+// categories tree, as a declared device's location (declared-assets.ts). A
+// price's tax is one of the Taxes widgets the widget names (taxes.ts).
 
 import type { Actor, Id, Label, SqliteBool } from "./domain.js";
 
 /** The widget that owns its products (LIST_KEY). */
 export const PRODUCT_LIST_TYPE = "product.list";
+
+/**
+ * The field of a widget's configuration naming the Contact widgets its
+ * suppliers come from: their companies.
+ */
+export const PRODUCT_SUPPLIER_SOURCES = "supplier_sources";
 
 /** The routes: "/api/products", "/api/product-labels", "/api/product-settings". */
 export const PRODUCT_ROUTES = {
@@ -31,27 +38,10 @@ export interface ProductCategory {
   name: string;
 }
 
-/** A tax a supplier's price is given: its rate, in percent. */
-export interface ProductTax {
-  rate: number;
-}
-
 /** The lists of a board's Produits widgets, shared by all of them. */
 export interface ProductSettings {
   categories: ProductCategory[];
-  /** In their order: the first is a new price's. */
-  taxes: ProductTax[];
 }
-
-/** A widget's taxes until it records its own. */
-export const PRODUCT_TAX_DEFAULTS: ProductTax[] = [{ rate: 20 }, { rate: 0 }];
-
-/** How many taxes a widget has at most, and the largest rate. */
-export const PRODUCT_TAXES_MAX = 50;
-export const PRODUCT_TAX_MAX = 100;
-
-/** A rate as it reads: "20 %", "5,5 %". */
-export const taxLabel = (rate: number): string => `${rate.toLocaleString("fr-FR")} %`;
 
 /** How a product's stock is tracked: by default, it is not. */
 export const PRODUCT_TRACKINGS = [
@@ -87,7 +77,7 @@ export interface ProductSupplier {
   contact_id: Id;
   min_quantity: number | null;
   price: number | null;
-  /** Its tax's rate, in percent — one of the widget's taxes —; null, none chosen. */
+  /** Its tax's rate, in percent — one of its Taxes widgets' (TAX_SOURCES) —; null, none chosen. */
   tax: number | null;
 }
 

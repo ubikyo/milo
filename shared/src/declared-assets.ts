@@ -7,7 +7,7 @@
 // model; a software type, a publisher and an application.
 
 import type { LabelsBase } from "./api.js";
-import type { Actor, Id, Label } from "./domain.js";
+import type { Actor, DefaultListColumn, Id, Label } from "./domain.js";
 import type { Resource } from "./events.js";
 
 export const DECLARED_ASSET_KINDS = ["unmanaged_device_asset", "application_asset"] as const;
@@ -254,16 +254,21 @@ export const DECLARED_ASSET_EXTRA_LIST_DEFAULTS: Record<
   identification_types: [
     { name: "Numéro de série" },
     { name: "Service tag" },
+    { name: "Service express" },
     { name: "Numéro de modèle / SKU" },
+    { name: "Adresse MAC" },
   ],
   locations: [],
   license_info_types: [{ name: "Clé de licence" }, { name: "Code d'autorisation" }],
 };
 
+/** The group of a device's status labels: its default columns show it. */
+export const DECLARED_ASSET_STATUS_GROUP = "Status";
+
 /**
- * The labels a board's first widget of a kind brings, group by group — those
- * of the declared equipment of "Autres périphériques" (#BV70). Labels like
- * the others: renamed, recolored, deleted at will. None for the applications.
+ * The labels a new widget of a kind brings, group by group: its status, in
+ * the project's colors (those of the projects' priorities).
+ * Labels like the others: renamed, recolored, deleted at will.
  */
 export const DECLARED_ASSET_DEFAULT_LABELS: Record<
   DeclaredAssetKind,
@@ -271,33 +276,231 @@ export const DECLARED_ASSET_DEFAULT_LABELS: Record<
 > = {
   unmanaged_device_asset: [
     {
-      group: "Status",
+      group: DECLARED_ASSET_STATUS_GROUP,
       labels: [
-        { name: "En service", color: "teal.6" },
-        { name: "En réserve", color: "blue.6" },
-        { name: "En stock", color: "blue.6" },
-        { name: "En préparation", color: "blue.6" },
-        { name: "En attente de retrait", color: "orange.6" },
-        { name: "En commande", color: "orange.6" },
-        { name: "Réformé", color: "red.2" },
-        { name: "Cédé", color: "red.2" },
-        { name: "Hors service", color: "red.2" },
-        { name: "Perdu", color: "red.2" },
-      ],
-    },
-    {
-      group: "Société",
-      labels: [
-        { name: "Les Manufactures", color: "grape.6" },
-        { name: "Arco Marketing", color: "grape.6" },
-        { name: "SAMB", color: "grape.6" },
-        { name: "Maison Hamon", color: "grape.6" },
-        { name: "M3P", color: "grape.6" },
-        { name: "Monot", color: "grape.6" },
+        { name: "En service", color: "green.8" },
+        { name: "En réserve", color: "blue.8" },
+        { name: "En stock", color: "blue.8" },
+        { name: "En préparation", color: "blue.8" },
+        { name: "En attente de retrait", color: "orange.8" },
+        { name: "En commande", color: "orange.8" },
+        { name: "Réformé", color: "red.8" },
+        { name: "Cédé", color: "red.8" },
+        { name: "Hors service", color: "red.8" },
+        { name: "Perdu", color: "red.8" },
       ],
     },
   ],
-  application_asset: [],
+  application_asset: [
+    {
+      group: DECLARED_ASSET_STATUS_GROUP,
+      labels: [
+        { name: "En service", color: "green.8" },
+        { name: "En réserve", color: "blue.8" },
+        { name: "En stock", color: "blue.8" },
+        { name: "En préparation", color: "blue.8" },
+        { name: "En attente d'exploitation", color: "orange.8" },
+        { name: "En commande", color: "orange.8" },
+        { name: "Suspendue", color: "red.8" },
+        { name: "Expirée", color: "red.8" },
+        { name: "Résiliée", color: "red.8" },
+      ],
+    },
+  ],
+};
+
+/** The columns a new widget of a kind shows, its status labels among them. */
+export const DECLARED_ASSET_DEFAULT_COLUMNS: Record<DeclaredAssetKind, readonly DefaultListColumn[]> = {
+  unmanaged_device_asset: [
+    { key: "name", width: 110 },
+    { key: "category", width: 220, format: "leaf" },
+    { key: "supplier", width: 150 },
+    { key: "maker", width: 150 },
+    { key: "product" },
+    { key: "labels", width: 120, groupName: DECLARED_ASSET_STATUS_GROUP },
+    { key: "location", format: "path" },
+  ],
+  application_asset: [
+    { key: "name", width: 110 },
+    { key: "category", width: 220, format: "leaf" },
+    { key: "supplier", width: 150 },
+    { key: "maker", width: 150 },
+    { key: "product" },
+    { key: "labels", width: 120, groupName: DECLARED_ASSET_STATUS_GROUP },
+  ],
+};
+
+/**
+ * The categories tree a new widget of a kind brings, each node by its path
+ * — a parent before its children.
+ */
+export const DECLARED_ASSET_DEFAULT_CATEGORIES: Record<DeclaredAssetKind, readonly string[][]> = {
+  unmanaged_device_asset: [
+    ["Infrastructure & Rack"],
+    ["Infrastructure & Rack", "Baie informatique"],
+    ["Infrastructure & Rack", "Coffret réseau"],
+    ["Infrastructure & Rack", "Panneau de brassage"],
+    ["Infrastructure & Rack", "Tiroir optique"],
+    ["Infrastructure & Rack", "KVM"],
+    ["Infrastructure & Rack", "KMM"],
+    ["Infrastructure & Rack", "Console rackable"],
+    ["Infrastructure & Rack", "Console série"],
+    ["Infrastructure & Rack", "Capteur environnemental"],
+    ["Énergie"],
+    ["Énergie", "Onduleur (UPS)"],
+    ["Énergie", "PDU"],
+    ["Énergie", "PDU intelligent"],
+    ["Énergie", "ATS"],
+    ["Énergie", "Alimentation redondante"],
+    ["Énergie", "Batterie externe"],
+    ["Réseau"],
+    ["Réseau", "Switch"],
+    ["Réseau", "Routeur"],
+    ["Réseau", "Point d'accès Wi-Fi"],
+    ["Réseau", "Contrôleur Wi-Fi"],
+    ["Réseau", "Modem"],
+    ["Réseau", "Passerelle"],
+    ["Réseau", "Convertisseur de média"],
+    ["Réseau", "Répéteur"],
+    ["Serveurs & Stockage"],
+    ["Serveurs & Stockage", "Serveur rack"],
+    ["Serveurs & Stockage", "Serveur tour"],
+    ["Serveurs & Stockage", "Serveur lame"],
+    ["Serveurs & Stockage", "Appliance"],
+    ["Serveurs & Stockage", "NAS"],
+    ["Serveurs & Stockage", "SAN"],
+    ["Serveurs & Stockage", "Baie de stockage"],
+    ["Serveurs & Stockage", "Bibliothèque de bandes"],
+    ["Sécurité"],
+    ["Sécurité", "Pare-feu"],
+    ["Sécurité", "Appliance VPN"],
+    ["Sécurité", "Appliance de sécurité"],
+    ["Sécurité", "Contrôleur d'accès"],
+    ["Sécurité", "Caméra IP"],
+    ["Sécurité", "Enregistreur vidéo (NVR)"],
+    ["Endpoints"],
+    ["Endpoints", "Ordinateur fixe"],
+    ["Endpoints", "Ordinateur portable"],
+    ["Endpoints", "Station de travail"],
+    ["Endpoints", "Client léger"],
+    ["Endpoints", "Tablette"],
+    ["Endpoints", "Smartphone"],
+    ["Endpoints", "Terminal mobile"],
+    ["Endpoints", "Terminal industriel"],
+    ["Périphériques"],
+    ["Périphériques", "Écran"],
+    ["Périphériques", "Clavier"],
+    ["Périphériques", "Souris"],
+    ["Périphériques", "Webcam"],
+    ["Périphériques", "Casque & Microphone"],
+    ["Périphériques", "Station d'accueil"],
+    ["Périphériques", "Hub USB"],
+    ["Périphériques", "Lecteur de codes-barres"],
+    ["Périphériques", "Lecteur de cartes"],
+    ["Périphériques", "Scanner"],
+    ["Périphériques", "Imprimante"],
+    ["Périphériques", "Imprimante d'étiquettes"],
+    ["Périphériques", "Multifonction"],
+    ["Téléphonie"],
+    ["Téléphonie", "Téléphone IP"],
+    ["Téléphonie", "Téléphone DECT"],
+    ["Téléphonie", "Base DECT"],
+    ["Téléphonie", "Standard téléphonique (IPBX)"],
+    ["Téléphonie", "Passerelle VoIP"],
+    ["Téléphonie", "Équipement de conférence"],
+    ["Audiovisuel"],
+    ["Audiovisuel", "Vidéoprojecteur"],
+    ["Audiovisuel", "Écran interactif"],
+    ["Audiovisuel", "Écran d'affichage dynamique"],
+    ["Audiovisuel", "Système de visioconférence"],
+    ["Audiovisuel", "Barre de visioconférence"],
+    ["Audiovisuel", "Caméra de conférence"],
+    ["Composants"],
+    ["Composants", "Processeur"],
+    ["Composants", "Mémoire RAM"],
+    ["Composants", "Disque HDD"],
+    ["Composants", "Disque SSD"],
+    ["Composants", "Carte réseau"],
+    ["Composants", "Carte graphique"],
+    ["Composants", "Carte contrôleur"],
+    ["Composants", "Alimentation"],
+  ],
+  application_asset: [
+    ["Bureautique & Collaboration"],
+    ["Bureautique & Collaboration", "Suite bureautique"],
+    ["Bureautique & Collaboration", "Messagerie & Agenda"],
+    ["Bureautique & Collaboration", "Communication & Visioconférence"],
+    ["Bureautique & Collaboration", "Gestion documentaire"],
+    ["Bureautique & Collaboration", "Prise de notes"],
+    ["Internet"],
+    ["Internet", "Navigateur Web"],
+    ["Internet", "Transfert de fichiers"],
+    ["Multimédia & Création"],
+    ["Multimédia & Création", "Suite graphique"],
+    ["Multimédia & Création", "Édition PDF"],
+    ["Multimédia & Création", "Lecture multimédia"],
+    ["Multimédia & Création", "CAO / DAO"],
+    ["Multimédia & Création", "Modélisation 3D"],
+    ["Gestion d'entreprise"],
+    ["Gestion d'entreprise", "ERP"],
+    ["Gestion d'entreprise", "CRM"],
+    ["Gestion d'entreprise", "Comptabilité & Finance"],
+    ["Gestion d'entreprise", "Achats & Stocks"],
+    ["Gestion d'entreprise", "Facturation"],
+    ["Ressources humaines"],
+    ["Ressources humaines", "SIRH"],
+    ["Ressources humaines", "Paie"],
+    ["Ressources humaines", "Gestion des temps & Congés"],
+    ["Organisation & Projets"],
+    ["Organisation & Projets", "Gestion de projets & Tâches"],
+    ["Organisation & Projets", "Wiki & Base de connaissances"],
+    ["Sécurité"],
+    ["Sécurité", "Suite de sécurité"],
+    ["Sécurité", "VPN"],
+    ["Sécurité", "Gestion des identités"],
+    ["Sécurité", "Gestion des mots de passe"],
+    ["Système & Maintenance"],
+    ["Système & Maintenance", "Utilitaires système"],
+    ["Système & Maintenance", "Compression & Archivage"],
+    ["Système & Maintenance", "Sauvegarde & Restauration"],
+    ["Système & Maintenance", "Accès distant"],
+    ["Informatique & Développement"],
+    ["Informatique & Développement", "Suite de développement"],
+    ["Informatique & Développement", "Administration système & Réseau"],
+    ["Informatique & Développement", "Bases de données"],
+    ["Informatique & Développement", "Supervision"],
+    ["Analyse & Intelligence artificielle"],
+    ["Analyse & Intelligence artificielle", "BI & Reporting"],
+    ["Analyse & Intelligence artificielle", "Assistant IA"],
+    ["Analyse & Intelligence artificielle", "IA générative"],
+    ["Applications métier"],
+    ["Applications métier", "Production & Maintenance"],
+    ["Applications métier", "Logistique"],
+    ["Applications métier", "Applications spécialisées"],
+  ],
+};
+
+/**
+ * The field of a widget's configuration naming the Contact widgets its
+ * suppliers come from: their companies.
+ */
+export const DECLARED_ASSET_SUPPLIER_SOURCES = "supplier_sources";
+
+/** The lists a widget may take from "Liste" widgets (value-lists.ts) rather than its own. */
+export type DeclaredAssetSourcedList = "makers" | "identification_types" | "license_info_types";
+
+/**
+ * The field of a widget's configuration naming the Liste widgets each of
+ * those lists comes from — their items' names, in their order —, by kind:
+ * a device's brands and identification types, an application's publishers
+ * and license information types. Named, the widget's own list gives way.
+ */
+export const DECLARED_ASSET_LIST_SOURCES: Record<
+  DeclaredAssetKind,
+  Partial<Record<DeclaredAssetSourcedList, string>>
+> = {
+  unmanaged_device_asset: { makers: "maker_sources", identification_types: "identification_type_sources" },
+  application_asset: { makers: "maker_sources", license_info_types: "license_info_type_sources" },
 };
 
 /** The places of a locations tree, each with its path: "Société > Bâtiment > Baie". */
@@ -367,13 +570,21 @@ export interface DeclaredAsset extends DeclaredAssetExtras {
   labels: Label[];
   /** A node of the board's categories tree, by its id; empty, none. */
   category: string;
-  /** Names from the board's lists; empty when not chosen. */
+  /**
+   * The supplier: a company of a Contact widget, by its id — null when none
+   * is chosen. "supplier" is its name; an asset from before the link keeps
+   * the name it was given, without an id.
+   */
+  supplier_id: Id | null;
   supplier: string;
+  /** Names from the board's lists; empty when not chosen. */
   maker: string;
   product: string;
   quantity: number;
-  /** Null when not given. */
+  /** Before tax; null when not given. */
   price: number | null;
+  /** Its tax's rate, in percent — one of its widget's Taxes widgets' (TAX_SOURCES) —; null, none. */
+  tax: number | null;
   /** "2026-10-12"; empty when not given. */
   purchase_date: string;
   description: string;
@@ -390,11 +601,14 @@ export interface DeclaredAssetInput extends DeclaredAssetExtras {
   actor_ids: Id[];
   label_ids: Id[];
   category: string;
+  /** A company of a Contact widget; without one, the name kept from before. */
+  supplier_id: Id | null;
   supplier: string;
   maker: string;
   product: string;
   quantity: number;
   price: number | null;
+  tax: number | null;
   purchase_date: string;
   description: string;
   notes: string;

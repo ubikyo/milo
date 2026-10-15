@@ -5,12 +5,13 @@ import type { ComponentType, DragEvent } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import MilestonesModal from "../project/MilestonesModal";
-import { DEFAULT_LABEL_COLOR } from "@milo/shared";
+import { DEFAULT_LABEL_COLOR, DEFAULT_MILESTONES, DEFAULT_MILESTONE_TYPE } from "@milo/shared";
 import type { Id, ListRef, Milestone, MilestoneType } from "@milo/shared";
 import { CopyPasteContext } from "./CopyPasteActions";
 import { useListRef } from "../../lib/list-ref";
 import { DrawerRegistrationsContext } from "./IndicatorDrawer";
 import LabelColorPicker from "./LabelColorPicker";
+import { RESET_LABEL_STYLE, ResetTitle } from "./ResetDefaults";
 import {
   ROUNDING,
   RowButton,
@@ -59,6 +60,8 @@ interface Row {
   id?: Id;
   name: string;
   color: string;
+  /** Milestones put back by "Réinitialiser": sent with the save. */
+  milestones?: readonly Milestone[];
 }
 
 interface ListKindInfo {
@@ -169,7 +172,9 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
         for (const l of keptKeys) {
           const row = { ...l, name: l.name.trim() };
           if (l.id === undefined) {
-            ids.push((await s.create(list, row)).id);
+            const id = (await s.create(list, row)).id;
+            if (l.milestones) await api.updateMilestoneType(id, { milestones: [...l.milestones] });
+            ids.push(id);
             continue;
           }
           const o = before.find((x) => x.id === l.id);
@@ -178,6 +183,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
             o.name !== row.name ||
             (s.withColor && (o.color ?? DEFAULT_LABEL_COLOR) !== row.color);
           if (change) await s.updateStatement(l.id, row);
+          if (l.milestones) await api.updateMilestoneType(l.id, { milestones: [...l.milestones] });
           ids.push(l.id);
         }
         const orderBefore = before.filter((o) => ids.includes(o.id)).map((o) => o.id);
@@ -202,6 +208,20 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   };
 
   const selection = useRowSelection(rows.map((r) => r.key));
+
+  // The "Défaut" type a new widget brings, with its milestones: found by its
+  // name, or added. Replacing, the other types go.
+  const reset = (replace: boolean) => {
+    setRows((before) => {
+      const found = before.find((r) => r.name.trim().toLowerCase() === DEFAULT_MILESTONE_TYPE.toLowerCase());
+      const type: Row = found
+        ? { ...found, name: DEFAULT_MILESTONE_TYPE, milestones: DEFAULT_MILESTONES }
+        : { key: newKey(), name: DEFAULT_MILESTONE_TYPE, color: DEFAULT_LABEL_COLOR, milestones: DEFAULT_MILESTONES };
+      if (replace) return [type];
+      return found ? before.map((r) => (r === found ? type : r)) : [...before, type];
+    });
+    selection.reset([]);
+  };
 
   const removeChecked = () => {
     const checked = new Set(selection.checked);
@@ -236,7 +256,11 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   if (list === null) return null;
 
   return (
-    <Input.Wrapper label={s.title}>
+    <Input.Wrapper
+      label={<ResetTitle title={s.title} reset={{ what: `les ${s.title.toLowerCase()}`, onReset: reset }} />}
+      labelElement="div"
+      styles={{ label: RESET_LABEL_STYLE }}
+    >
       {rows.length === 0 && <EmptyList icon={s.icon} message={s.empty} />}
       {rows.length > 0 && (
         <Stack gap={1}>

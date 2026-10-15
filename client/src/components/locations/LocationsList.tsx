@@ -24,7 +24,7 @@ import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
 import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GridScroll";
+import GridWithAdd from "../ui/GridWithAdd";
 import LabelChip from "../ui/LabelChip";
 import { useLabelFilter } from "../ui/LabelFilter";
 import { ReferenceTag } from "../ui/ReferenceTag";
@@ -39,6 +39,7 @@ import { STRONG_TEXT } from "../../themes/colors";
 import { NewShortcut } from "../../lib/newShortcut";
 import { fieldWidth } from "../../lib/fieldWidth";
 import fields from "../../assets/styles/GapField.module.css";
+import { readFilters, readSort, useGridState } from "../../lib/gridStates";
 
 // The list of an Emplacements widget (widgets/location): the location records
 // entered by hand. The same grid as the warehouses' (WarehousesList): its
@@ -245,8 +246,8 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
   const { locations: all, reload } = useLocations(boardId);
   // Those of this widget only.
   const locations = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
-  const [sort, setSort] = useState<Sort>({ key: "warehouse", direction: "asc" });
-  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [sort, setSort] = useGridState<Sort>("sort", { key: "warehouse", direction: "asc" }, readSort<Sort>(Object.keys(VALUES)));
+  const [filters, setFilters] = useGridState<Filters>("filters", NO_FILTER, readFilters(NO_FILTER));
   // The labels filters, one per labels column, limited to its group.
   const labelFilter = useLabelFilter(locations, labelsOf);
   const isFiltered =
@@ -417,42 +418,36 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
   };
 
   /**
-   * The last row: adding a record happens where the list ends; at its right,
-   * outside edit mode, the display. Its background neutralizes the hover: it
-   * is not a record.
+   * Under the grid, at the bottom of the widget (GridWithAdd): adding a
+   * record; at its right, outside edit mode, the display.
    */
-  const lastRow = (span: number) =>
-    (canAdd || !isEditing) && (
-      <Table.Tr style={{ backgroundColor: "transparent" }}>
-        <Table.Td colSpan={span}>
-          <Group justify="space-between" wrap="nowrap">
-            {canAdd ? (
-              <AddButton label="Ajouter un emplacement" onClick={() => setDrawer({ location: null })} />
-            ) : (
-              <span />
-            )}
-            {!isEditing && (
-              <Select
-                size="xs"
-                aria-label="Affichage"
-                data={DISPLAYS}
-                value={display}
-                onChange={(v) => v && chooseDisplay(v as Display)}
-                allowDeselect={false}
-                // At the size of the chosen label, chevron included.
-                w={fieldWidth(DISPLAYS.find((d) => d.value === display)?.label ?? "") + 14}
-                withCheckIcon={false}
-                rightSection={<IconChevronDown size={10} />}
-                rightSectionWidth={14}
-                comboboxProps={{ width: 170, position: "bottom-end" }}
-                styles={{ input: { textAlign: "right" } }}
-                className={`${fields.field} ${fields.unit}`}
-              />
-            )}
-          </Group>
-        </Table.Td>
-      </Table.Tr>
-    );
+  const bottomBar = (canAdd || !isEditing) && (
+    <Group justify="space-between" wrap="nowrap">
+      {canAdd ? (
+        <AddButton label="Ajouter un emplacement" onClick={() => setDrawer({ location: null })} />
+      ) : (
+        <span />
+      )}
+      {!isEditing && (
+        <Select
+          size="xs"
+          aria-label="Affichage"
+          data={DISPLAYS}
+          value={display}
+          onChange={(v) => v && chooseDisplay(v as Display)}
+          allowDeselect={false}
+          // At the size of the chosen label, chevron included.
+          w={fieldWidth(DISPLAYS.find((d) => d.value === display)?.label ?? "") + 14}
+          withCheckIcon={false}
+          rightSection={<IconChevronDown size={10} />}
+          rightSectionWidth={14}
+          comboboxProps={{ width: 170, position: "bottom-end" }}
+          styles={{ input: { textAlign: "right" } }}
+          className={`${fields.field} ${fields.unit}`}
+        />
+      )}
+    </Group>
+  );
 
   const table = (
     <Table
@@ -501,8 +496,6 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
             </Table.Td>
           </Table.Tr>
         )}
-
-        {lastRow(columns.length)}
       </Table.Tbody>
     </Table>
   );
@@ -579,7 +572,6 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
             </Table.Td>
           </Table.Tr>
         )}
-        {lastRow(PLACE_COLUMNS)}
       </Table.Tbody>
     </Table>
   );
@@ -598,8 +590,10 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
           onAction={canAdd ? () => setDrawer({ location: null }) : undefined}
         />
       ) : (
-        // A section narrower than the list makes it scroll sideways.
-        <GridScroll>{byPlace ? placeTable : table}</GridScroll>
+        // Under the grid, "Ajouter", at the bottom of the widget (GridWithAdd).
+        <GridWithAdd config={config} add={bottomBar}>
+          {byPlace ? placeTable : table}
+        </GridWithAdd>
       )}
 
       <LocationDrawer

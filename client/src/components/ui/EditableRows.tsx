@@ -8,6 +8,8 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { PLUS_SIZE } from "../../themes/plus";
 import AddButton from "./AddButton";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { RESET_LABEL_STYLE, ResetTitle } from "./ResetDefaults";
+import type { ResetDefaultsProps } from "./ResetDefaults";
 import { TREE_CASCADER, locationTreeData, treePath } from "./EditableTree";
 import {
   ROUNDING,
@@ -16,6 +18,7 @@ import {
   FIRST_FIELD_MARGIN,
   NAME_INSET,
   ListFooter,
+  ListHeader,
   RowCheckbox,
   move,
   nameFieldStyle,
@@ -46,6 +49,9 @@ const VISIBLE_ROWS = 5;
  * the row's inset above and below (2 × 4 px), and the 1 px rule.
  */
 const ROW_HEIGHT = 30 + 2 * 4 + 1;
+
+/** The room after a suffixed value: its suffix's section, an "sm" field's. */
+const SUFFIX_INSET = 36;
 
 /** A list row: its fields, as typed, in column order. */
 export type Row = string[];
@@ -353,6 +359,8 @@ export function ListRows({
   leading,
   trailing,
   reorderable = false,
+  header = false,
+  reset,
 }: {
   title: string;
   /** Under the title: whom the list is shared by, when it is a board's. */
@@ -387,6 +395,10 @@ export function ListRows({
    * order, sent once the row is dropped.
    */
   reorderable?: boolean;
+  /** The columns' titles above the rows, as the Settings' lists (ListHeader). */
+  header?: boolean;
+  /** The rows a new widget brings: the title then offers to put them back. */
+  reset?: ResetDefaultsProps;
 }) {
   // The added row, waiting for its fields.
   const [adding, setAdding] = useState(false);
@@ -471,91 +483,109 @@ export function ListRows({
   };
 
   const total = rows.length + (adding ? 1 : 0);
+  // The header opens the stack: the rows count it (rowStyle).
+  const offset = header ? 1 : 0;
 
   return (
     // Board data, not the widget's: say so under the label, at 20 px from
     // the list — when there is something to say.
     <Input.Wrapper
-      label={title}
+      label={<ResetTitle title={title} reset={reset} />}
+      labelElement="div"
       description={description}
-      styles={{ description: { paddingBottom: description ? 20 : 0 } }}
+      styles={{ label: RESET_LABEL_STYLE, description: { paddingBottom: description ? 20 : 0 } }}
     >
       {total === 0 ? (
         <EmptyList icon={emptyIcon} message={emptyText} />
       ) : (
         // Five rows at most at a time: beyond that, the list scrolls. An added
-        // row, which takes focus, shows itself there.
-        <ScrollArea.Autosize
-          mah={VISIBLE_ROWS * ROW_HEIGHT}
-          type="auto"
-          scrollbars="y"
-          classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
-        >
-          <Stack gap={1}>
-            {shown.map((row, rank) => (
-              <EditableRow
-                // A row reread from the server restarts from its new value.
-                key={`${rank}-${row.join("|")}`}
-                columns={columns}
-                value={row}
-                rank={rank}
-                total={total}
-                onValidate={(after) => send(rows.map((l, i) => (i === rank ? after : l)))}
-                leading={leading?.(row, rank)}
-                trailing={trailing?.(row, rank)}
-                held={held === rank}
-                onDragOver={reorderable ? (e) => dragHover(e, rank) : undefined}
-                lead={
-                  <>
-                    {reorderable && (
-                      <Handle
-                        label={`Déplacer ${nameOf(row)}`}
-                        // Not while a row is being added: its place is the last.
-                        active={!adding}
-                        onDragStart={() => setHeld(rank)}
-                        onDragEnd={drop}
+        // row, which takes focus, shows itself there. The header above, a
+        // row's gap from them.
+        <Stack gap={1}>
+          {header && (
+            <ListHeader
+              handle={reorderable}
+              gap="xs"
+              columns={columns.map((c, i) => ({
+                label: c.label,
+                style: { ...columnStyle(c), ...(i === 0 ? { marginLeft: -NAME_INSET } : null) },
+                // A suffixed value sits at the end, before its suffix.
+                ...(c.suffix && { end: true, inset: SUFFIX_INSET }),
+              }))}
+            />
+          )}
+          <ScrollArea.Autosize
+            mah={VISIBLE_ROWS * ROW_HEIGHT}
+            type="auto"
+            scrollbars="y"
+            classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
+          >
+            <Stack gap={1}>
+              {shown.map((row, rank) => (
+                <EditableRow
+                  // A row reread from the server restarts from its new value.
+                  key={`${rank}-${row.join("|")}`}
+                  columns={columns}
+                  value={row}
+                  rank={rank + offset}
+                  total={total + offset}
+                  onValidate={(after) => send(rows.map((l, i) => (i === rank ? after : l)))}
+                  leading={leading?.(row, rank)}
+                  trailing={trailing?.(row, rank)}
+                  held={held === rank}
+                  onDragOver={reorderable ? (e) => dragHover(e, rank) : undefined}
+                  lead={
+                    <>
+                      {reorderable && (
+                        <Handle
+                          label={`Déplacer ${nameOf(row)}`}
+                          // Not while a row is being added: its place is the last.
+                          active={!adding}
+                          onDragStart={() => setHeld(rank)}
+                          onDragEnd={drop}
+                        />
+                      )}
+                      <RowCheckbox
+                        label={`Sélectionner ${nameOf(row)}`}
+                        checked={selection.isChecked(rank)}
+                        onChange={(on) => selection.toggle(rank, on)}
+                        afterHandle={reorderable}
                       />
-                    )}
-                    <RowCheckbox
-                      label={`Sélectionner ${nameOf(row)}`}
-                      checked={selection.isChecked(rank)}
-                      onChange={(on) => selection.toggle(rank, on)}
-                      afterHandle={reorderable}
-                    />
-                  </>
-                }
-              />
-            ))}
-            {adding && (
-              <EditableRow
-                columns={columns}
-                value={empty(columns)}
-                rank={total - 1}
-                total={total}
-                newRow
-                onValidate={async (after) => {
-                  const ok = await send([...rows, after]);
-                  if (ok) setAdding(false);
-                  return ok;
-                }}
-                onAbandon={() => setAdding(false)}
-                // Not saved yet: nothing to delete, nor to move — no checkbox.
-                // The first field, which tucks against the checkbox, opens the
-                // row instead: ROW_INSET from its edge (FIRST_FIELD_MARGIN).
-                lead={
-                  <>
-                    {reorderable && (
-                      <Handle label="Déplacer" active={false} onDragStart={() => {}} onDragEnd={() => {}} />
-                    )}
-                    <Box style={{ flexShrink: 0, marginRight: FIRST_FIELD_MARGIN }} />
-                  </>
-                }
-                leading={leading?.(null, total - 1)}
-                onPaste={split ? paste : undefined}
-              />
-            )}
-          </Stack>
-        </ScrollArea.Autosize>
+                    </>
+                  }
+                />
+              ))}
+              {adding && (
+                <EditableRow
+                  columns={columns}
+                  value={empty(columns)}
+                  rank={total - 1 + offset}
+                  total={total + offset}
+                  newRow
+                  onValidate={async (after) => {
+                    const ok = await send([...rows, after]);
+                    if (ok) setAdding(false);
+                    return ok;
+                  }}
+                  onAbandon={() => setAdding(false)}
+                  // Not saved yet: nothing to delete, nor to move — no checkbox.
+                  // The first field, which tucks against the checkbox, opens the
+                  // row instead: ROW_INSET from its edge (FIRST_FIELD_MARGIN).
+                  lead={
+                    <>
+                      {reorderable && (
+                        <Handle label="Déplacer" active={false} onDragStart={() => {}} onDragEnd={() => {}} />
+                      )}
+                      <Box style={{ flexShrink: 0, marginRight: FIRST_FIELD_MARGIN }} />
+                    </>
+                  }
+                  leading={leading?.(null, total - 1)}
+                  onPaste={split ? paste : undefined}
+                />
+              )}
+            </Stack>
+          </ScrollArea.Autosize>
+        </Stack>
       )}
       {/* As close as possible to the list it extends. */}
       <ListFooter

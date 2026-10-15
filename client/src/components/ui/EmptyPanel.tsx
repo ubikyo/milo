@@ -41,6 +41,8 @@ export default function EmptyPanel({
       // Vertically centered within the height it occupies.
       justify="center"
       style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      // In a widget's aligned place, it still fills it (Alignment.module.css).
+      data-fill={fill || undefined}
     >
       <Icon
         className={classes.icon}

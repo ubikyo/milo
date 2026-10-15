@@ -3,6 +3,7 @@ import { CONTACT_FIELD_MAX } from "@milo/shared";
 import type { ContactCountry } from "@milo/shared";
 import { ListRows } from "../ui/EditableRows";
 import type { Column } from "../ui/EditableRows";
+import { resetRows } from "../../lib/reset-defaults";
 
 // The countries an address picks from, in a widget's drawer: a Contact
 // widget's (ContactTablesFields), an Entrepôts widget's
@@ -14,9 +15,12 @@ const COLUMNS: Column[] = [{ label: "Libellé", maxLength: CONTACT_FIELD_MAX }];
 export default function CountryRows({
   value,
   onChange,
+  defaults,
 }: {
   value: ContactCountry[];
   onChange: (countries: ContactCountry[]) => void;
+  /** The countries a new widget brings (shared): the title offers to put them back. */
+  defaults: readonly ContactCountry[];
 }) {
   return (
     <ListRows
@@ -33,6 +37,7 @@ export default function CountryRows({
       deleteTitle="Supprimer le pays"
       several={(n) => `${n} pays`}
       reorderable
+      reset={{ what: "les pays", onReset: (replace) => onChange(resetRows(value, defaults, replace)) }}
     />
   );
 }

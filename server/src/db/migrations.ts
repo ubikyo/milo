@@ -7,9 +7,9 @@
 
 import type { Database } from "better-sqlite3";
 import {
+  TICKETS_MAIL_TEMPLATE_KEYS,
   DEFAULT_SEARCH_THRESHOLD,
   CONTACT_SETTINGS_DEFAULTS,
-  PRODUCT_TAX_DEFAULTS,
   DECLARED_ASSET_EXTRAS,
   DECLARED_ASSET_EXTRA_LISTS,
   DECLARED_ASSET_KINDS,
@@ -44,6 +44,7 @@ import {
   declaredAssetTables,
 } from "./declared-asset-tables.js";
 import { settingsPerList, sourcesByKey } from "./settings-per-list.js";
+import { SCHEMA } from "./schema.js";
 
 /** The milestones all projects shared before they followed the category. */
 const HISTORICAL_MILESTONES = [
@@ -293,6 +294,9 @@ export const migrate = (db: Database): void => {
   declaredAssetListKeys(db);
   declaredAssetExtras(db);
   declaredAssetPurchaseDate(db);
+  declaredAssetSupplierContact(db);
+  declaredAssetTax(db);
+  objectWidgets(db);
   sortedCategories(db);
   categoryTree(db);
   // Cards created before the period, the recurrence and the due-date reminder.
@@ -348,11 +352,6 @@ export const migrate = (db: Database): void => {
   // Orders from before their delivery warehouse.
   if (!orderColumns.includes("warehouse_id")) {
     db.exec("ALTER TABLE orders ADD COLUMN warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL");
-  }
-  // Product widgets from before their taxes: the defaults, 20 % and 0 %.
-  if (!columns(db, "board_product_settings").includes("taxes")) {
-    const taxes = JSON.stringify(PRODUCT_TAX_DEFAULTS);
-    db.exec(`ALTER TABLE board_product_settings ADD COLUMN taxes TEXT NOT NULL DEFAULT '${taxes}'`);
   }
   if (!columns(db, "board_contact_settings").includes("countries")) {
     const countries = JSON.stringify(CONTACT_SETTINGS_DEFAULTS.countries).replace(/'/g, "''");
@@ -430,6 +429,16 @@ export const migrate = (db: Database): void => {
   boardContextGroups(db);
   // After the French variables became English: "{{sender.…}}" becomes "{{requester.…}}".
   requesterVariables(db);
+  // After the templates were rewritten: the predefined replies become each
+  // Tickets widget's own, and those shared until then go away.
+  if (!columns(db, "support_contents").includes("list_key")) {
+    db.exec("DROP TABLE support_contents");
+    db.exec(SCHEMA);
+  }
+  // The automatic replies and the Tickets e-mail templates become each
+  // widget's own: each existing Tickets widget keeps a copy of those shared
+  // until then.
+  if (!columns(db, "support_replies").includes("list_key")) supportRepliesPerWidget(db);
   subcategoriesAsTitles(db);
   managedDeviceAssetSettingsByBoard(db);
   supportLabelsByBoard(db);
@@ -1558,6 +1567,29 @@ const declaredAssetPurchaseDate = (db: Database): void => {
   }
 };
 
+/**
+ * The declared assets from before their supplier was a company of a Contact
+ * widget receive its column, empty: they keep the name they were given.
+ */
+const declaredAssetSupplierContact = (db: Database): void => {
+  for (const kind of DECLARED_ASSET_KINDS) {
+    const { assets } = declaredAssetTables(kind);
+    if (!columns(db, assets).includes("supplier_id")) {
+      db.exec(
+        `ALTER TABLE ${assets} ADD COLUMN supplier_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL`,
+      );
+    }
+  }
+};
+
+/** The declared assets from before their price's tax receive its column, empty. */
+const declaredAssetTax = (db: Database): void => {
+  for (const kind of DECLARED_ASSET_KINDS) {
+    const { assets } = declaredAssetTables(kind);
+    if (!columns(db, assets).includes("tax")) db.exec(`ALTER TABLE ${assets} ADD COLUMN tax REAL`);
+  }
+};
+
 /** Set once the declared assets' categories have become a tree. */
 const DECLARED_ASSET_CATEGORY_TREE = "declared_asset_category_tree";
 
@@ -1666,6 +1698,27 @@ const logisticsWidgets = (db: Database): void => {
       write.run(JSON.stringify({ ...parsedObject(widgets), logistics: "delete" }), rowid);
     }
     writeSetting(db, LOGISTICS_WIDGETS, true);
+  })();
+};
+
+/** Set once the "Objets" type has been granted to the groups. */
+const OBJECT_WIDGETS = "object_widgets_added";
+
+/**
+ * The "Objets" type arrives — the value lists —: as for the logistics, the
+ * groups receive every permission on it.
+ */
+const objectWidgets = (db: Database): void => {
+  if (readSetting(db, OBJECT_WIDGETS)) return;
+  db.transaction(() => {
+    const rows = db
+      .prepare("SELECT rowid, widgets FROM principal_permissions WHERE principal_type = 'group'")
+      .all() as { rowid: number; widgets: string }[];
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      write.run(JSON.stringify({ ...parsedObject(widgets), objects: "delete" }), rowid);
+    }
+    writeSetting(db, OBJECT_WIDGETS, true);
   })();
 };
 
@@ -4097,5 +4150,45 @@ const requesterVariables = (db: Database): void => {
       }
     }
     writeSetting(db, REQUESTER_VARIABLES, true);
+  })();
+};
+
+/**
+ * The automatic replies and the customized Tickets e-mail templates, shared by
+ * every Tickets widget until now: copied into each, then the shared ones go.
+ */
+const supportRepliesPerWidget = (db: Database): void => {
+  const lists = db
+    .prepare(
+      `SELECT s.board_id AS board, json_extract(w.config, '$.list_key') AS list
+       FROM board_widgets w JOIN board_sections s ON s.id = w.section_id
+       WHERE w.type = 'support.list' AND json_valid(w.config)
+         AND json_extract(w.config, '$.list_key') IS NOT NULL`,
+    )
+    .all() as { board: number; list: string }[];
+  const replies = db.prepare("SELECT name, html, event FROM support_replies").all() as {
+    name: string;
+    html: string;
+    event: string;
+  }[];
+  const custom = (readSetting(db, "mail_templates") ?? {}) as Record<string, unknown>;
+  db.transaction(() => {
+    db.exec("DROP TABLE support_replies");
+    db.exec(SCHEMA);
+    const addReply = db.prepare(
+      "INSERT INTO support_replies (board_id, list_key, name, html, event) VALUES (?, ?, ?, ?, ?)",
+    );
+    const addTemplate = db.prepare(
+      "INSERT OR IGNORE INTO support_mail_templates (board_id, list_key, key, mjml) VALUES (?, ?, ?, ?)",
+    );
+    for (const { board, list } of lists) {
+      for (const r of replies) addReply.run(board, list, r.name, r.html, r.event);
+      for (const key of TICKETS_MAIL_TEMPLATE_KEYS) {
+        const mjml = custom[key];
+        if (typeof mjml === "string") addTemplate.run(board, list, key, mjml);
+      }
+    }
+    for (const key of TICKETS_MAIL_TEMPLATE_KEYS) delete custom[key];
+    writeSetting(db, "mail_templates", custom);
   })();
 };

@@ -31,10 +31,13 @@ function ListFields(props: IndicatorConfigProps) {
       />
       {/* Its label templates: its own data, as the declared assets'. */}
       <LabelTemplatesFields kind="location" />
-      <ColumnFields columns={LOCATION_COLUMNS} {...props} />
+      <ColumnFields columns={LOCATION_COLUMNS} defaults={DEFAULT_COLUMNS} {...props} />
     </Stack>
   );
 }
+
+/** The columns a new widget shows; the others are added from its drawer. */
+const DEFAULT_COLUMNS = ["warehouse", "labels", "places"].map((key) => ({ key }));
 
 export const locationListWidget: ContactWidget = {
   type: "list",
@@ -44,7 +47,7 @@ export const locationListWidget: ContactWidget = {
   // Once placed, the widget shows these columns; the others are added from its
   // drawer.
   defaultConfig: {
-    [LIST_COLUMNS]: ["warehouse", "labels", "places"].map((key) => ({ key })),
+    [LIST_COLUMNS]: DEFAULT_COLUMNS,
   },
   ownClicks: true,
   fill: true,

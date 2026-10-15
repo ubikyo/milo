@@ -1,7 +1,7 @@
 // The schema. It is created empty and is never modified here: an existing
 // database goes through the migrations (migrations.ts).
 
-import { CONTACT_SETTINGS_DEFAULTS, WAREHOUSE_SETTINGS_DEFAULTS } from "@milo/shared";
+import { CONTACT_SETTINGS_DEFAULTS, TAX_DEFAULTS, WAREHOUSE_SETTINGS_DEFAULTS } from "@milo/shared";
 import { DECLARED_ASSET_INDEXES, DECLARED_ASSET_SCHEMA } from "./declared-asset-tables.js";
 
 /** A default list, as a column's SQL default. */
@@ -699,6 +699,24 @@ ${DECLARED_ASSET_SCHEMA}
     PRIMARY KEY (board_id, list_key)
   );
 
+  -- The taxes of a board's "Taxes" widgets (shared, taxes.ts), as JSON, in
+  -- their order: their defaults until a widget records its own.
+  CREATE TABLE IF NOT EXISTS board_tax_settings (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    taxes TEXT NOT NULL DEFAULT ${jsonDefault(TAX_DEFAULTS)},
+    PRIMARY KEY (board_id, list_key)
+  );
+
+  -- The items of a board's "Liste" widgets (shared, value-lists.ts), as JSON,
+  -- in their order: a name and a value each.
+  CREATE TABLE IF NOT EXISTS board_value_lists (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    items TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (board_id, list_key)
+  );
+
   -- The locations of a board's "Emplacements" widgets (shared, locations.ts):
   -- their name, their warehouse, and their places — a tree, as JSON, each
   -- place with its name, its type and its code.
@@ -791,7 +809,6 @@ ${DECLARED_ASSET_SCHEMA}
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     list_key TEXT NOT NULL DEFAULT '',
     categories TEXT NOT NULL DEFAULT '[]',
-    taxes TEXT NOT NULL DEFAULT '[{"rate":20},{"rate":0}]',
     PRIMARY KEY (board_id, list_key)
   );
 
@@ -1138,29 +1155,44 @@ ${DECLARED_ASSET_SCHEMA}
     created_at TEXT NOT NULL
   );
 
-  -- Les réponses par défaut du Support, réglées au Paramétrage : un intitulé,
-  -- et son modèle HTML (l'éditeur). « text », la version texte d'autrefois,
-  -- ne sert plus.
+  -- Les réponses automatiques d'un widget Tickets : un intitulé, et son
+  -- modèle HTML (l'éditeur). Chaque widget a les siennes, par sa clé de liste.
   CREATE TABLE IF NOT EXISTS support_replies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL,
+    name TEXT NOT NULL COLLATE NOCASE,
     html TEXT NOT NULL DEFAULT '',
-    text TEXT NOT NULL DEFAULT '',
     -- L'évènement qui l'envoie d'office à l'expéditeur : « new », « closed »…
-    -- Vide : aucun. Un évènement n'appartient qu'à une réponse.
-    event TEXT NOT NULL DEFAULT ''
+    -- Vide : aucun. Dans un widget, un évènement n'appartient qu'à une réponse.
+    event TEXT NOT NULL DEFAULT '',
+    UNIQUE (board_id, list_key, name)
   );
 
-  -- Les contenus par défaut du Support : ce qui se pose d'office dans
-  -- l'éditeur d'une réponse de l'équipe — une signature… L'évènement dit
-  -- quand (« all », « new »…) ; vide : jamais. Un évènement peut en poser
-  -- plusieurs : dans l'ordre de la liste.
+  -- Les modèles d'e-mail modifiés d'un widget Tickets (MJML), par clé de
+  -- modèle ; absent : celui de Milo.
+  CREATE TABLE IF NOT EXISTS support_mail_templates (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL,
+    key TEXT NOT NULL,
+    mjml TEXT NOT NULL,
+    PRIMARY KEY (board_id, list_key, key)
+  );
+
+  -- Les réponses pré-définies d'un widget Tickets : ce qui se pose d'office
+  -- dans l'éditeur d'une réponse de l'équipe — une signature… Chaque widget
+  -- a les siennes, par sa clé de liste. L'évènement dit quand (« all »,
+  -- « new »…) ; vide : jamais. Un évènement peut en poser plusieurs : dans
+  -- l'ordre de la liste.
   CREATE TABLE IF NOT EXISTS support_contents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL,
+    name TEXT NOT NULL COLLATE NOCASE,
     html TEXT NOT NULL DEFAULT '',
     event TEXT NOT NULL DEFAULT '',
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (board_id, list_key, name)
   );
 
   -- Les contenus par défaut des commandes, comme ceux du Support : posés
@@ -1232,6 +1264,17 @@ ${DECLARED_ASSET_SCHEMA}
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scope TEXT NOT NULL,
     ids TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (user_id, scope)
+  );
+
+  -- Le tri et la recherche des grilles, propres à chaque compte : chacun
+  -- retrouve sa grille comme il l'a laissée. « scope » nomme la grille :
+  -- « widget:<id> », chaque widget a la sienne. « state » est un objet JSON, une clé par
+  -- partie (le tri, les filtres...). Sans ligne, la grille part de son défaut.
+  CREATE TABLE IF NOT EXISTS user_grid_states (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (user_id, scope)
   );
 

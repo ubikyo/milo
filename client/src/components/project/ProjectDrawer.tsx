@@ -29,6 +29,7 @@ import type { CSSProperties } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { useFileDrag } from "../../lib/useFileDrag";
+import { useFilePaste } from "../../lib/useFilePaste";
 import { progressColor } from "../../themes/colors";
 import {
   ACTIONS_BUTTON_STYLE,
@@ -212,6 +213,8 @@ export default function ProjectDrawer({
   const canEditCategories = can("projects", "create") && can("projects", "update");
   // Files dragged over the page: the drop zone shows, even under a full list.
   const dragging = useFileDrag(opened && !readOnly);
+  // Files pasted into the page: they join the attachments, as if dropped.
+  useFilePaste(opened && !readOnly, (files) => void addAttachments(files));
 
   // The milestones under the progress slider are those of the chosen type: they
   // change with it, and are missing if there are none.

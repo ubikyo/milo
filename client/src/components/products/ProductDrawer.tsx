@@ -8,6 +8,7 @@ import {
   Select,
   Stack,
   Tabs,
+  Text,
   Textarea,
   TextInput,
   UnstyledButton,
@@ -34,10 +35,14 @@ import {
   PRODUCT_PRICE_MAX,
   PRODUCT_QUANTITY_MAX,
   PRODUCT_TRACKINGS,
+  PRODUCT_LIST_TYPE,
+  PRODUCT_SUPPLIER_SOURCES,
+  TAX_SOURCES,
   isProductTracking,
-  taxLabel,
+  sourcesOf,
 } from "@milo/shared";
 import type {
+  Contact,
   Id,
   Label,
   Product,
@@ -56,8 +61,12 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { BARE_FIELDSET } from "../../lib/rights";
 import { shrinkImage } from "../../lib/shrinkImage";
 import { useFileDrag } from "../../lib/useFileDrag";
-import { useSourceWidgets } from "../../lib/sources";
-import { currencyUnit, useSuppliers } from "../../lib/suppliers";
+import { useFilePaste } from "../../lib/useFilePaste";
+import { useSourceWidgets, useSources } from "../../lib/sources";
+import { taxChoice, useOfferedTaxes } from "../../lib/taxes";
+import { createSupplier, currencyUnit, useSuppliers } from "../../lib/suppliers";
+import ContactDrawer from "../contacts/ContactDrawer";
+import CreateFromSearch from "../ui/CreateFromSearch";
 import { VARIANT_WORDS } from "../../lib/label-words";
 import { NEUTRAL_HOVER } from "../../themes/colors";
 import { ACTIONS_BUTTON_STYLE, DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
@@ -67,7 +76,8 @@ import CardCovers from "../board/CardCovers";
 import CommentThread from "../project/CommentThread";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import DrawerFooter from "../ui/DrawerFooter";
-import DraftRows, { RowNumber, RowSelect, alignedEnd } from "../ui/DraftRows";
+import DraftRows, { RowNumber, RowSelect, WideRowSelect, alignedEnd } from "../ui/DraftRows";
+import { HeaderTitle, INPUT_INSET } from "../ui/DrawerRows";
 import DrawerScrollArea, {
   DRAWER_PADDING,
   DRAWER_PANEL_STYLE,
@@ -125,6 +135,8 @@ const TRACKING_SHARE = 2 / 5;
 /** The width of a price's minimum quantity, beside it, and of its tax, after it. */
 const MIN_QUANTITY_WIDTH = 90;
 const TAX_WIDTH = 90;
+/** The tax's chevron, narrow: the rate shows whole. */
+const TAX_CHEVRON_WIDTH = 24;
 
 /**
  * A price at a supplier as the drawer holds it: its contact's id as a string,
@@ -288,21 +300,47 @@ export default function ProductDrawer({
 }: ProductDrawerProps) {
   const [form, setForm] = useState<Form>(EMPTY);
   const [labels, setLabels] = useState<Label[]>([]);
-  const [settings, setSettings] = useState<ProductSettings>({ categories: [], taxes: [] });
+  const [settings, setSettings] = useState<ProductSettings>({ categories: [] });
   // The board's categories tree, to pick the product's from.
-  // The taxes offered, in the widget's order; a price's still shows once it has left them.
-  const taxData = (own: string | null) => {
-    const data = settings.taxes.map((t) => ({ value: String(t.rate), label: taxLabel(t.rate) }));
-    if (own !== null && !data.some((d) => d.value === own)) data.push({ value: own, label: taxLabel(Number(own)) });
-    return data;
-  };
-  const defaultTax = settings.taxes[0] ? String(settings.taxes[0].rate) : null;
+  // The taxes offered: those of the Taxes widgets its widget is associated
+  // with, in their order; a price's still shows once it has left them.
+  const productWidgets = useSourceWidgets(opened ? PRODUCT_LIST_TYPE : null);
+  const config = productWidgets?.find((w) => w.board_id === boardId && w.key === listKey)?.config;
+  const taxes = useOfferedTaxes(config);
+  const defaultTax = taxes[0] ? String(taxes[0].rate) : null;
   const categoryData = useMemo(() => locationTreeData(settings.categories), [settings.categories]);
   // The star's button, hovered: it takes the neutral gray.
   const [starHovered, setStarHovered] = useState(false);
-  // The suppliers to pick from: the companies of every Contact widget one sees.
-  const contactWidgets = useSourceWidgets(opened ? "contact.list" : null);
-  const { suppliers } = useSuppliers(contactWidgets ?? []);
+  // The suppliers to pick from: the companies of the Contact widgets its
+  // widget is associated with.
+  const supplierSources = useSources("contact.list", config, PRODUCT_SUPPLIER_SOURCES);
+  const { suppliers, contacts } = useSuppliers(opened ? supplierSources : []);
+  // A supplier typed on a row and not found is created in the first Contact
+  // widget associated, then chosen on the row; opened afterwards, to be
+  // completed, for "Créer et modifier".
+  const supplierWidget = supplierSources[0];
+  const [supplierSearches, setSupplierSearches] = useState<Record<number, string>>({});
+  // Their names, until the companies read bring them.
+  const [createdSuppliers, setCreatedSuppliers] = useState<Record<string, string>>({});
+  const [editedSupplier, setEditedSupplier] = useState<Contact | null>(null);
+  const createSupplierFromSearch = async (
+    rank: number,
+    name: string,
+    edit: boolean,
+    choose: (id: string) => void,
+  ) => {
+    if (!supplierWidget) return;
+    try {
+      const contact = await createSupplier(supplierWidget, name);
+      setCreatedSuppliers((c) => ({ ...c, [String(contact.id)]: contact.name }));
+      choose(String(contact.id));
+      setSupplierSearches((s) => ({ ...s, [rank]: "" }));
+      (document.activeElement as HTMLElement | null)?.blur();
+      if (edit) setEditedSupplier(contact);
+    } catch (e) {
+      notifyError(errorMessage(e));
+    }
+  };
   const supplierById = useMemo(
     () => new Map((suppliers ?? []).map((s) => [String(s.contact.id), s])),
     [suppliers],
@@ -344,6 +382,8 @@ export default function ProductDrawer({
   const fileField = useRef<HTMLInputElement>(null);
   // Files dragged over the page: the drop zones show, even under full lists.
   const dragging = useFileDrag(opened && canSave);
+  // Files pasted into the page: they join the attachments, as if dropped.
+  useFilePaste(opened && canSave, (files) => void addAttachments(files));
   const readOnly = !canSave;
   // A product being added has no thread yet.
   const tabs = TABS.filter((t) => t.value === "settings" || product);
@@ -801,27 +841,57 @@ export default function ProductDrawer({
                     }
                     word="fournisseur"
                     readOnly={readOnly}
-                    fields={(row, change, autoFocus) => {
+                    // Each title over its field, as laid out below.
+                    header={{
+                      fields: <HeaderTitle label="Fournisseur" style={{ flex: 1 }} inset={INPUT_INSET} />,
+                      trailing: (
+                        <Group gap="xs" wrap="nowrap" style={alignedEnd(TRACKING_SHARE)}>
+                          <HeaderTitle label="Qté min." style={{ width: MIN_QUANTITY_WIDTH }} inset={INPUT_INSET} />
+                          <HeaderTitle label="Prix HT" style={{ flex: 1 }} inset={INPUT_INSET} />
+                          <HeaderTitle label="TVA" style={{ width: TAX_WIDTH }} end inset={TAX_CHEVRON_WIDTH} />
+                        </Group>
+                      ),
+                    }}
+                    // No focus on the row added: its dropdown would open.
+                    fields={(row, change, _autoFocus, rank) => {
                       const supplier = row.contact_id ? supplierById.get(row.contact_id) : undefined;
                       // A company may come back: another price, from another quantity.
                       const data = (suppliers ?? []).map((s) => ({
                         value: String(s.contact.id),
                         label: s.contact.name,
                       }));
-                      // One no longer read still shows, by its id.
+                      // One no longer read still shows, by its id — just created, by its name.
                       if (row.contact_id && !supplier) {
-                        data.unshift({ value: row.contact_id, label: `#${row.contact_id}` });
+                        data.unshift({
+                          value: row.contact_id,
+                          label: createdSuppliers[row.contact_id] ?? `#${row.contact_id}`,
+                        });
                       }
+                      const typed = (supplierSearches[rank] ?? "").trim();
                       return (
-                        <RowSelect
+                        <WideRowSelect
                           placeholder={suppliers === null ? "Lecture…" : "Fournisseur"}
                           aria-label="Fournisseur"
                           data={data}
                           value={row.contact_id}
                           onChange={(id) => change({ contact_id: id })}
-                          nothingFoundMessage="Aucune société"
-                          autoFocus={autoFocus}
-                          style={{ flex: 1, minWidth: 0 }}
+                          onSearchChange={(search) => setSupplierSearches((s) => ({ ...s, [rank]: search }))}
+                          nothingFoundMessage={
+                            // Not found: created from what is typed — at once, or opened to be completed.
+                            typed && supplierWidget && !readOnly ? (
+                              <CreateFromSearch
+                                typed={typed}
+                                onCreate={(edit) =>
+                                  void createSupplierFromSearch(rank, typed, edit, (id) => change({ contact_id: id }))
+                                }
+                              />
+                            ) : (
+                              // On the left, on one line — the dropdown widens to it —: it is centered otherwise.
+                              <Text size="sm" ta="left" style={{ whiteSpace: "nowrap" }}>
+                                {supplierSources.length ? "Aucune société" : "Aucun widget Contact associé"}
+                              </Text>
+                            )
+                          }
                         />
                       );
                     }}
@@ -847,9 +917,9 @@ export default function ProductDrawer({
                             style={{ flexShrink: 0 }}
                           />
                           <RowNumber
-                            placeholder="Prix"
+                            placeholder="Prix HT"
                             invalid={missingPrice(row)}
-                            aria-label="Prix"
+                            aria-label="Prix HT"
                             value={row.price}
                             onChange={(v) => change({ price: v === "" ? "" : Number(v) })}
                             min={0}
@@ -862,14 +932,19 @@ export default function ProductDrawer({
                           <RowSelect
                             placeholder="TVA"
                             aria-label="TVA"
-                            data={taxData(row.tax)}
+                            {...taxChoice(taxes, row.tax)}
                             value={row.tax}
                             onChange={(v) => change({ tax: v })}
+                            nothingFoundMessage={
+                              <Text size="sm" ta="left" style={{ whiteSpace: "nowrap" }}>
+                                {sourcesOf(config, TAX_SOURCES).length ? "Aucune taxe" : "Aucun widget Taxes associé"}
+                              </Text>
+                            }
                             searchable={false}
                             alignRight
                             allowDeselect={false}
                             // A narrow chevron: the rate shows whole.
-                            rightSectionWidth={24}
+                            rightSectionWidth={TAX_CHEVRON_WIDTH}
                             w={TAX_WIDTH}
                             style={{ flexShrink: 0 }}
                           />
@@ -1001,6 +1076,22 @@ export default function ProductDrawer({
           }}
         />
       </Drawer>
+
+      {supplierWidget && (
+        <ContactDrawer
+          // A supplier created from a row's search, to complete.
+          opened={editedSupplier !== null}
+          onClose={() => setEditedSupplier(null)}
+          boardId={supplierWidget.board_id}
+          listKey={supplierWidget.key}
+          contact={editedSupplier}
+          contacts={(contacts ?? []).filter((c) => c.board_id === supplierWidget.board_id)}
+          initialType="company"
+          onSaved={() => {}}
+          canSave={!readOnly}
+          canDelete={false}
+        />
+      )}
 
       <DeleteConfirmModal
         opened={confirmDelete}

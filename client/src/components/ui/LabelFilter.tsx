@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Id } from "@milo/shared";
 import { ofGroup } from "../../lib/label-groups";
 import { ALL_OPTION, ChoiceFilter, type FilterOption } from "./ColumnFilters";
+import { readTexts, useGridState } from "../../lib/gridStates";
 
 // The funnel of the lists' labels columns. A column limited to a group
 // offers that group's labels only, and filters on them; a column showing
@@ -21,14 +22,19 @@ const keyOf = (group: Id | null | undefined): string => (group == null ? "" : St
 
 /**
  * The labels filters of a list. "labelsOf" reads a row's labels: declared
- * outside the component, so that it does not change at each render.
+ * outside the component, so that it does not change at each render. They are
+ * kept for the person, in the widget's scope (lib/gridStates).
  */
 export function useLabelFilter<T>(
   rows: readonly T[] | null | undefined,
   labelsOf: (row: T) => FilteredLabel[],
 ) {
   // The label chosen in each column, by group: a column without one is absent.
-  const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [chosen, setChosen] = useGridState<Partial<Record<string, string>>>(
+    "labels",
+    {},
+    readTexts<string>(),
+  );
 
   /** True when the row carries, in each filtered column's group, the label chosen there. */
   const keep = useMemo(() => {

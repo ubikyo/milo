@@ -4,7 +4,7 @@
 
 import cors from "cors";
 import express from "express";
-import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, PRODUCT_ROUTES, ORDER_ROUTES, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS, LOCATION_ROUTES, WAREHOUSE_ROUTES } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, PRODUCT_ROUTES, ORDER_ROUTES, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS, LOCATION_ROUTES, TAX_ROUTES, VALUE_LIST_ROUTES, WAREHOUSE_ROUTES } from "@milo/shared";
 import { env } from "./env.js";
 import { countWrites, feed, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
@@ -51,10 +51,13 @@ import { declaredAssetRoutes } from "./routes/declared-assets.js";
 import { contactRoutes, contactSettingsRoutes } from "./routes/contacts.js";
 import { productRoutes, productSettingsRoutes } from "./routes/products.js";
 import { warehouseRoutes, warehouseSettingsRoutes } from "./routes/warehouses.js";
+import { taxRoutes } from "./routes/taxes.js";
+import { valueListRoutes } from "./routes/value-lists.js";
 import { locationRoutes } from "./routes/locations.js";
 import { orderNumberRoutes, orderRoutes } from "./routes/orders.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
+import { gridStateRoutes } from "./routes/grid-states.js";
 import {
   managedDeviceAssetLabelRoutes,
   declaredAssetLabelRoutes,
@@ -171,6 +174,7 @@ export const createApp = (): express.Express => {
   app.use("/api/api-tokens", requireSettings, settingsNotice("les jetons d'API"), apiTokenRoutes);
   app.use("/api/backup", requireSettingsUpdate, settingsNotice("la sauvegarde (restauration)"), backupRoutes);
   app.use("/api/follows", followRoutes);
+  app.use("/api/grid-states", gridStateRoutes);
   app.use("/api/notifications", notificationRoutes);
 
   // Views and their boards: their owner sees them, and those they are shared
@@ -273,6 +277,10 @@ export const createApp = (): express.Express => {
     settingsNotice("les réglages des entrepôts"),
     warehouseSettingsRoutes,
   );
+  // The taxes of the "Taxes" widgets (Logistique).
+  app.use(`/api${TAX_ROUTES.taxes}`, taxRoutes);
+  // The items of the "Liste" widgets (Logistique).
+  app.use(`/api${VALUE_LIST_ROUTES.items}`, valueListRoutes);
   // The locations of the "Emplacements" widgets (Logistique), their labels.
   app.use(`/api${LOCATION_ROUTES.locations}`, locationRoutes);
   app.use(`/api${LOCATION_ROUTES.labels}`, locationLabelRoutes);

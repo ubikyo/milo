@@ -1,4 +1,4 @@
-import { Box, Group, Stack, TextInput } from "@mantine/core";
+import { Box, Group, Input, Stack, TextInput } from "@mantine/core";
 import { IconFolder, IconTag } from "@tabler/icons-react";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { Dispatch, DragEvent, SetStateAction } from "react";
@@ -11,6 +11,7 @@ import type { Registration } from "./IndicatorDrawer";
 import AddButton from "./AddButton";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import LabelColorPicker from "./LabelColorPicker";
+import { ResetDefaults } from "./ResetDefaults";
 import {
   EmptyList,
   HEADER_BACKGROUND,
@@ -200,6 +201,40 @@ const toDraft = (groups: LabelGroup[], labels: AnyLabel[]): GroupDraft[] =>
       })),
   }));
 
+/** The labels a widget brings, group by group (shared): its defaults. */
+export type LabelDefaults = readonly {
+  group: string;
+  labels: readonly { name: string; color: string }[];
+}[];
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** The default group whose name this group bears, case aside. */
+const defaultOf = (group: GroupDraft, defaults: LabelDefaults | undefined) =>
+  defaults?.find((d) => sameName(d.group, group.name));
+
+/**
+ * The group with its default labels put back — matched by name, case aside:
+ * an existing one keeps its id, and takes back its color and its place.
+ * Replacing, the labels that are not defaults go, and the group takes back its
+ * default name; otherwise they stay, after the defaults.
+ */
+const withDefaultLabels = (
+  group: GroupDraft,
+  defaults: LabelDefaults[number],
+  replace: boolean,
+): GroupDraft => {
+  const used = new Set<string>();
+  const labels = defaults.labels.map((l): LabelDraft => {
+    const found = group.labels.find((x) => !used.has(x.key) && sameName(x.name, l.name));
+    if (!found) return { key: newKey(), name: l.name, color: l.color };
+    used.add(found.key);
+    return { ...found, color: l.color };
+  });
+  const others = replace ? [] : group.labels.filter((x) => !used.has(x.key));
+  return { ...group, ...(replace ? { name: defaults.group } : {}), labels: [...labels, ...others] };
+};
+
 /** The arrangement the server holds, to know whether it changed. */
 const layoutOf = (groups: LabelGroup[], labels: AnyLabel[]): LabelGroupLayout[] =>
   groups.map((g) => ({
@@ -218,6 +253,11 @@ interface LabelGroupsEditorProps {
   version?: number;
   /** What the labels and their groups are called: labels and groups by default. */
   words?: LabelWords;
+  /** The section's title, and what it says under it. */
+  label: string;
+  description?: string;
+  /** The labels the widget brings: each default group's header then offers to put them back. */
+  defaults?: LabelDefaults;
 }
 
 export default function LabelGroupsEditor({
@@ -226,6 +266,9 @@ export default function LabelGroupsEditor({
   register,
   version = 0,
   words = LABEL_WORDS,
+  label,
+  description,
+  defaults,
 }: LabelGroupsEditorProps) {
   const routes = ROUTES[base];
 
@@ -351,7 +394,16 @@ export default function LabelGroupsEditor({
     [register, base, list, routes, reload, words.missingName],
   );
 
-  return <LabelGroupsDraft groups={groups} onChange={setGroups} words={words} />;
+  return (
+    <Input.Wrapper
+      label={label}
+      labelElement="div"
+      description={description}
+      styles={{ description: { paddingBottom: description ? 20 : 0 } }}
+    >
+      <LabelGroupsDraft groups={groups} onChange={setGroups} words={words} defaults={defaults} />
+    </Input.Wrapper>
+  );
 }
 
 interface LabelGroupsDraftProps {
@@ -362,6 +414,8 @@ interface LabelGroupsDraftProps {
   words?: LabelWords;
   /** A SKU after each label's name: a product variant's values (ProductDrawer). */
   withSku?: boolean;
+  /** The labels the widget brings: a default group's header offers to put its own back. */
+  defaults?: LabelDefaults;
 }
 
 /** The width of a value's SKU, between its name and its color. */
@@ -377,6 +431,7 @@ export function LabelGroupsDraft({
   onChange: setGroups,
   words = LABEL_WORDS,
   withSku = false,
+  defaults,
 }: LabelGroupsDraftProps) {
   const [held, setHeld] = useState<Held>(null);
   /** The field with focus: it takes the drawer's background. */
@@ -564,6 +619,7 @@ export function LabelGroupsDraft({
           const naming = group.id === undefined && (input === group.key || toName === group.key);
           const showsEmpty = group.labels.length === 0 && !naming;
           const total = group.labels.length + 1 + (showsEmpty ? 1 : 0);
+          const groupDefaults = defaultOf(group, defaults);
           return (
             <Box
               key={group.key}
@@ -572,7 +628,8 @@ export function LabelGroupsDraft({
               style={{ opacity: held?.kind === "group" && held.key === group.key ? 0.5 : 1 }}
             >
               <Stack gap={1}>
-                {/* The header: the group's handle, its box, its name. */}
+                {/* The header: the group's handle, its box, its name — and, for
+                    a default group, its reset at the right. */}
                 <Group
                   gap="sm"
                   wrap="nowrap"
@@ -604,6 +661,18 @@ export function LabelGroupsDraft({
                     },
                     `${words.groupName} ${group.name}`.trim(),
                     true,
+                  )}
+                  {groupDefaults && (
+                    <Box mr={COLOR_MARGIN} style={{ display: "flex", flexShrink: 0 }}>
+                      <ResetDefaults
+                        what={`${words.theGroup}« ${groupDefaults.group} »`}
+                        onReset={(replace) =>
+                          setGroups((before) =>
+                            before.map((g) => (g.key === group.key ? withDefaultLabels(g, groupDefaults, replace) : g)),
+                          )
+                        }
+                      />
+                    </Box>
                   )}
                 </Group>
 
