@@ -339,15 +339,15 @@ function DiskCell({ disk }: { disk: ManagedDeviceAsset["system_disk"] }) {
 
 /** The columns the list can show, in order. */
 export const MANAGED_DEVICE_ASSET_COLUMNS: (ListColumn & { key: ColumnKey })[] = [
-  { key: "name", label: "Asset" },
+  { key: "name", label: "Asset", defaultWidth: 160 },
   // It picks the group it shows.
-  { key: "labels", label: "Étiquettes", labelGroups: "/managed-device-asset-labels" },
+  { key: "labels", label: "Étiquettes", labelGroups: "/managed-device-asset-labels", defaultWidth: 130 },
   { key: "os", label: "Système" },
   { key: "user", label: "Dernier utilisateur connecté" },
-  { key: "protection", label: "Antivirus" },
-  { key: "encrypted", label: "Chiffré" },
-  { key: "disk", label: "Disque" },
-  { key: "inventory", label: "Dernière actualisation", formats: DATE_FORMATS },
+  { key: "protection", label: "Antivirus", defaultWidth: 170 },
+  { key: "encrypted", label: "Chiffré", defaultWidth: 110 },
+  { key: "disk", label: "Disque", defaultWidth: 160 },
+  { key: "inventory", label: "Dernière actualisation", formats: DATE_FORMATS, defaultWidth: 210 },
 ];
 
 /** What the page gives the list. */

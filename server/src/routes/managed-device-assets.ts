@@ -27,7 +27,7 @@ import {
   contentUser,
 } from "../repositories/managed-device-assets.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
-import { tagInbox, widgetInbox } from "../repositories/inboxes.js";
+import { receivedTags, tagInbox, widgetInbox } from "../repositories/inboxes.js";
 
 /**
  * A workstation inventory weighs a few hundred kilobytes — six hundred
@@ -175,7 +175,9 @@ const visibleWorkstation = (req: Request, id: unknown) => {
 managedDeviceAssetRoutes.get("/", (req, res) => {
   if (!requestCan(req, "assets", "view")) return void res.json([]);
   const board = openBoard(req.query.board, req.user);
-  res.json(assets.ofBoard.all(board.id).map((row) => managedDeviceAssetOf(row)));
+  // The collectors' tags, read once for the whole list.
+  const tags = receivedTags();
+  res.json(assets.ofBoard.all(board.id).map((row) => managedDeviceAssetOf(row, undefined, tags)));
 });
 
 /**

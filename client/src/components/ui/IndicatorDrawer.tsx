@@ -15,7 +15,7 @@ import DrawerScrollArea, {
 } from "./DrawerScroll";
 import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./IndicatorsPanel";
 import { widgetReference } from "@milo/shared";
-import type { Id, LabelGroup, LabelsBase } from "@milo/shared";
+import type { Id, Label, LabelGroup, LabelsBase } from "@milo/shared";
 import { ReferenceTag } from "./ReferenceTag";
 import { DrawerWidgetContext } from "../../lib/drawer-widget";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
@@ -85,16 +85,28 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
   const registrations = useRef(new Set<Registration>());
   /** The label groups being edited, by kind: the group choices follow them. */
   const [labelDrafts, setLabelDrafts] = useState<Partial<Record<LabelsBase, LabelGroup[]>>>({});
-  const publishLabelDraft = useCallback((base: LabelsBase, groups: LabelGroup[] | null) =>
-    setLabelDrafts((before) => {
-      const next = { ...before };
-      if (groups) next[base] = groups;
-      else delete next[base];
-      return next;
-    }), []);
+  /** The labels being edited, by kind: the label choices follow them. */
+  const [labelRows, setLabelRows] = useState<Partial<Record<LabelsBase, Label[]>>>({});
+  const publishLabelDraft = useCallback(
+    (base: LabelsBase, groups: LabelGroup[] | null, labels?: Label[]) => {
+      setLabelDrafts((before) => {
+        const next = { ...before };
+        if (groups) next[base] = groups;
+        else delete next[base];
+        return next;
+      });
+      setLabelRows((before) => {
+        const next = { ...before };
+        if (groups && labels) next[base] = labels;
+        else delete next[base];
+        return next;
+      });
+    },
+    [],
+  );
   const labelGroupDrafts = useMemo(
-    () => ({ drafts: labelDrafts, publish: publishLabelDraft }),
-    [labelDrafts, publishLabelDraft],
+    () => ({ drafts: labelDrafts, labels: labelRows, publish: publishLabelDraft }),
+    [labelDrafts, labelRows, publishLabelDraft],
   );
   const register = useCallback((registration: Registration) => {
     registrations.current.add(registration);

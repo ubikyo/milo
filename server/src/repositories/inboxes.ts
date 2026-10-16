@@ -9,7 +9,9 @@
 //
 // A workstation list receives the tags of its GLPI agent collectors:
 //
-//   managed_device_asset.list : { "collectors": [{ "type": "glpi_agent", "tag": "ACME" }] }
+//   managed_device_asset.list : { "collectors": [{ "type": "glpi_agent", "tag": "ACME", "label_id": 4 }] }
+//
+// Its label, one of the list's asset labels, goes on each workstation it receives.
 //
 // An inbox received by two widgets goes to the first: the oldest.
 
@@ -43,7 +45,7 @@ export interface Inbox {
   value: string;
   /** The board of the widget that receives it. */
   board_id: Id;
-  /** The Support label an inbox sets on its requests; null if it sets none. */
+  /** The Support label an inbox sets on its requests — a collector, the asset label; null if it sets none. */
   label_id: Id | null;
   /** The labels every e-mail its list receives gets, besides that one. */
   labels: Id[];
@@ -64,6 +66,9 @@ export const DELETION = "delete_after_import";
 const boardOf = selection<{ name: string }>("SELECT name FROM boards WHERE id = ?");
 const supportLabel = selection<{ id: Id; name: string }>(
   "SELECT id, name FROM support_labels WHERE id = ? AND board_id = ? AND list_key = ?",
+);
+const assetLabel = selection<{ id: Id }>(
+  "SELECT id FROM managed_device_asset_labels WHERE id = ? AND board_id = ? AND list_key = ?",
 );
 const listSupportLabels = selection<{ id: Id; name: string }>(
   "SELECT id, name FROM support_labels WHERE board_id = ? AND list_key = ? ORDER BY position, id",
@@ -182,7 +187,8 @@ export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
 
 /**
  * The agent tags that workstation lists receive: those of their GLPI agent
- * collectors. A tag named by two lists goes to the oldest.
+ * collectors, each with its label — none if it names none, or one of the
+ * list's that no longer exists. A tag named by two lists goes to the oldest.
  */
 export const receivedTags = (): Inbox[] => {
   const views = new Map<string, Inbox>();
@@ -197,10 +203,13 @@ export const receivedTags = (): Inbox[] => {
       if (collector?.type !== "glpi_agent") continue;
       const value = typeof collector.tag === "string" ? collector.tag.trim() : "";
       if (!value || views.has(value.toLowerCase())) continue;
+      const label = collector.label_id
+        ? assetLabel.get(collector.label_id, widget.board_id, listKey(config))
+        : undefined;
       views.set(value.toLowerCase(), {
         value,
         board_id: widget.board_id,
-        label_id: null,
+        label_id: label?.id ?? null,
         labels: [],
         list: listKey(config),
         usage: board,

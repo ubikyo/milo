@@ -171,18 +171,19 @@ const createRoutes = ({
   );
   const remove = mutation(`DELETE FROM ${table} WHERE id = ?`);
   // What carries the label: cards, projects, or requests. An asset label is
-  // carried by no link: it only names a tag, and may always go.
-  const uses = scalar<{ count: number }>(
-    table === "labels"
-      ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
-      : table === "project_labels"
-        ? "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?"
-        : table === "support_labels"
-          ? "SELECT COUNT(*) AS count FROM support_request_labels WHERE label_id = ?"
-          : table === "managed_device_asset_labels"
-            ? "SELECT 0 AS count"
-            : `SELECT COUNT(*) AS count FROM ${table.replace(/_labels$/, "_label_links")} WHERE label_id = ?`,
-  );
+  // carried by no link: it only names a tag or a collector's, and may always go.
+  const uses: (id: Id) => { count: number } =
+    table === "managed_device_asset_labels"
+      ? () => ({ count: 0 })
+      : scalar<{ count: number }>(
+          table === "labels"
+            ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
+            : table === "project_labels"
+              ? "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?"
+              : table === "support_labels"
+                ? "SELECT COUNT(*) AS count FROM support_request_labels WHERE label_id = ?"
+                : `SELECT COUNT(*) AS count FROM ${table.replace(/_labels$/, "_label_links")} WHERE label_id = ?`,
+        );
 
   const clearFromList = mutation(`DELETE FROM ${table} WHERE board_id = ? AND list_key = ?`);
 

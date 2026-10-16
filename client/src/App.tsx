@@ -92,7 +92,7 @@ import LayoutModal from "./components/ui/LayoutModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
 import KonamiCode from "./components/ui/KonamiCode";
 import UpdatesModal from "./components/ui/UpdatesModal";
-import NewVersionBanner from "./components/ui/NewVersionBanner";
+import NewVersionBanner, { STREAM_RESUMED_EVENT } from "./components/ui/NewVersionBanner";
 import { placeInterface, clearPage } from "./lib/interfaceFall";
 import { loadTitleStyles } from "./lib/titleStyles";
 import { rememberDeletion, useUndoShortcut } from "./lib/undo";
@@ -1050,6 +1050,9 @@ export default function App() {
     };
 
     const listen = async () => {
+      // A cut is often a deployment restarting the API: on reconnection,
+      // the page checks whether a newer build is in place (NewVersionBanner).
+      let cut = false;
       while (!stopped) {
         try {
           controller = new AbortController();
@@ -1058,6 +1061,7 @@ export default function App() {
             signal: controller.signal,
           });
           if (!response.ok || !response.body) throw new Error("flux indisponible");
+          if (cut) window.dispatchEvent(new Event(STREAM_RESUMED_EVENT));
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = "";
@@ -1086,6 +1090,7 @@ export default function App() {
         // What changed during the outage is unknown: the first message
         // of the resumed stream will serve as the new reference.
         knownVersions.current = null;
+        cut = true;
         if (!stopped) await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     };

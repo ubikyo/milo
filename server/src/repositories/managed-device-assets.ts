@@ -21,6 +21,7 @@ import type {
 import { mutation, selection, transaction } from "../db/query.js";
 import type { ManagedDeviceAssetRow } from "../db/rows.js";
 import { receivedTags } from "./inboxes.js";
+import type { Inbox } from "./inboxes.js";
 import { templateName, templates } from "../lib/managed-device-asset-models.js";
 import { vlanOf, vlans } from "../lib/managed-device-asset-vlans.js";
 import { sectionsOf, textOf } from "../lib/inventory.js";
@@ -76,6 +77,27 @@ const labelsOfTag = selection<Label>(
    WHERE l.board_id = ? AND l.list_key = ? AND lower(trim(l.name)) = lower(trim(?))
    ORDER BY l.position, l.id`,
 );
+
+const labelById = selection<Label>(
+  `SELECT l.*, g.name AS group_name FROM managed_device_asset_labels l
+   LEFT JOIN managed_device_asset_label_groups g ON g.id = l.group_id
+   WHERE l.id = ?`,
+);
+
+/**
+ * A workstation's labels: those named as its tag, and the one its collector
+ * sets (inboxes.ts) — given by "tags", read once for a whole list.
+ */
+const labelsOf = (row: ManagedDeviceAssetRow, tags: Inbox[]): Label[] => {
+  if (row.board_id === null || !row.tag.trim()) return [];
+  const labels = labelsOfTag.all(row.board_id, row.list_key, row.tag);
+  const tag = row.tag.trim().toLowerCase();
+  const collector = tags.find(
+    (t) => t.value.toLowerCase() === tag && t.board_id === row.board_id && t.list === row.list_key,
+  );
+  const own = collector?.label_id ? labelById.get(collector.label_id) : undefined;
+  return own && !labels.some((l) => l.id === own.id) ? [...labels, own] : labels;
+};
 
 /** The content kept in the database, or nothing when it is unreadable. */
 const contentOf = (row: ManagedDeviceAssetRow): Tree => {
@@ -244,13 +266,17 @@ const protectionOf = (content: Tree): ManagedDeviceAssetProtection => {
  * What the list shows: the name and system, who logs in, when it was last
  * seen, its protection, and the state of its system disk.
  */
-export const managedDeviceAssetOf = (row: ManagedDeviceAssetRow, content: Tree = contentOf(row)): ManagedDeviceAsset => ({
+export const managedDeviceAssetOf = (
+  row: ManagedDeviceAssetRow,
+  content: Tree = contentOf(row),
+  tags: Inbox[] = receivedTags(),
+): ManagedDeviceAsset => ({
   id: row.id,
   name: row.name,
   board_id: row.board_id,
   list_key: row.list_key,
   tag: row.tag,
-  labels: row.board_id === null || !row.tag.trim() ? [] : labelsOfTag.all(row.board_id, row.list_key, row.tag),
+  labels: labelsOf(row, tags),
   user: row.last_user,
   last_inventory: row.last_inventory,
   system_disk: systemDisk(content),

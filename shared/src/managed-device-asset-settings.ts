@@ -1,6 +1,8 @@
 // Settings of a board's Asset widgets: shared by all of them, for that board
 // only.
 
+import type { Id } from "./domain.js";
+
 /**
  * A hardware model: the identifier the machine reports ("Mac14,6")
  * and the name it is known by ("MacBook Pro 16" (2023, M2 Max)").
@@ -41,7 +43,7 @@ export const VLAN_NAME_MAX = 120;
 // What feeds a workstation list: each collector names a source and the tag
 // it carries. Kept in the list's configuration, under COLLECTORS:
 //
-//   managed_device_asset.list : { "collectors": [{ "type": "glpi_agent", "tag": "ACME" }] }
+//   managed_device_asset.list : { "collectors": [{ "type": "glpi_agent", "tag": "ACME", "label_id": 4 }] }
 //
 // The server re-reads them to file the inventories that arrive
 // (server, repositories/inboxes.ts).
@@ -54,8 +56,12 @@ export const COLLECTOR_TYPES = [{ value: "glpi_agent", label: "Agent GLPI" }] as
 
 export type CollectorType = (typeof COLLECTOR_TYPES)[number]["value"];
 
-/** A collector: its kind, and the tag the agent is given ("tag" option). */
+/**
+ * A collector: its kind, the tag the agent is given ("tag" option), and the
+ * asset label each workstation it receives carries — null, none.
+ */
 export interface Collector {
   type: CollectorType;
   tag: string;
+  label_id?: Id | null;
 }

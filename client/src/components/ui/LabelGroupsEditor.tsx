@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { Dispatch, DragEvent, SetStateAction } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { LabelGroupDraftsContext, remapGroups } from "../../lib/label-groups";
+import { LabelGroupDraftsContext, remapGroups, remapLabels } from "../../lib/label-groups";
 import { LABEL_WORDS } from "../../lib/label-words";
 import type { LabelWords } from "../../lib/label-words";
 import type { Registration } from "./IndicatorDrawer";
@@ -62,6 +62,8 @@ type AnyLabel = Label | ProjectLabel | SupportLabel;
 export interface LabelDraft {
   key: string;
   id?: Id;
+  /** Until it is created: the negative id the drawer's label choices give it. */
+  temp?: Id;
   name: string;
   color: string;
   /** A product variant's value's reference (LabelGroupsDraft "withSku"). */
@@ -227,7 +229,7 @@ const withDefaultLabels = (
   const used = new Set<string>();
   const labels = defaults.labels.map((l): LabelDraft => {
     const found = group.labels.find((x) => !used.has(x.key) && sameName(x.name, l.name));
-    if (!found) return { key: newKey(), name: l.name, color: l.color };
+    if (!found) return { key: newKey(), temp: newTemp(), name: l.name, color: l.color };
     used.add(found.key);
     return { ...found, color: l.color };
   });
@@ -296,21 +298,35 @@ export default function LabelGroupsEditor({
     void reload();
   }, [reload, version]);
 
-  // In a widget drawer, its group choices follow the draft: the named groups,
-  // in their order.
+  // In a widget drawer, its group and label choices follow the draft: the
+  // named groups and labels, in their order.
   const publish = useContext(LabelGroupDraftsContext)?.publish;
   useEffect(() => {
+    const named = groups.filter((g) => g.name.trim());
     publish?.(
       base,
-      groups
-        .filter((g) => g.name.trim())
-        .map((g, position) => ({
-          id: g.id ?? g.temp!,
-          list_key: list.list,
-          name: g.name.trim(),
-          position,
-          created_at: "",
-        })),
+      named.map((g, position) => ({
+        id: g.id ?? g.temp!,
+        list_key: list.list,
+        name: g.name.trim(),
+        position,
+        created_at: "",
+      })),
+      named.flatMap((g) =>
+        g.labels
+          .filter((l) => l.name.trim())
+          .map((l, position) => ({
+            id: l.id ?? l.temp!,
+            board_id: 0,
+            list_key: list.list,
+            group_id: g.id ?? g.temp!,
+            group_name: g.name.trim(),
+            name: l.name.trim(),
+            color: l.color,
+            position,
+            created_at: "",
+          })),
+      ),
     );
   }, [publish, base, groups, list]);
   useEffect(() => () => publish?.(base, null), [publish, base]);
@@ -331,6 +347,7 @@ export default function LabelGroupsEditor({
           throw new Error(words.missingName);
         }
         const created = new Map<Id, Id>();
+        const createdLabels = new Map<Id, Id>();
         try {
           // Labels first: a group only goes once emptied.
           const keptLabels = new Set(after.flatMap((g) => g.labels.map((l) => l.id)));
@@ -353,7 +370,9 @@ export default function LabelGroupsEditor({
             for (const l of g.labels) {
               const row = { ...l, name: l.name.trim() };
               if (l.id === undefined) {
-                ids.push((await routes.create(list, row, groupId)).id);
+                const id = (await routes.create(list, row, groupId)).id;
+                if (l.temp !== undefined) createdLabels.set(l.temp, id);
+                ids.push(id);
                 continue;
               }
               const o = before.labels.find((x) => x.id === l.id);
@@ -383,8 +402,9 @@ export default function LabelGroupsEditor({
           const same =
             JSON.stringify(layout) === JSON.stringify(layoutOf(before.groups, before.labels));
           if (!same) await api.arrangeLabels(base, layout, list);
-          // The groups chosen before they existed take their real ids.
-          return (config: Record<string, unknown>) => remapGroups(config, created);
+          // The groups and labels chosen before they existed take their real ids.
+          return (config: Record<string, unknown>) =>
+            remapLabels(remapGroups(config, created), createdLabels);
         } finally {
           // What was removed is gone: the list restarts from the server, even
           // after an error.
@@ -465,7 +485,7 @@ export function LabelGroupsDraft({
         g.key === groupKey
           ? {
               ...g,
-              labels: [...g.labels, { key, name: "", color: DEFAULT_LABEL_COLOR }],
+              labels: [...g.labels, { key, temp: newTemp(), name: "", color: DEFAULT_LABEL_COLOR }],
             }
           : g,
       ),

@@ -10,6 +10,7 @@ import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import LabelTemplatesFields from "../../components/ui/LabelTemplatesFields";
 import ReceptionField from "../../components/ui/ReceptionField";
+import { useManagedDeviceAssetLabels } from "../../lib/label-groups";
 import { PERCENT_HEIGHT } from "../height";
 import type { IndicatorConfigProps } from "../support/types";
 import type { ManagedDeviceAssetIndicatorWidget } from "./types";
@@ -17,10 +18,18 @@ import type { ManagedDeviceAssetIndicatorWidget } from "./types";
 /**
  * The list settings: at the top, its columns, then the board's asset labels,
  * then the list's collectors — each names the GLPI agent tag of the
- * workstations it receives —, the address its agents send to, then the
+ * workstations it receives, and the label they carry —, the address its agents send to, then the
  * board's model and VLAN tables, then its label templates.
  */
 function ListFields(props: IndicatorConfigProps) {
+  // The labels a collector may set: the list's, by group.
+  const assetLabels = useManagedDeviceAssetLabels();
+  const labels = [...new Set(assetLabels.map((l) => l.group_name ?? ""))].map((group) => ({
+    group,
+    items: assetLabels
+      .filter((l) => (l.group_name ?? "") === group)
+      .map((l) => ({ value: String(l.id), label: l.name })),
+  }));
   return (
     <Stack gap="xl">
       <ColumnFields columns={MANAGED_DEVICE_ASSET_COLUMNS} {...props} />
@@ -37,6 +46,9 @@ function ListFields(props: IndicatorConfigProps) {
         icon={IconPlugConnected}
         empty="Aucun collecteur : aucun poste n'arrive dans cette liste."
         types={COLLECTOR_TYPES}
+        labels={labels}
+        labelPlaceholder="Étiquette"
+        header={{ type: "Type", value: "Tag", label: "Étiquette" }}
         {...props}
       />
       {/* Right under them: the address its agents send to, to copy. */}

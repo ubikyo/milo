@@ -1,3 +1,16 @@
+# 16 octobre 2026 #2
+
+## Corrections de dernières minutes
+
+### Évolutions
+
+- Ajout du choix de l'étiquette pour chaque collecteur.
+
+### Corrections
+
+- La suppression d'étiquette ou groupes d'étiquettes n'était pas possible dans les Equipements supervisés.
+- Correction de l'affichage des nouvelles versions.
+
 # 16 octobre 2026
 
 ## Les dernières évolutions de Milo
@@ -11,6 +24,7 @@
 - Dans profil suppression de la vue et du tableau par défaut au profit de "Retenir mes choix" qui conserve la dernière vue/tableau et les tri/filtres de l'utilisateur.
 
 ### Corrections
+
 - Augmentation de la largeur des panneaux de configuration de Equipements déclarés et Applications.
 - Quelques colonnes au auto posaient un problème de largeur.
 

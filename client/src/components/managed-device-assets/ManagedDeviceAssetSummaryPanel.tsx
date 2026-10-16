@@ -8,7 +8,6 @@ import {
   RingProgress,
   Stack,
   Text,
-  Tooltip,
 } from "@mantine/core";
 import {
   IconBarcode,
@@ -546,25 +545,15 @@ function Copyable({ text, label }: { text: string; label: string }) {
 
 /**
  * The button that copies a value, and says it did: the check mark
- * replaces the icon, and a tooltip says so except when it isn't wanted.
+ * replaces the icon.
  */
-export function CopyValueButton({
-  text,
-  label,
-  withoutBubble = false,
-}: {
-  text: string;
-  label: string;
-  withoutBubble?: boolean;
-}) {
+export function CopyValueButton({ text, label }: { text: string; label: string }) {
   return (
     <CopyButton value={text}>
       {({ copied, copy }) => (
-        <Tooltip label={copied ? "Copié" : "Copier"} withArrow disabled={withoutBubble}>
-          <ActionIcon variant="subtle" color="gray" size="sm" onClick={copy} aria-label={label}>
-            {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-          </ActionIcon>
-        </Tooltip>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={copy} aria-label={label}>
+          {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+        </ActionIcon>
       )}
     </CopyButton>
   );
@@ -663,31 +652,25 @@ export default function ManagedDeviceAssetSummaryPanel({ detail }: { detail: Man
             />
             <Stack gap="sm" style={{ minWidth: 0 }}>
               <Group gap={8} wrap="nowrap">
-                <Tooltip label="Numéro de série" withArrow>
-                  <Text c="dimmed" style={{ display: "inline-flex" }}>
-                    <IconBarcode size={16} />
-                  </Text>
-                </Tooltip>
+                <Text c="dimmed" style={{ display: "inline-flex" }}>
+                  <IconBarcode size={16} />
+                </Text>
                 <Text size="sm" c={summary.serial ? undefined : "dimmed"}>
                   {serialNumber(summary.serial)}
                 </Text>
               </Group>
               <Group gap={8} wrap="nowrap">
-                <Tooltip label="Matériel" withArrow>
-                  <Text c="dimmed" style={{ display: "inline-flex" }}>
-                    <IconDevicesPc size={16} />
-                  </Text>
-                </Tooltip>
+                <Text c="dimmed" style={{ display: "inline-flex" }}>
+                  <IconDevicesPc size={16} />
+                </Text>
                 <Text size="sm" c={manufacturer ? undefined : "dimmed"}>
                   {manufacturer || EMPTY}
                 </Text>
               </Group>
               <Group gap={8} wrap="nowrap">
-                <Tooltip label="Dernier utilisateur connecté" withArrow>
-                  <Text c="dimmed" style={{ display: "inline-flex" }}>
-                    <IconUser size={16} />
-                  </Text>
-                </Tooltip>
+                <Text c="dimmed" style={{ display: "inline-flex" }}>
+                  <IconUser size={16} />
+                </Text>
                 <Text size="sm" c={detail.user ? undefined : "dimmed"}>
                   {detail.user || "Aucun utilisateur connu"}
                 </Text>
@@ -774,7 +757,7 @@ export default function ManagedDeviceAssetSummaryPanel({ detail }: { detail: Man
                           <Text size="lg" fw={700}>
                             {ip}
                           </Text>
-                          <CopyValueButton text={ip} label={`Copier l'adresse ${ip}`} withoutBubble />
+                          <CopyValueButton text={ip} label={`Copier l'adresse ${ip}`} />
                         </Group>
                       ))}
                       {/* The board's VLAN that carries the adapter, when

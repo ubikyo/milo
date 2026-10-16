@@ -1,4 +1,4 @@
-import { ActionIcon, CopyButton, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, CopyButton, TextInput } from "@mantine/core";
 import { IconCheck, IconCopy } from "@tabler/icons-react";
 import { widgetReference } from "@milo/shared";
 
@@ -14,7 +14,7 @@ export default function InventoryUrlField({ config }: { config: unknown }) {
   const url = reference ? `${window.location.origin}/api/inventory/${reference}` : "";
   return (
     <TextInput
-      label="Adresse du collecteur"
+      label="Adresse de l'inventaire"
       value={url}
       placeholder="Disponible une fois le widget enregistré"
       readOnly
@@ -24,16 +24,14 @@ export default function InventoryUrlField({ config }: { config: unknown }) {
         url ? (
           <CopyButton value={url}>
             {({ copied, copy }) => (
-              <Tooltip label={copied ? "Copié" : "Copier"} withArrow>
-                <ActionIcon
-                  variant="subtle"
-                  color={copied ? "teal" : "gray"}
-                  onClick={copy}
-                  aria-label="Copier l'adresse"
-                >
-                  {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-                </ActionIcon>
-              </Tooltip>
+              <ActionIcon
+                variant="subtle"
+                color={copied ? "teal" : "gray"}
+                onClick={copy}
+                aria-label="Copier l'adresse"
+              >
+                {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+              </ActionIcon>
             )}
           </CopyButton>
         ) : null

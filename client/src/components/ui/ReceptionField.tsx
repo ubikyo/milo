@@ -14,6 +14,7 @@ import {
   NAME_INSET,
   INPUT_INSET,
   INPUT_STYLE,
+  ListHeader,
   rowStyle,
 } from "./DrawerRows";
 
@@ -64,6 +65,13 @@ interface ReceptionFieldProps extends IndicatorConfigProps {
   normalizeValue?: (value: string) => string;
   /** The labels a reception may set, by group; none, the choice is not offered. */
   labels?: { group: string; items: { value: string; label: string }[] }[];
+  /** The label choice's prompt: "Contexte" by default. */
+  labelPlaceholder?: string;
+  /**
+   * The titles of its columns, above its rows: the kind's, the value's, the
+   * label's. None, no header.
+   */
+  header?: { type?: string; value: string; label?: string };
   /**
    * The kinds a reception may be, chosen at the start of its row and kept
    * under "type": a collector's "Agent GLPI". None, the choice is not offered.
@@ -110,6 +118,8 @@ export default function ReceptionField({
   state,
   normalizeValue = (value) => value,
   labels = [],
+  labelPlaceholder = "Contexte",
+  header,
   types = [],
   config,
   onChange,
@@ -164,6 +174,23 @@ export default function ReceptionField({
         <EmptyList icon={icon} message={empty} />
       ) : (
         <Stack gap={1}>
+          {header && (
+            <ListHeader
+              columns={[
+                ...(types.length > 0
+                  ? [{ label: header.type ?? "", style: { width: TYPE_WIDTH, flexShrink: 0 } }]
+                  : []),
+                {
+                  label: header.value,
+                  style: { flex: 1, minWidth: 0, marginLeft: types.length > 0 ? 0 : -NAME_INSET },
+                  inset: INPUT_INSET,
+                },
+                ...(labelValues.size > 0
+                  ? [{ label: header.label ?? "", style: { width: LABEL_WIDTH, flexShrink: 0 } }]
+                  : []),
+              ]}
+            />
+          )}
           {rows.map((row, rank) => {
               const keys = editKeys((value) => change(rank, { [field]: value }));
               return (
@@ -171,7 +198,8 @@ export default function ReceptionField({
                 key={rank}
                 gap="sm"
                 wrap="nowrap"
-                style={rowStyle(rank, rows.length, false)}
+                // The header, when there is one, opens the stack (ListHeader).
+                style={header ? rowStyle(rank + 1, rows.length + 1, false) : rowStyle(rank, rows.length, false)}
               >
                 <RowCheckbox
                   label={`Sélectionner ${valueFor(row) || placeholder}`}
@@ -252,8 +280,8 @@ export default function ReceptionField({
                     radius={ROUNDING}
                     w={LABEL_WIDTH}
                     style={{ flexShrink: 0 }}
-                    placeholder="Contexte"
-                    aria-label="Contexte"
+                    placeholder={labelPlaceholder}
+                    aria-label={labelPlaceholder}
                     data={labels}
                     // A label deleted since then matches no option: none shows.
                     value={

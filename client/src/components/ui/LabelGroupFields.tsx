@@ -45,7 +45,6 @@ const KINDS: Record<Kind, { base: LabelsBase; hint?: string; defaults?: LabelDef
   },
   "managed-device-asset-labels": {
     base: "/managed-device-asset-labels",
-    hint: "Une étiquette nommée comme le tag d'un poste s'affiche sur ce poste.",
   },
   "unmanaged-device-asset-labels": {
     base: "/unmanaged-device-asset-labels",

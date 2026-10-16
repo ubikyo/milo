@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { api, LABEL_GROUPS_EVENT } from "../api";
 import { listRefKey, useListRef } from "./list-ref";
 import { errorMessage, notifyError } from "./errors";
-import type { Id, LabelGroup, LabelsBase, SupportLabel } from "@milo/shared";
+import type { Id, Label, LabelGroup, LabelsBase, SupportLabel } from "@milo/shared";
 
 // What the lists and indicators share about label groups: reading those of the
 // list widget around, and keeping the labels of one group in their order.
@@ -46,19 +46,45 @@ export const labelsColumnTitle = (groups: LabelGroup[], group: Id | null | undef
   return groups.find((g) => g.id === group)?.name ?? "Étiquette";
 };
 
+/**
+ * The configuration with the labels not yet created replaced by their real
+ * ids: those its receptions set ("label_id" of each entry of a list — a
+ * collector's, an inbox's).
+ */
+export const remapLabels = (
+  config: Record<string, unknown>,
+  ids: Map<Id, Id>,
+): Record<string, unknown> => {
+  if (ids.size === 0) return config;
+  return Object.fromEntries(
+    Object.entries(config).map(([key, value]) => [
+      key,
+      Array.isArray(value)
+        ? value.map((e: unknown) =>
+            e && typeof e === "object" && "label_id" in e && typeof e.label_id === "number" && ids.has(e.label_id)
+              ? { ...e, label_id: ids.get(e.label_id) }
+              : e,
+          )
+        : value,
+    ]),
+  );
+};
+
 /** The groups last read, by kind of labels and list widget: shown at once when a list comes back. */
 const groupsCache = new Map<string, LabelGroup[]>();
 
 /**
- * The groups being edited in a widget drawer (LabelGroupsEditor), by kind of
- * labels, before "Sauvegarder": the drawer's group choices follow them as they
- * are typed. A group not yet created has a negative id; the save replaces it
- * with its real one in the configuration (remapGroups). Null outside a drawer.
+ * The groups and labels being edited in a widget drawer (LabelGroupsEditor),
+ * by kind of labels, before "Sauvegarder": the drawer's group and label
+ * choices follow them as they are typed. One not yet created has a negative
+ * id; the save replaces it with its real one in the configuration
+ * (remapGroups, remapLabels). Null outside a drawer.
  */
 export const LabelGroupDraftsContext = createContext<{
   drafts: Partial<Record<LabelsBase, LabelGroup[]>>;
+  labels: Partial<Record<LabelsBase, Label[]>>;
   /** Publishes the draft of "base"; null once its editor is gone. */
-  publish: (base: LabelsBase, groups: LabelGroup[] | null) => void;
+  publish: (base: LabelsBase, groups: LabelGroup[] | null, labels?: Label[]) => void;
 } | null>(null);
 
 /**
@@ -137,4 +163,24 @@ export function useSupportLabels(): SupportLabel[] {
   }, [list]);
 
   return labels;
+}
+
+/**
+ * The asset labels of the "Équipements supervisés" widget around, in order —
+ * in a drawer that edits them, its draft. Empty while they are read.
+ */
+export function useManagedDeviceAssetLabels(): Label[] {
+  const draft = useContext(LabelGroupDraftsContext)?.labels["/managed-device-asset-labels"];
+  const list = useListRef();
+  const [labels, setLabels] = useState<Label[]>([]);
+
+  useEffect(() => {
+    if (!list) return setLabels([]);
+    api
+      .getManagedDeviceAssetLabels(list)
+      .then(setLabels)
+      .catch((e) => notifyError(errorMessage(e)));
+  }, [list]);
+
+  return draft ?? labels;
 }
