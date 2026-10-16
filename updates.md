@@ -4,14 +4,15 @@
 
 ### Évolutions
 
-- Ajoute de Imprimante 3D et Téléviseurs dans les types de périphériques
-- Le Widget Tickets à une sortie pour créer une tâche et un projet dans ses liaisons
-- Le Widget Projets à une sortie pour créer une tâche et un ticket dans ses liaisons
+- Ajoute de Imprimante 3D et Téléviseurs dans les types de périphériques.
+- Le Widget Tickets à une sortie pour créer une tâche et un projet dans ses liaisons.
+- Le Widget Projets à une sortie pour créer une tâche et un ticket dans ses liaisons.
 - Dans équipements supervisés, ajout du lien pour le collecteur.
+- Dans profil suppression de la vue et du tableau par défaut au profit de "Retenir mes choix" qui conserve la dernière vue/tableau et les tri/filtres de l'utilisateur.
 
 ### Corrections
-- Augmentation de la largeur des panneaux de configuration de Equipements déclarés et Applications
-
+- Augmentation de la largeur des panneaux de configuration de Equipements déclarés et Applications.
+- Quelques colonnes au auto posaient un problème de largeur.
 
 # 15 octobre 2026
 

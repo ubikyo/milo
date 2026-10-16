@@ -40,14 +40,18 @@ import { requireAuth } from "../middleware/require-auth.js";
 import {
   hasAccess,
   publicUser,
+  sessionBoards,
   sessions,
   users,
   workspacesOf,
 } from "../repositories/users.js";
 import { now } from "../lib/time.js";
 import { miloUrl } from "../lib/milo-url.js";
-import { openingViews } from "./views.js";
+import { mutation } from "../db/query.js";
 import type { UpdateMeInput } from "@milo/shared";
+
+/** Not remembering the session any more: the grids' sorts and filters go too. */
+const forgetGridStates = mutation("DELETE FROM user_grid_states WHERE user_id = ?");
 
 /**
  * Opens a session and returns its token. The account starts in its opening
@@ -254,9 +258,8 @@ authRoutes.get("/me", (req, res) => {
 });
 
 // What the person sets themselves: their opening workspace — one of theirs,
-// or none for the one they were working in —, and in it their opening view
-// and board — ones they see, or none for the first —, and how they are
-// notified. Their identity comes from Entra.
+// or none for the one they were working in —, whether their session's choices
+// are remembered, and how they are notified. Their identity comes from Entra.
 authRoutes.put("/me", (req, res) => {
   const body = (req.body ?? {}) as UpdateMeInput;
   const workspace =
@@ -268,16 +271,14 @@ authRoutes.put("/me", (req, res) => {
   if (workspace !== null && !workspacesOf(req.user).some((w) => w.id === workspace)) {
     badRequest("Workspace introuvable");
   }
-  const view = String(body.default_view ?? req.user.default_view ?? "");
-  const board = String(body.default_board ?? req.user.default_board ?? "");
-  const views = openingViews(req.user, workspace ?? req.user.workspace_id ?? 0);
-  // No view: the first one, whose boards the opening board is chosen from.
-  const openingView = view === "" ? views[0] : views.find((v) => String(v.id) === view);
-  if (!openingView && view !== "") badRequest("Vue introuvable");
-  if (board !== "" && !openingView?.boards.some((b) => String(b.id) === board)) {
-    badRequest("Tableau introuvable");
+  users.setOpening.run(workspace, req.user.id);
+  // Not remembered any more: the view and board left, and the grids' sorts
+  // and filters, are forgotten.
+  if (body.remember_session !== undefined) {
+    const remember = body.remember_session ? 1 : 0;
+    users.setRememberSession.run(remember, remember, req.user.id);
+    if (!remember) forgetGridStates.run(req.user.id);
   }
-  users.setOpening.run(workspace, view, board, req.user.id);
   // Their notifications: the fields given replace those in place.
   if (body.notification_settings !== undefined) {
     users.setNotificationSettings.run(
@@ -313,12 +314,22 @@ authRoutes.put("/me", (req, res) => {
   res.json(publicUser(users.byId.get(req.user.id)!));
 });
 
-// The views and boards of one of their workspaces: what the profile offers
-// for the opening view and board.
-authRoutes.get("/me/workspaces/:id/views", (req, res) => {
-  const id = Number(req.params.id);
-  if (!workspacesOf(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");
-  res.json(openingViews(req.user, id));
+// The view and board they are on, in their current workspace: they come back
+// at sign-in, if their session's choices are remembered. The client checks
+// them then: they may have gone since.
+authRoutes.put("/me/session-board", (req, res) => {
+  const { view, board } = (req.body ?? {}) as { view?: unknown; board?: unknown };
+  if (typeof view !== "string" || typeof board !== "string" || view.length > 20 || board.length > 20) {
+    badRequest("Vue ou tableau invalide");
+  }
+  const workspace = req.user.workspace_id;
+  if (req.user.remember_session && workspace !== null) {
+    users.setSessionBoards.run(
+      JSON.stringify({ ...sessionBoards(req.user), [workspace]: { view, board } }),
+      req.user.id,
+    );
+  }
+  res.status(204).end();
 });
 
 // Switching to another of their workspaces: their views, boards and rights

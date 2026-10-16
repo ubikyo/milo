@@ -23,7 +23,7 @@ export interface UserRow {
   email: string;
   password_hash: string;
   default_mode: string;
-  /** The opening view: its id, or empty. */
+  /** No longer used (session_boards): the opening view. */
   default_view: string;
   created_at: string;
   entra_id: string;
@@ -39,7 +39,7 @@ export interface UserRow {
   workspace_id: Id | null;
   /** The workspace opened at sign-in: null, or perhaps one it no longer has. */
   default_workspace_id: Id | null;
-  /** The opening board, in the opening view: its id, or empty. */
+  /** No longer used (session_boards): the opening board. */
   default_board: string;
   /** JSON: their notification settings; empty for the defaults (lib/notification-settings.ts). */
   notification_settings: string;
@@ -51,6 +51,10 @@ export interface UserRow {
   search_threshold: number;
   /** JSON: the kinds of content the search leaves out; empty for none. */
   search_excluded: string;
+  /** "Retenir mes choix de session". */
+  remember_session: SqliteBool;
+  /** JSON: the view and board they left, by workspace; empty for none. */
+  session_boards: string;
 }
 
 export interface ApiTokenRow {

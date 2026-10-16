@@ -27,6 +27,12 @@ export type Id = number;
 
 // --- People ----------------------------------------------------------------
 
+/** The view and board an account left in a workspace: ids, as strings. */
+export interface SessionBoard {
+  view: string;
+  board: string;
+}
+
 /** An account, as it is shown: never its password hash. */
 export interface PublicUser {
   id: Id;
@@ -76,15 +82,16 @@ export interface PublicUser {
    * in any list and is the actor of nothing.
    */
   system: boolean;
-  /**
-   * The workspace opened at sign-in: null for the one they were working in.
-   * The opening view and board are taken from it.
-   */
+  /** The workspace opened at sign-in: null for the one they were working in. */
   default_workspace: Id | null;
-  /** The opening view: its id as a string, empty for the first. */
-  default_view: string;
-  /** The opening board, in the opening view: its id as a string, empty for the first. */
-  default_board: string;
+  /**
+   * "Retenir mes choix de session": the view and board they left, and their
+   * grids' sorts and filters, come back. Without it, the first view and
+   * board, and the grids' defaults.
+   */
+  remember_session: boolean;
+  /** The view and board they left in the current workspace, when remembered. */
+  session_board: SessionBoard | null;
   /** How they are notified: on screen, by e-mail, grouped or not. */
   notification_settings: NotificationSettings;
   /** How an e-mail being written first shows: its text alone, or in its template. */

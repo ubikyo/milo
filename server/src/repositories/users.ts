@@ -7,6 +7,7 @@
 
 import type {
   SearchKind,
+  SessionBoard,
   AdminPermissions,
   AdministrationRights,
   CompanyRights,
@@ -73,10 +74,14 @@ export const users = {
      WHERE id = ?`,
   ),
   setPassword: mutation("UPDATE users SET password_hash = ? WHERE id = ?"),
-  /** The opening workspace, view and board, chosen in the profile. */
-  setOpening: mutation(
-    "UPDATE users SET default_workspace_id = ?, default_view = ?, default_board = ? WHERE id = ?",
+  /** The opening workspace, chosen in the profile. */
+  setOpening: mutation("UPDATE users SET default_workspace_id = ? WHERE id = ?"),
+  /** "Retenir mes choix de session"; off, the view and board left are forgotten. */
+  setRememberSession: mutation(
+    "UPDATE users SET remember_session = ?, session_boards = CASE WHEN ? THEN session_boards ELSE '' END WHERE id = ?",
   ),
+  /** The view and board left, by workspace, as JSON. */
+  setSessionBoards: mutation("UPDATE users SET session_boards = ? WHERE id = ?"),
   setWorkspace: mutation("UPDATE users SET workspace_id = ? WHERE id = ?"),
   /** Their notification settings, as JSON, chosen in the preferences. */
   setNotificationSettings: mutation("UPDATE users SET notification_settings = ? WHERE id = ?"),
@@ -88,6 +93,22 @@ export const users = {
   setSearchExcluded: mutation("UPDATE users SET search_excluded = ? WHERE id = ?"),
   /** True if this id designates a person. Used to filter the attachments. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
+};
+
+/** The view and board an account left, by workspace: unreadable, none. */
+export const sessionBoards = (user: Pick<UserRow, "session_boards">): Record<string, SessionBoard> => {
+  try {
+    const read: unknown = JSON.parse(user.session_boards || "{}");
+    if (read === null || typeof read !== "object" || Array.isArray(read)) return {};
+    return Object.fromEntries(
+      Object.entries(read).filter(
+        (entry): entry is [string, SessionBoard] =>
+          typeof entry[1]?.view === "string" && typeof entry[1]?.board === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
 };
 
 /** The kinds of content a person leaves out of the search: unreadable, none. */
@@ -388,8 +409,11 @@ export const publicUser = (account: UserRow): PublicUser => {
     default_workspace: workspacesOf(user).some((w) => w.id === user.default_workspace_id)
       ? user.default_workspace_id
       : null,
-    default_view: user.default_view ?? "",
-    default_board: user.default_board ?? "",
+    remember_session: Boolean(user.remember_session ?? 1),
+    session_board:
+      user.remember_session === 0 || user.workspace_id === null
+        ? null
+        : (sessionBoards(user)[String(user.workspace_id)] ?? null),
     notification_settings: notificationSettings(user),
     reply_editor: isReplyEditorView(user.reply_editor) ? user.reply_editor : "layout",
     fuzzy_search: Boolean(user.fuzzy_search ?? 1),

@@ -6,6 +6,10 @@
 // Read once, when the first grid mounts; each change is saved a moment
 // later, the whole scope at once. What comes back is checked by the grid
 // ("read"): a column may have gone since.
+//
+// Without "Retenir mes choix de session" (rememberGridStates), nothing is
+// read or saved: the grids start from their defaults, and what is chosen
+// only holds for the page.
 
 import {
   createContext,
@@ -31,6 +35,8 @@ export const widgetScope = (id: Id): string => `widget:${id}`;
 
 let states: Record<string, State> = {};
 let status: "unread" | "reading" | "read" = "unread";
+/** "Retenir mes choix de session", the signed-in person's preference. */
+let remembered = true;
 /** Scopes changed before the read came back: they keep what was just chosen. */
 const changed = new Set<string>();
 const subscribers = new Set<() => void>();
@@ -51,6 +57,11 @@ const subscribe = (subscriber: () => void) => {
 const load = () => {
   // Signed out — the page before the sign-in —: the first grid after it reads them.
   if (status !== "unread" || !getToken()) return;
+  // Not remembered: the grids start from their defaults.
+  if (!remembered) {
+    status = "read";
+    return;
+  }
   status = "reading";
   api
     .getGridStates()
@@ -89,8 +100,25 @@ const write = (scope: string, part: string, value: unknown) => {
   states = { ...states, [scope]: value === undefined ? others : { ...others, [part]: value } };
   if (status !== "read") changed.add(scope);
   notify();
+  if (!remembered) return;
   clearTimeout(pending.get(scope));
   pending.set(scope, setTimeout(() => save(scope), SAVE_DELAY));
+};
+
+/**
+ * "Retenir mes choix de session", set before the grids mount. Switched on,
+ * the grids as they are now are kept; switched off, nothing more is saved —
+ * the server forgets what it kept.
+ */
+export const rememberGridStates = (on: boolean) => {
+  if (on === remembered) return;
+  remembered = on;
+  if (!on) {
+    for (const timer of pending.values()) clearTimeout(timer);
+    pending.clear();
+  } else if (status === "read") {
+    for (const scope of Object.keys(states)) save(scope);
+  }
 };
 
 /**

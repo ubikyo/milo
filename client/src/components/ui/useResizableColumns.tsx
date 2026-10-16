@@ -245,7 +245,9 @@ export function useResizableColumns(
 
   return {
     /** To spread on the "Table". */
-    tableProps: { ref: tableRef, className: classes.grid, style },
+    // "data-fixed": the widths come from the "col" alone — a header's own
+    // width would size a column left on auto (Grid.module.css).
+    tableProps: { ref: tableRef, className: classes.grid, style, "data-fixed": style ? "" : undefined },
     /** To put at the head of the "Table", before "Table.Thead". */
     colgroup: widths ? (
       <colgroup>

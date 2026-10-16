@@ -173,7 +173,6 @@ import type {
   Location,
   LocationInput,
   UpdateMeInput,
-  OpeningView,
   VersionPayload,
   SearchResult,
   Notification,
@@ -218,7 +217,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  if (res.status === 401 && !path.startsWith("/auth/")) {
+  // Only a refusal of the session in place closes it: a request sent without
+  // a token, or with the one a new sign-in has just replaced — on the return
+  // from Microsoft, the first reads leave before the token is stored —, says
+  // nothing about it.
+  if (res.status === 401 && !path.startsWith("/auth/") && token && getToken() === token) {
     setToken(null);
     onUnauthorized();
   }
@@ -375,9 +378,9 @@ export const api = {
   logout: () => post<null>("/auth/logout"),
   me: () => get<PublicUser>("/auth/me"),
   updateMe: (data: UpdateMeInput) => put<PublicUser>("/auth/me", data),
-  /** The views and boards of one of the account's workspaces, for the profile. */
-  getOpeningViews: (workspace: Id) =>
-    get<OpeningView[]>(`/auth/me/workspaces/${workspace}/views`),
+  /** The view and board the account is on, kept if it remembers its session. */
+  saveSessionBoard: (view: string, board: string) =>
+    put<null>("/auth/me/session-board", { view, board }),
 
   getVersion: () => get<VersionPayload>("/version"),
 

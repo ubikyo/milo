@@ -1,5 +1,5 @@
 import { Anchor, Box, Menu, Stack, Text } from "@mantine/core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, HttpError, setUnauthorizedHandler } from "./api";
 import { getToken, setToken } from "./lib/auth";
 import {
@@ -59,7 +59,7 @@ import { requestOpening } from "./lib/searchSources";
 import { FollowsContext } from "./lib/follows-context";
 import { ReplyEditorContext } from "./lib/reply-editor";
 import { SearchPreferencesContext } from "./lib/search-preferences";
-import { forgetGridStates } from "./lib/gridStates";
+import { forgetGridStates, rememberGridStates } from "./lib/gridStates";
 import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
@@ -728,9 +728,15 @@ export default function App() {
     if (user && supportNeed) api.syncSupportMail().catch(() => {});
   }, [user, supportNeed, boardId]);
 
-  // The opening view and board, once the session is open: the account's, or
-  // failing that the first. They belong to its opening workspace: in another
-  // one, the first.
+  // "Retenir mes choix de session": the grids read what they kept, or start
+  // from their defaults. Set before they mount — their effects run after
+  // this one.
+  useLayoutEffect(() => {
+    if (user) rememberGridStates(user.remember_session);
+  }, [user]);
+
+  // The opening view and board, once the session is open: those left last
+  // time, if the account remembers its session, or failing that the first.
   useEffect(() => {
     if (!user || !shownViews || appliedView.current === user.id) return;
     appliedView.current = user.id;
@@ -738,26 +744,40 @@ export default function App() {
       linkedTo.current = false;
       return;
     }
-    const inOpening =
-      user.default_workspace === null ||
-      user.default_workspace === user.workspace;
+    const left = user.session_board;
     const desiredView =
-      (inOpening &&
-        shownViews.find((v) => String(v.id) === user.default_view)) ||
-      shownViews[0];
+      (left && shownViews.find((v) => String(v.id) === left.view)) || shownViews[0];
     if (!desiredView) return;
     setViewId(String(desiredView.id));
-    if (inOpening && user.default_board)
-      openingBoard.current = {
-        view: String(desiredView.id),
-        board: user.default_board,
-      };
+    if (left && left.view === String(desiredView.id))
+      openingBoard.current = { view: left.view, board: left.board };
   }, [user, shownViews]);
 
-  // The open view must be shown: deleting it — or hiding it, once interface
-  // editing is left — goes back to the first.
+  // The view and board the account is on are kept, if it remembers its
+  // session: once the opening ones are applied, at each change.
+  const keptBoard = useRef<string | null>(null);
+  const rememberSession = Boolean(user?.remember_session);
   useEffect(() => {
-    if (!shownViews || appliedView.current === null) return;
+    // Switched off, the server forgot it: switched on again, it is kept anew.
+    if (!rememberSession) {
+      keptBoard.current = null;
+      return;
+    }
+    if (!viewId || !board || appliedView.current === null || openingBoard.current) return;
+    const kept = `${viewId}/${board.id}`;
+    if (keptBoard.current === kept) return;
+    keptBoard.current = kept;
+    api.saveSessionBoard(viewId, String(board.id)).catch(() => {
+      // Not kept: the next sign-in opens on the one kept before.
+      keptBoard.current = null;
+    });
+  }, [rememberSession, viewId, board]);
+
+  // The open view must be shown: deleting it — or hiding it, once interface
+  // editing is left — goes back to the first. None open yet: the opening one
+  // is on its way, asked for in this same pass.
+  useEffect(() => {
+    if (!shownViews || appliedView.current === null || viewId === null) return;
     if (!shownViews.some((v) => String(v.id) === viewId))
       setViewId(shownViews[0] ? String(shownViews[0].id) : null);
   }, [shownViews, viewId]);

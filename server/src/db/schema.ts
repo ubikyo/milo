@@ -147,8 +147,8 @@ export const SCHEMA = `
     password_hash TEXT NOT NULL DEFAULT '',
     -- Mode ouvert à la connexion : chacun choisit le sien.
     default_mode TEXT NOT NULL DEFAULT 'projects',
-    -- La vue d'ouverture : son identifiant, ou vide pour la première. Le
-    -- mode d'avant les vues (« default_mode ») ne sert plus.
+    -- Ne sert plus (« session_boards » l'a remplacée) : la vue d'ouverture
+    -- choisie dans le profil.
     default_view TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     -- L'identifiant d'objet Entra (oid), posé à la première connexion par
@@ -166,7 +166,7 @@ export const SCHEMA = `
     -- The workspace opened at sign-in, chosen in the profile. Null, or one
     -- it no longer has: the one it was working in.
     default_workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
-    -- The opening board, in the opening view: its id, or empty for the first.
+    -- No longer used ("session_boards" replaced it): the opening board.
     default_board TEXT NOT NULL DEFAULT '',
     -- Their notification settings (JSON), chosen in the preferences. Empty,
     -- or a field missing: the application's defaults.
@@ -179,7 +179,13 @@ export const SCHEMA = `
     fuzzy_search INTEGER NOT NULL DEFAULT 1,
     search_threshold REAL NOT NULL DEFAULT 0.45,
     -- The kinds of content the search leaves out (JSON list); empty, none.
-    search_excluded TEXT NOT NULL DEFAULT ''
+    search_excluded TEXT NOT NULL DEFAULT '',
+    -- "Retenir mes choix de session": the view and board they left, and their
+    -- grids' sorts and filters (user_grid_states), come back at sign-in.
+    remember_session INTEGER NOT NULL DEFAULT 1,
+    -- The view and board they left, by workspace (JSON: {"<workspace>":
+    -- {"view": "<id>", "board": "<id>"}}); empty, none.
+    session_boards TEXT NOT NULL DEFAULT ''
   );
 
   -- Les acteurs favoris de chaque personne : ils passent en tête des listes

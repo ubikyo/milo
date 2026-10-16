@@ -21,6 +21,14 @@
   max-width: 100%;
 }
 
+/* Frozen widths come from the "col" alone: the width a header asks for in
+   the natural layout would otherwise size its column — the first row decides
+   in a fixed layout —, and a column left on auto would no longer take the room
+   left. */
+.grid[data-fixed] th {
+  width: auto !important;
+}
+
 /* The handle sits on the right edge of the header cell. */
 .grid th {
   position: relative;

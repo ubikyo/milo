@@ -484,6 +484,11 @@ export const migrate = (db: Database): void => {
   if (!userColumns.includes("search_excluded")) {
     db.exec("ALTER TABLE users ADD COLUMN search_excluded TEXT NOT NULL DEFAULT ''");
   }
+  // "Retenir mes choix de session" replaces the opening view and board.
+  if (!userColumns.includes("remember_session")) {
+    db.exec("ALTER TABLE users ADD COLUMN remember_session INTEGER NOT NULL DEFAULT 1");
+    db.exec("ALTER TABLE users ADD COLUMN session_boards TEXT NOT NULL DEFAULT ''");
+  }
   // Each list widget owns its labels, categories, milestone types and tables
   // (db/settings-per-list.ts): last, once everything else is in place.
   settingsPerList(db);

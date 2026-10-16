@@ -62,10 +62,6 @@ export interface AdminLoginInput {
 export interface UpdateMeInput {
   /** The workspace opened at sign-in; null for the one they were working in. */
   default_workspace?: Id | null;
-  /** The opening view: its id, as a string. */
-  default_view?: string;
-  /** The opening board, in the opening view: its id, as a string. */
-  default_board?: string;
   /** Their notification settings: only the fields given change. */
   notification_settings?: Partial<NotificationSettings>;
   /** How an e-mail being written first shows. */
@@ -76,16 +72,8 @@ export interface UpdateMeInput {
   search_threshold?: number;
   /** The kinds of content the search leaves out. */
   search_excluded?: SearchKind[];
-}
-
-/**
- * The views of one of an account's workspaces, each with its boards: what the
- * profile offers for the opening view and board.
- */
-export interface OpeningView {
-  id: Id;
-  name: string;
-  boards: { id: Id; name: string }[];
+  /** "Retenir mes choix de session": off, what was kept is forgotten. */
+  remember_session?: boolean;
 }
 
 export interface ViewInput {

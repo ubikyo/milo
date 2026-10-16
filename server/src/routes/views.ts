@@ -8,7 +8,6 @@ import { SUBVIEW_KINDS, isShareLevel } from "@milo/shared";
 import type {
   EntraPrincipal,
   Id,
-  OpeningView,
   ShareLevel,
   SubviewGroup,
   SubviewKind,
@@ -33,7 +32,7 @@ import { workspaces } from "../repositories/workspaces.js";
 import { inviteToShare } from "../lib/invitations.js";
 import { sharePrincipals } from "../lib/workspace-people.js";
 import { root } from "../lib/notify.js";
-import { createBoard, deleteBoard, visibleBoards } from "./boards.js";
+import { createBoard, deleteBoard } from "./boards.js";
 import { byId, deleteWithUndo } from "../lib/undo.js";
 
 const VIEW_SCOPES = "views";
@@ -60,23 +59,6 @@ const visibleViews = (user: UserRow): View[] =>
   withHidden(user.id, VIEW_SCOPES, inOrderOf(user.id, VIEW_SCOPES, accountViews(user))).map(
     (v) => viewForAccount(v, user),
   );
-
-/**
- * The views and boards this account would see in one of its workspaces —
- * those it hid left out —, for the profile's opening view and board.
- */
-export const openingViews = (user: UserRow, workspace: Id): OpeningView[] => {
-  const inWorkspace = { ...user, workspace_id: workspace };
-  return visibleViews(inWorkspace)
-    .filter((v) => !v.is_hidden)
-    .map((v) => ({
-      id: v.id,
-      name: v.name,
-      boards: visibleBoards(v.id, inWorkspace)
-        .filter((b) => !b.is_hidden)
-        .map((b) => ({ id: b.id, name: b.name })),
-    }));
-};
 
 /**
  * A new view, after the others in its workspace: its creator's. It is born
