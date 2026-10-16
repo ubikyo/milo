@@ -76,7 +76,7 @@ import DeleteConfirmModal from "./components/ui/DeleteConfirmModal";
 import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal";
 import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal";
 import ProjectDrawer from "./components/project/ProjectDrawer";
-import ViewSwitch from "./components/ui/ViewSwitch";
+import ViewSwitch from "./components/ui/BoardSwitch";
 import ShareViewModal from "./components/ui/ShareViewModal";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
 import LayoutModal from "./components/ui/LayoutModal";
