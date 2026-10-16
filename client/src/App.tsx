@@ -36,6 +36,9 @@ import { RED } from "./themes/colors";
 import {
   DEFAULT_SUPPORT_STATUS,
   INDICATOR_DATA,
+  PROJECT_CREATION,
+  SUPPORT_CREATION,
+  TASK_CREATION,
   DEFAULT_SEARCH_THRESHOLD,
   RESOURCES,
   canUse,
@@ -46,6 +49,7 @@ import {
   isNotification,
   itemLink,
   m365Event,
+  sourcesOf,
 } from "@milo/shared";
 import { RightsProvider, canFrom } from "./lib/rights";
 import { errorMessage, notifyError } from "./lib/errors";
@@ -59,7 +63,9 @@ import { forgetGridStates } from "./lib/gridStates";
 import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
-import { announceResource } from "./lib/sources";
+import { announceResource, readSourceWidgets } from "./lib/sources";
+import { CreationsContext, listWidgetOf } from "./lib/creations";
+import type { Creations } from "./lib/creations";
 import { announceContacts } from "./lib/contacts";
 import { announceProducts } from "./lib/products";
 import { announceWarehouses } from "./lib/warehouses";
@@ -76,8 +82,11 @@ import DeleteConfirmModal from "./components/ui/DeleteConfirmModal";
 import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal";
 import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal";
 import ProjectDrawer from "./components/project/ProjectDrawer";
-import ViewSwitch from "./components/ui/BoardSwitch";
+import LinkedProjectDrawer from "./components/project/LinkedProjectDrawer";
+import type { ProjectCreation } from "./components/project/LinkedProjectDrawer";
+import BoardSwitch from "./components/ui/BoardSwitch";
 import ShareViewModal from "./components/ui/ShareViewModal";
+import SubviewModal from "./components/ui/SubviewModal";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
 import LayoutModal from "./components/ui/LayoutModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
@@ -111,6 +120,8 @@ import type {
   Resource,
   ResourceVersions,
   SearchResult,
+  SourceWidget,
+  Subview,
   SupportRequest,
   TaskList,
   View,
@@ -203,6 +214,12 @@ export default function App() {
   // A link — the address, a notification — has led to a board: the opening
   // view and board must not take its place.
   const linkedTo = useRef(false);
+  // The open view's "page" sub-view that is open — its boards then take the
+  // place of the view's —, the "modal" one that is open, and whether their
+  // inset is open (BoardTabs' "+"). Each view carries its sub-views.
+  const [subviewId, setSubviewId] = useState<string | null>(null);
+  const [modalSubview, setModalSubview] = useState<Subview | null>(null);
+  const [subviewsOpen, setSubviewsOpen] = useState(false);
   // The open view's boards, and the one that is open.
   const [boardsRead, setBoardsRead] = useState<LoadedFor<Board> | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
@@ -280,7 +297,20 @@ export default function App() {
     }
   }, []);
 
-  const boards = boardsRead?.key === viewId ? boardsRead.items : null;
+  const { settings: display } = useDisplaySettings();
+  // "Labo" > "Sous vue" off: no sub-view, and every view opens on its own
+  // boards — the one open is left.
+  const subviewsOn = display.labSubviews;
+  const openView = views?.find((v) => String(v.id) === viewId) ?? null;
+  const subviews = subviewsOn ? (openView?.subviews ?? null) : [];
+  const parentDisabled = subviewsOn && Boolean(openView?.parent_disabled);
+  // Whether the open "page" sub-view is still among them: its boards take the
+  // place of the view's while it is open.
+  const subviewListed = Boolean(
+    subviews?.some((g) => g.subviews.some((s) => String(s.id) === subviewId)),
+  );
+  const boardsKey = subviewId ? `${viewId}/${subviewId}` : viewId;
+  const boards = boardsRead?.key === boardsKey ? boardsRead.items : null;
   // Outside interface editing, what the account hid does not show.
   const shownViews = useMemo(
     () => views && (isEditing ? views : views.filter((v) => !v.is_hidden)),
@@ -369,13 +399,16 @@ export default function App() {
   const [accessRequestSubject, setAccessRequestSubject] = useState<string | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
   const themeEditorOn = useThemeEditor();
-  const { settings: display } = useDisplaySettings();
   const [preferencesOpened, setPreferencesOpened] = useState(false);
   // The notifications drawer, and what makes it re-read.
   const [notificationsOpened, setNotificationsOpened] = useState(false);
   const [notificationsRevision, setNotificationsRevision] = useState(0);
   // "Créer une tâche" from another item: where it starts from.
   const [sourceTask, setSourceTask] = useState<SourceTask | null>(null);
+  // "Créer un projet" from a ticket, "Créer un ticket" from a project: in the
+  // widget their own names (lib/creations.ts).
+  const [projectCreation, setProjectCreation] = useState<ProjectCreation | null>(null);
+  const [requestCreation, setRequestCreation] = useState<{ target: SourceWidget; subject: string } | null>(null);
   // Last known data version, to detect changes
   // made by someone else.
   const knownVersions = useRef<ResourceVersions | null>(null);
@@ -504,11 +537,11 @@ export default function App() {
 
   const loadBoards = useCallback(async () => {
     // Without an open view, there are no boards to read: they stay
-    // unknown, not "none".
-    if (!viewId) return setBoardsRead(null);
-    const items = await read(() => api.getBoards(viewId));
-    setBoardsRead({ key: viewId, items });
-  }, [viewId, read]);
+    // unknown, not "none". A "page" sub-view has its own.
+    if (!viewId || !boardsKey) return setBoardsRead(null);
+    const items = await read(() => api.getBoards(viewId, subviewId));
+    setBoardsRead({ key: boardsKey, items });
+  }, [viewId, boardsKey, subviewId, read]);
 
   // The open board's sections and widgets, in one go.
   const loadWidgets = useCallback(async () => {
@@ -637,6 +670,25 @@ export default function App() {
   useEffect(() => {
     if (user) loadBoards().catch(() => {});
   }, [user, loadBoards]);
+  // A sub-view gone — deleted, or none of its boards still shared — closes.
+  useEffect(() => {
+    if (subviewId && subviews && !subviewListed) setSubviewId(null);
+  }, [subviewId, subviews, subviewListed]);
+  // A view whose tab leads nowhere ("Désactiver vue parente") opens on its
+  // first "page" sub-view — on its own boards if it has none. In interface
+  // editing, its own boards stay reachable: they are arranged there.
+  const firstPage =
+    subviews?.flatMap((g) => g.subviews).find((s) => s.kind === "page") ?? null;
+  useEffect(() => {
+    if (parentDisabled && !isEditing && !subviewId && firstPage) {
+      setSubviewId(String(firstPage.id));
+      setBoardId(null);
+    }
+  }, [parentDisabled, isEditing, subviewId, firstPage]);
+  // Their inset belongs to interface editing.
+  useEffect(() => {
+    if (!isEditing) setSubviewsOpen(false);
+  }, [isEditing]);
   useEffect(() => {
     if (user) loadWidgets().catch(() => {});
   }, [user, loadWidgets]);
@@ -762,10 +814,11 @@ export default function App() {
    * Show a view and a board, in place of the opening ones if they are not
    * applied yet.
    */
-  const showBoard = useCallback((view: Id, board: Id) => {
+  const showBoard = useCallback((view: Id, board: Id, subview: Id | null = null) => {
     linkedTo.current = true;
     openingBoard.current = null;
     setViewId(String(view));
+    setSubviewId(subview === null ? null : String(subview));
     setBoardId(String(board));
   }, []);
 
@@ -773,7 +826,7 @@ export default function App() {
   const goToBoard = useCallback(
     async (id: Id) => {
       const board = await api.getBoard(id);
-      showBoard(board.view_id, board.id);
+      showBoard(board.view_id, board.id, board.subview_id);
     },
     [showBoard],
   );
@@ -920,7 +973,9 @@ export default function App() {
       lookups: async () => {
         await Promise.all([loadLookups(), loadMilestoneTypes()]);
       },
-      views: loadViews,
+      views: async () => {
+        await loadViews();
+      },
       boards: loadBoards,
       "board-widgets": loadWidgets,
       categories: loadCategories,
@@ -1054,8 +1109,12 @@ export default function App() {
     }
   };
 
+  const closeSubviews = useCallback(() => setSubviewsOpen(false), []);
+
   const changeView = useCallback((id: string) => {
     setViewId(id);
+    setSubviewId(null);
+    setSubviewsOpen(false);
     setBoardId(null);
   }, []);
 
@@ -1128,7 +1187,7 @@ export default function App() {
     if (!viewId) return null;
     try {
       // "Nouveau tableau", opened immediately: its name is typed in place.
-      const created = await api.createBoard(viewId, "Nouveau tableau");
+      const created = await api.createBoard(viewId, "Nouveau tableau", subviewId);
       newBoard.current = { id: created.id, board: boardId };
       await loadBoards();
       setBoardId(String(created.id));
@@ -1447,23 +1506,25 @@ export default function App() {
     );
   }
 
-  // The open board's contexts, and the account.
+  // The open board's contexts, in its segment at the bottom (BoardSwitch).
+  const boardContexts = board
+    ? {
+        items: contexts,
+        all: board.all_contexts_label,
+        value: selectedContext,
+        onChange: changeContext,
+        // Outside edit mode, the contexts are only chosen; in edit mode, the
+        // list chooses their group instead.
+        onRenameAll: isEditing ? renameAllContexts : undefined,
+        group: board.context_group,
+        groupOptions: board.context_group_options,
+        sections: board.context_sections,
+        onChangeGroup: isEditing ? changeContextGroup : undefined,
+      }
+    : undefined;
+
+  // The account, at the end of the views' row.
   const account: AccountSlot = {
-    contexts: board
-      ? {
-          items: contexts,
-          all: board.all_contexts_label,
-          value: selectedContext,
-          onChange: changeContext,
-          // Outside edit mode, the contexts are only chosen; in edit mode, the
-          // list chooses their group instead.
-          onRenameAll: isEditing ? renameAllContexts : undefined,
-          group: board.context_group,
-          groupOptions: board.context_group_options,
-          sections: board.context_sections,
-          onChangeGroup: isEditing ? changeContextGroup : undefined,
-        }
-      : undefined,
     onOpenSettings: () => setSettingsOpened(true),
     user,
     onLogout: handleLogout,
@@ -1496,6 +1557,51 @@ export default function App() {
   const createRequest =
     can("support", "create") && widgets.some((w) => w.type === "support.list");
   const boardNameOf = (id: Id) => boards?.find((b) => b.id === id)?.name;
+  // A ticket, a project creates elsewhere only what its widget names, in the
+  // widgets it names: a task in its Tâches widgets, a project or a ticket in
+  // its Projets or Tickets widget.
+  const createdIn = (type: string, key: string, done: (target: SourceWidget) => void) => () =>
+    void readSourceWidgets(type)
+      .then((read) => {
+        const target = read.find((w) => w.key === key);
+        if (target) done(target);
+        else notifyError("Widget introuvable");
+      })
+      .catch((e) => notifyError(errorMessage(e)));
+  const creations: Creations = {
+    ofRequest: (request) => {
+      const config = listWidgetOf(widgets, "support.list", request.list_key)?.config;
+      const tasks = sourcesOf(config, TASK_CREATION);
+      const project = sourcesOf(config, PROJECT_CREATION)[0];
+      return {
+        task:
+          createTask && tasks.length
+            ? () => setSourceTask({ ...requestSource(request), targets: tasks })
+            : undefined,
+        project:
+          can("projects", "create") && project
+            ? createdIn("project.list", project, (target) =>
+                setProjectCreation({ target, source: requestSource(request) }),
+              )
+            : undefined,
+      };
+    },
+    ofProject: (project) => {
+      const config = listWidgetOf(widgets, "project.list", project.list_key)?.config;
+      const tasks = sourcesOf(config, TASK_CREATION);
+      const request = sourcesOf(config, SUPPORT_CREATION)[0];
+      const source = projectSource(project, boardNameOf(project.board_id));
+      return {
+        task: createTask && tasks.length ? () => setSourceTask({ ...source, targets: tasks }) : undefined,
+        request:
+          can("support", "create") && request
+            ? createdIn("support.list", request, (target) =>
+                setRequestCreation({ target, subject: source.title }),
+              )
+            : undefined,
+      };
+    },
+  };
   // The theme editor's panels, for whoever may change the themes: it was
   // turned on in this browser, possibly by another account.
   const themeEditor =
@@ -1518,6 +1624,7 @@ export default function App() {
         <SearchPreferencesContext.Provider value={searchPreferences}>
         {/* What the person follows, for the widgets that read it: an order's list. */}
         <FollowsContext.Provider value={followsValue}>
+        <CreationsContext.Provider value={creations}>
           {/* The clipboard of labels and categories, which the "Actions"
             menu of a widget drawer fills and empties in another. */}
           <CopyPasteContext.Provider
@@ -1582,55 +1689,102 @@ export default function App() {
                     namingBoard={namingBoard !== null && String(namingBoard) === boardId}
                     onCreateView={user.structure.views.create ? createFirstView : undefined}
                     boards={displayedBoards ?? (viewId ? null : [])}
+                    viewTabs={{
+                      views: (shownViews ?? []).map((view) => ({
+                        id: view.id,
+                        name: view.name,
+                        // Renaming, deleting and sharing a view are its owner's.
+                        access: view.is_owner ? "owner" : "read",
+                        is_hidden: view.is_hidden,
+                      })),
+                      value: viewId,
+                      onChange: changeView,
+                      // Outside edit mode, no view "+" nor board "+" (tabsLocked).
+                      onAdd:
+                        user.structure.views.create && !tabsLocked
+                          ? () => void createView()
+                          : undefined,
+                      toRename: viewToRename,
+                      onRenameOpened: () => setViewToRename(null),
+                      onRenameEnded: endViewRename,
+                      // The sub-views: their inset, in edit mode, is the view's
+                      // owner's, as renaming it is.
+                      onSubviews:
+                        subviewsOn && canArrange && isEditing && ownsOpenView
+                          ? () => setSubviewsOpen((open) => !open)
+                          : undefined,
+                      subviewsOpen: subviewsOn && subviewsOpen,
+                      onSubviewsClose: closeSubviews,
+                      onSubviewsSaved: (groups) =>
+                        setViews((before) =>
+                          before?.map((v) =>
+                            String(v.id) === viewId ? { ...v, subviews: groups } : v,
+                          ) ?? before,
+                        ),
+                      parentDisabled,
+                      onParentDisabledChange: (disabled) =>
+                        viewId &&
+                        write(
+                          () => api.updateView(Number(viewId), { parent_disabled: disabled }),
+                          loadViews,
+                        ),
+                      subviewsOf: (id) => (subviewsOn ? (viewOf(id)?.subviews ?? []) : []),
+                      withoutLink: (id) => subviewsOn && Boolean(viewOf(id)?.parent_disabled),
+                      subviewId: subviewId === null ? null : Number(subviewId),
+                      onOpenSubview: (subview, view) => {
+                        if (subview.kind === "modal") return setModalSubview(subview);
+                        if (String(view) !== viewId) {
+                          setViewId(String(view));
+                          setSubviewsOpen(false);
+                        }
+                        setSubviewId(String(subview.id));
+                        setBoardId(null);
+                      },
+                      // Back to its own boards — not for a view whose tab
+                      // leads nowhere.
+                      onReselect:
+                        subviewId && !(parentDisabled && !isEditing)
+                        ? () => {
+                            setSubviewId(null);
+                            setBoardId(null);
+                          }
+                        : undefined,
+                      // Rename, delete: in edit mode only. Sharing is not the
+                      // interface: it is offered at any time. All three only for
+                      // one's own views (BoardTabs).
+                      onRename:
+                        canArrange && isEditing
+                          ? (id, name) => write(() => api.updateView(id, { name }), loadViews)
+                          : undefined,
+                      onShare: (id) => setSharedView(viewOf(id) ?? null),
+                      onToggleHidden: isEditing
+                        ? (id, hidden) => write(() => api.hideView(id, hidden), loadViews)
+                        : undefined,
+                      onReorder: tabsLocked
+                        ? undefined
+                        : (ids) => write(() => api.reorderViews(ids), loadViews),
+                      onDelete:
+                        user.structure.views.delete && isEditing
+                          ? async (id) => {
+                              // The last one gone, nothing is left to arrange:
+                              // editing ends.
+                              const last = (views?.length ?? 0) <= 1;
+                              await write(
+                                async () =>
+                                  rememberDeletion(await api.deleteView(id), "Vue supprimée", {
+                                    reload: loadViews,
+                                  }),
+                                loadViews,
+                              );
+                              if (last) setIsEditing(false);
+                            }
+                          : undefined,
+                    }}
                     boardId={boardId}
-                    onBoardChange={setBoardId}
-                    // Outside edit mode, no board "+" nor view "+" (tabsLocked).
-                    onAddBoard={
-                      user.structure.boards.create && ownsOpenView && !tabsLocked
-                        ? () => void addBoard()
-                        : undefined
-                    }
                     onCreateFirstBoard={
                       user.structure.boards.create && ownsOpenView
                         ? () => void createFirstBoard()
                         : undefined
-                    }
-                    onRenameEnded={endBoardRename}
-                    toRename={boardToRename}
-                    onRenameOpened={() => setBoardToRename(null)}
-                    // Rename, delete: in edit mode only — each tab then
-                    // keeps what its access allows (BoardTabs).
-                    onRenameBoard={
-                      canArrange && isEditing
-                        ? (id, name) => write(() => api.updateBoard(id, { name }), loadBoards)
-                        : undefined
-                    }
-                    onDeleteBoard={
-                      user.structure.boards.delete && isEditing
-                        ? async (id) => {
-                            // The last one gone, nothing is left to arrange:
-                            // editing ends.
-                            const last = (boards?.length ?? 0) <= 1;
-                            await write(
-                              async () =>
-                                rememberDeletion(await api.deleteBoard(id), "Tableau supprimé", {
-                                  reload: loadBoards,
-                                }),
-                              loadBoards,
-                            );
-                            if (last) setIsEditing(false);
-                          }
-                        : undefined
-                    }
-                    onToggleBoardHidden={
-                      isEditing
-                        ? (id, hidden) => write(() => api.hideBoard(id, hidden), loadBoards)
-                        : undefined
-                    }
-                    onReorderBoards={
-                      tabsLocked || !viewId
-                        ? undefined
-                        : (ids) => write(() => api.reorderBoards(viewId, ids), loadBoards)
                     }
                     sections={sections}
                     widgets={widgets}
@@ -1653,8 +1807,6 @@ export default function App() {
                       onMoveProject: (project, mode) => setMovedProject({ project, mode }),
                       onDuplicateProject: (project) => void duplicateProject(project),
                       onDeleteProject: setDeletedProject,
-                      onCreateTask: (project) =>
-                        setSourceTask(projectSource(project, boardNameOf(project.board_id))),
                       onAddProject: can("projects", "create") ? handleOpenNewProject : undefined,
                       followedIds: follows.project,
                       onToggleFollow: (project) => toggleFollow("project", project.id),
@@ -1685,9 +1837,6 @@ export default function App() {
                         setSupportDrawerOpened(true);
                       },
                       onAddRequest: can("support", "create") ? openNewSupportRequest : undefined,
-                      onCreateTask: createTask
-                        ? (request) => setSourceTask(requestSource(request))
-                        : undefined,
                       onRequestsChanged: loadSupportRequests,
                       followedIds: follows.support,
                       onToggleFollow: (request) => toggleFollow("support", request.id),
@@ -1869,53 +2018,60 @@ export default function App() {
                 }
               />
 
-              <ViewSwitch
-                views={shownViews ?? []}
-                value={viewId}
-                onChange={changeView}
-                onReorder={
-                  tabsLocked ? undefined : (ids) => write(() => api.reorderViews(ids), loadViews)
-                }
+              <BoardSwitch
+                boards={displayedBoards ?? []}
+                value={boardId}
+                onChange={setBoardId}
+                contexts={boardContexts}
+                // Outside edit mode, no board "+" nor view "+" (tabsLocked).
+                // A "page" sub-view's boards are arranged like the view's.
                 onCreate={
-                  user.structure.views.create && !tabsLocked ? () => void createView() : undefined
-                }
-                toRename={viewToRename}
-                onRenameOpened={() => setViewToRename(null)}
-                onRenameEnded={endViewRename}
-                trailing={<NewVersionBanner />}
-                // Rename, delete: in edit mode only. Sharing is not the
-                // interface: it is offered at any time. All three only for
-                // one's own views (ViewSwitch).
-                onRename={
-                  canArrange && isEditing
-                    ? (id, name) => write(() => api.updateView(id, { name }), loadViews)
+                  user.structure.boards.create && ownsOpenView && !tabsLocked
+                    ? () => void addBoard()
                     : undefined
                 }
-                onShare={setSharedView}
-                onToggleHidden={
-                  isEditing
-                    ? (view) => write(() => api.hideView(view.id, !view.is_hidden), loadViews)
+                onRenameEnded={endBoardRename}
+                toRename={boardToRename}
+                onRenameOpened={() => setBoardToRename(null)}
+                trailing={<NewVersionBanner />}
+                // Rename, delete: in edit mode only — each board then
+                // keeps what its access allows (BoardSwitch).
+                onRename={
+                  canArrange && isEditing
+                    ? (id, name) => write(() => api.updateBoard(id, { name }), loadBoards)
                     : undefined
                 }
                 onDelete={
-                  user.structure.views.delete && isEditing
+                  user.structure.boards.delete && isEditing
                     ? async (id) => {
                         // The last one gone, nothing is left to arrange:
                         // editing ends.
-                        const last = (views?.length ?? 0) <= 1;
+                        const last = (boards?.length ?? 0) <= 1;
                         await write(
                           async () =>
-                            rememberDeletion(await api.deleteView(id), "Vue supprimée", {
-                              reload: loadViews,
+                            rememberDeletion(await api.deleteBoard(id), "Tableau supprimé", {
+                              reload: loadBoards,
                             }),
-                          loadViews,
+                          loadBoards,
                         );
                         if (last) setIsEditing(false);
                       }
                     : undefined
                 }
+                deleteWarning="Ses projets, ses listes de tâches et ses widgets seront supprimés."
+                onToggleHidden={
+                  isEditing
+                    ? (id, hidden) => write(() => api.hideBoard(id, hidden), loadBoards)
+                    : undefined
+                }
+                onReorder={
+                  tabsLocked || !viewId
+                    ? undefined
+                    : (ids) => write(() => api.reorderBoards(viewId, ids, subviewId), loadBoards)
+                }
               />
               <ShareViewModal view={sharedView} onClose={() => setSharedView(null)} />
+              <SubviewModal subview={modalSubview} onClose={() => setModalSubview(null)} />
               <ShortcutsHelp
                 contexts={contexts.length > 0}
                 // Those the Tab shortcuts go through.
@@ -1961,6 +2117,35 @@ export default function App() {
                 }
               />
 
+              {/* "Créer un projet" from a ticket: in the Projets widget its
+                Tickets widget names, on any board. */}
+              <LinkedProjectDrawer
+                creation={projectCreation}
+                onClose={() => setProjectCreation(null)}
+                users={users}
+                currentUser={user}
+                boards={boards ?? []}
+              />
+
+              {/* "Créer un ticket" from a project: in the Tickets widget its
+                Projets widget names, on any board. */}
+              <SupportRequestDrawer
+                opened={requestCreation !== null}
+                onClose={() => setRequestCreation(null)}
+                request={null}
+                context={null}
+                boardId={requestCreation?.target.board_id ?? null}
+                listKey={requestCreation?.target.key}
+                defaultStatus={DEFAULT_SUPPORT_STATUS}
+                defaultSubject={requestCreation?.subject ?? ""}
+                users={users}
+                currentUser={user}
+                onSaved={loadSupportRequests}
+                onDeleted={() => setRequestCreation(null)}
+                following={false}
+                onToggleFollow={() => {}}
+              />
+
               <NotificationsDrawer
                 opened={notificationsOpened}
                 onClose={() => setNotificationsOpened(false)}
@@ -1996,6 +2181,7 @@ export default function App() {
             {/* Out of the interface: its transform would hold the panels in it. */}
             {themeEditor && <ThemeEditor canEdit />}
           </CopyPasteContext.Provider>
+        </CreationsContext.Provider>
         </FollowsContext.Provider>
         </SearchPreferencesContext.Provider>
         </ReplyEditorContext.Provider>

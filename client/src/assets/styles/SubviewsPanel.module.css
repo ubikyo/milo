@@ -1,0 +1,41 @@
+/* The sub-views' inset (SubviewsPanel). */
+
+/* A group's title: a search result kind's name (SearchBox.module.css) —
+   small and bold —, in the bright text of a card's labels' groups
+   (LabelPicker). */
+.groupTitle {
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: var(--mantine-color-bright);
+}
+
+/* A line above each group, from edge to edge, as above the old contexts
+   list's groups (ContextsMenu), in the page's background color. The
+   inset's side padding is given back. */
+.groupBlock + .groupBlock,
+.ungrouped + .groupBlock,
+.separated {
+  margin-top: 4px;
+  padding-top: 4px;
+  margin-left: calc(-1 * var(--subviews-padding-left));
+  margin-right: calc(-1 * var(--subviews-padding-right));
+  padding-left: var(--subviews-padding-left);
+  padding-right: var(--subviews-padding-right);
+  border-top: 1px solid var(--mantine-color-body);
+}
+
+/* The trash only shows on hover: the rest of the time, the name goes to
+   the row's right edge. Doubled with the row, to win over Mantine's display. */
+.row .reveal {
+  display: none;
+}
+
+.row:hover .reveal {
+  display: inline-flex;
+}
+
+/* A link's kind not chosen: the neutral light gray of gray buttons' text
+   (themes/colors.ts, NEUTRAL_TEXT); the chosen one keeps its white on green. */
+.kindLabel:not([data-active]) {
+  color: var(--milo-neutral-text);
+}

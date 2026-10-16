@@ -12,16 +12,16 @@ import type { ContactWidget } from "../contact";
 import type { IndicatorConfigProps } from "../support/types";
 
 /**
- * The list settings: at the top, the widget's warehouse labels, then its
- * countries, then the grid's columns.
+ * The list settings: at the top, the grid's columns, then the widget's
+ * warehouse labels, then its countries.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
+      <ColumnFields columns={WAREHOUSE_COLUMNS} defaults={DEFAULT_COLUMNS} {...props} />
       {/* The widget's labels: they go to saving. */}
       <LabelGroupFields kind="warehouse-labels" />
       <WarehouseTablesFields />
-      <ColumnFields columns={WAREHOUSE_COLUMNS} defaults={DEFAULT_COLUMNS} {...props} />
     </Stack>
   );
 }

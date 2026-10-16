@@ -27,16 +27,16 @@ export interface ContactWidget extends IndicatorWidgetBase<string> {
 }
 
 /**
- * The list settings: at the top, the board's contact labels, then its lists
- * — payment terms, currencies —, then the grid's columns.
+ * The list settings: at the top, the grid's columns, then the board's
+ * contact labels, then its lists — payment terms, currencies.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
+      <ColumnFields columns={CONTACT_COLUMNS} {...props} />
       {/* The board's labels and lists: they go to saving. */}
       <LabelGroupFields kind="contact-labels" />
       <ContactTablesFields />
-      <ColumnFields columns={CONTACT_COLUMNS} {...props} />
     </Stack>
   );
 }

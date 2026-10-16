@@ -92,6 +92,8 @@ export interface ViewRow {
   is_private: SqliteBool;
   owner_id: Id | null;
   created_at: string;
+  /** "Désactiver vue parente": its tab leads nowhere, only its sub-views do. */
+  parent_disabled: SqliteBool;
 }
 
 
@@ -231,6 +233,25 @@ export interface ProjectJoinedRow extends ProjectRow {
 }
 
 /** A board of a view. */
+/** A group of a view's sub-views. */
+export interface SubviewGroupRow {
+  id: Id;
+  view_id: Id;
+  name: string;
+  position: number;
+}
+
+/** A sub-view: "kind" is a SubviewKind (shared). */
+export interface SubviewRow {
+  id: Id;
+  view_id: Id;
+  /** Null for one without a group. */
+  group_id: Id | null;
+  name: string;
+  kind: string;
+  position: number;
+}
+
 export interface BoardRow {
   id: Id;
   view_id: Id;
@@ -243,6 +264,8 @@ export interface BoardRow {
   is_locked: SqliteBool;
   owner_id: Id | null;
   created_at: string;
+  /** The "page" sub-view it belongs to; null for one of its view's boards. */
+  subview_id: Id | null;
 }
 
 /** Project boards are boards like any other. */

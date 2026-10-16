@@ -39,6 +39,9 @@ import type {
   Workspace,
   ViewInput,
   ViewShares,
+  SubviewGroup,
+  SubviewsInput,
+  SubviewsSaved,
   ViewSharesInput,
   CardLocation,
   CascadeResult,
@@ -504,10 +507,18 @@ export const api = {
   /** Replaces the view's sharing as a whole. */
   setViewShares: (id: Id, data: ViewSharesInput) => put<ViewShares>(`/views/${id}/shares`, data),
   reorderViews: (ids: Id[]) => put<View[]>("/views/reorder", { ids }),
+  /** A view's sub-views, in their groups. */
+  getSubviews: (id: Id | string) => get<SubviewGroup[]>(`/views/${id}/subviews`),
+  /** Replaces a view's sub-views as a whole. */
+  saveSubviews: (id: Id | string, data: SubviewsInput) =>
+    put<SubviewsSaved>(`/views/${id}/subviews`, data),
 
   // A view's boards, in the order the account arranged them.
-  getBoards: (viewId: Id | string) => get<Board[]>(`/boards${queryString({ view: viewId })}`),
-  createBoard: (view_id: Id | string, name: string) => post<Board>("/boards", { view_id, name }),
+  /** A view's boards, or those of one of its "page" sub-views. */
+  getBoards: (viewId: Id | string, subviewId: Id | string | null = null) =>
+    get<Board[]>(`/boards${queryString({ view: viewId, subview: subviewId ?? undefined })}`),
+  createBoard: (view_id: Id | string, name: string, subview_id: Id | string | null = null) =>
+    post<Board>("/boards", { view_id, name, subview_id }),
   /** A single board: enough to know which view it is in. */
   getBoard: (id: Id | string) => get<Board>(`/boards/${id}`),
   updateBoard: (id: Id, data: BoardInput) => put<Board>(`/boards/${id}`, data),
@@ -518,8 +529,8 @@ export const api = {
   /** The context this account views in this board — a label name; null for all. */
   selectContext: (boardId: Id, context: string | null) =>
     put<Board>(`/boards/${boardId}/contexts/selected`, { context }),
-  reorderBoards: (view_id: Id | string, ids: Id[]) =>
-    put<Board[]>("/boards/reorder", { view_id, ids }),
+  reorderBoards: (view_id: Id | string, ids: Id[], subview_id: Id | string | null = null) =>
+    put<Board[]>("/boards/reorder", { view_id, ids, subview_id }),
 
   // What a board carries: its sections and its widgets.
   boardSections: boardSections,

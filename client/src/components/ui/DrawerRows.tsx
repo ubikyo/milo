@@ -4,7 +4,7 @@ import { IconGripVertical, IconTrash } from "@tabler/icons-react";
 import type { ComponentType, CSSProperties, DragEvent, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import AddButton from "./AddButton";
 import EmptyPanel from "./EmptyPanel";
-import { GREEN, RED } from "../../themes/colors";
+import { DANGER_HOVER, GREEN, RED } from "../../themes/colors";
 import { PLUS_SIZE } from "../../themes/plus";
 
 // The common look of a widget drawer's lists — its columns (ColumnFields), the
@@ -379,7 +379,7 @@ export function DeleteSelectedButton({
       size="xs"
       justify="flex-start"
       px={0}
-      c={hovered ? "var(--mantine-color-red-9)" : RED}
+      c={hovered ? DANGER_HOVER : RED}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       leftSection={<IconTrash size={PLUS_SIZE} />}

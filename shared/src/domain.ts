@@ -193,6 +193,13 @@ export interface View {
    */
   is_hidden: boolean;
   created_at: string;
+  /**
+   * "Désactiver vue parente": outside interface editing, its tab leads
+   * nowhere — its sub-views do, from the list that opens under it.
+   */
+  parent_disabled: boolean;
+  /** Its sub-views, in their groups (SubviewGroup). */
+  subviews: SubviewGroup[];
 }
 
 /**
@@ -276,7 +283,31 @@ export interface Board {
    * editing only. At least one board of its view stays shown.
    */
   is_hidden: boolean;
+  /** The "page" sub-view it is a board of; null for one of its view's boards. */
+  subview_id: Id | null;
   created_at: string;
+}
+
+/** What a sub-view opens: its own boards, or a window. */
+export type SubviewKind = "page" | "modal";
+
+export const SUBVIEW_KINDS: readonly SubviewKind[] = ["page", "modal"];
+
+/** A sub-view of a view: an entry of the list under its tab. */
+export interface Subview {
+  id: Id;
+  name: string;
+  kind: SubviewKind;
+}
+
+/**
+ * A group of sub-views, with its sub-views in order. The sub-views without a
+ * group come first, as one with no id and no name.
+ */
+export interface SubviewGroup {
+  id: Id | null;
+  name: string;
+  subviews: Subview[];
 }
 
 /** Project boards are boards like the others. */

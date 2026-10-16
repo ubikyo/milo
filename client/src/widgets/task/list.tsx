@@ -26,14 +26,14 @@ function ListFields({ config, onChange }: WidgetConfigProps) {
     <>
       <CopyPasteActions scope="tasks" items={["labels"]} />
       <Stack gap="xl">
+        {/* The board's labels: they go to saving. */}
+        <LabelGroupFields kind="task-labels" />
         <Switch
           color="teal"
           label="Numéro des cartes"
           checked={withNumbers(config)}
           onChange={(e) => onChange(withField(config, NUMBERS, e.currentTarget.checked))}
         />
-        {/* The board's labels: they go to saving. */}
-        <LabelGroupFields kind="task-labels" />
         {canEditSettings && <MailTemplates canEdit={canEditTemplates} only={TASKS_MAIL_TEMPLATE_KEYS} />}
       </Stack>
     </>

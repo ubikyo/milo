@@ -8,6 +8,7 @@ import AssetNumberTemplateFields from "../../components/declared-assets/AssetNum
 import DeclaredAssetTablesFields from "../../components/declared-assets/DeclaredAssetTablesFields";
 import { DECLARED_ASSET_LOOKS, EXTRA_ENTRY_LISTS } from "../../components/declared-assets/kinds";
 import ColumnFields from "../../components/ui/ColumnFields";
+import { DRAWER_WIDTH } from "../../components/ui/IndicatorDrawer";
 import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import LabelTemplatesFields from "../../components/ui/LabelTemplatesFields";
@@ -76,5 +77,6 @@ export const declaredAssetListWidget = (kind: DeclaredAssetKind): DeclaredAssetW
   ownClicks: true,
   fill: true,
   Display: ({ config, id }) => <DeclaredAssetsList kind={kind} config={config} blockId={id} />,
+  drawerSize: DRAWER_WIDTH + 100,
   Config: listFields(kind),
 });

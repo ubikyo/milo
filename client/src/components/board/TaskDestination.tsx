@@ -1,16 +1,18 @@
 import { Group, Select, Text } from "@mantine/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { itemLink } from "@milo/shared";
-import type { Board, Id, LinkTargetKind, TaskList, View } from "@milo/shared";
+import type { Id, LinkTargetKind, TaskList } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage } from "../../lib/errors";
+import { useSourceWidgets } from "../../lib/sources";
 
 // "Créer une tâche", from the context menu of a project, a support request,
 // a workstation or an Access mode item. The card details
 // open empty (components/board/CardDrawer.tsx): they take the item's name
 // — editable —, and the description carries the link back to it. You
-// choose where it goes, on a row above the title: the company (the item's own
-// by default), then the board, then the list.
+// choose where it goes, on a row above the title: the view, then the board,
+// then the list. From a ticket or a project, only those of the Tâches widgets
+// its widget creates in (TASK_CREATION).
 
 /** The item the task is created from. */
 export interface SourceTask {
@@ -25,6 +27,8 @@ export interface SourceTask {
    * category. Its name is used to guess the company and the task board.
    */
   boardName?: string;
+  /** The keys of the Tâches widgets the task may go to; any, without. */
+  targets?: string[];
 }
 
 /** A name as compared: case-insensitive, accent-free, punctuation-free. */
@@ -69,15 +73,15 @@ const escape = (text: string): string =>
     .replace(/"/g, "&quot;");
 
 /**
- * The card's description: an empty line, where you write first, an em
- * dash, then where it comes from: its name, as a link back to it.
+ * The card's description — a project's —: an empty line, where you write
+ * first, an em dash, then where it comes from: its name, as a link back to it.
  */
-export const descriptionOf = (source: SourceTask): string => {
+export const descriptionOf = (source: SourceTask, created = "Créée"): string => {
   const returnValue = `${window.location.origin}${window.location.pathname}${itemLink(source.kind, source.id)}`;
   const rows = [
     "<p></p>",
     "<p>—</p>",
-    `<p>Créée depuis ${ORIGIN_LABELS[source.kind]} <a href="${escape(returnValue)}" target="_blank" rel="noopener noreferrer">${escape(source.title)}</a></p>`,
+    `<p>${created} depuis ${ORIGIN_LABELS[source.kind]} <a href="${escape(returnValue)}" target="_blank" rel="noopener noreferrer">${escape(source.title)}</a></p>`,
   ];
   if (source.url) {
     rows.push(
@@ -101,14 +105,27 @@ interface TaskDestinationProps {
   onError: (message: string) => void;
 }
 
+type Choice = { id: Id; name: string };
+
+/** Each once, in their order. */
+const unique = (choices: Choice[]): Choice[] =>
+  choices.filter((c, i) => choices.findIndex((o) => o.id === c.id) === i);
+
 /**
  * View, board, list: three cascading choices, on a single row. Each
  * picks the first of what it offers by default.
  */
 export default function TaskDestination({ source, onChange, onError }: TaskDestinationProps) {
-  const [views, setViews] = useState<View[] | null>(null);
+  const targets = source.targets;
+  // The Tâches widgets it may go to, once read.
+  const widgets = useSourceWidgets(targets ? "task.list" : null);
+  const targetWidgets = useMemo(
+    () => (targets && widgets ? widgets.filter((w) => targets.includes(w.key)) : null),
+    [targets, widgets],
+  );
+  const [views, setViews] = useState<Choice[] | null>(null);
   const [view, setView] = useState<string | null>(null);
-  const [boards, setBoards] = useState<Board[] | null>(null);
+  const [boards, setBoards] = useState<Choice[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [lists, setLists] = useState<TaskList[] | null>(null);
   const [listId, setListId] = useState<string | null>(null);
@@ -121,6 +138,14 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
   // The views: the tasks one is picked by default — the one whose name
   // says so —, otherwise the first: there is always a first choice.
   useEffect(() => {
+    // Those of its Tâches widgets.
+    if (targets) {
+      if (!targetWidgets) return;
+      const read = unique(targetWidgets.map((w) => ({ id: w.view_id, name: w.view })));
+      setViews(read);
+      setView(read[0] ? String(read[0].id) : null);
+      return;
+    }
     let cancelled = false;
     api
       .getViews()
@@ -135,7 +160,7 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+  }, [source, targetWidgets]);
 
   // The boards follow the view: the one bearing the origin board's
   // name is picked by default, otherwise the first.
@@ -143,6 +168,17 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     setBoards(null);
     setBoardId(null);
     if (!view) return;
+    if (targets) {
+      const read = unique(
+        (targetWidgets ?? [])
+          .filter((w) => String(w.view_id) === view)
+          .map((w) => ({ id: w.board_id, name: w.board })),
+      );
+      setBoards(read);
+      const chosen = findClosest(source.boardName, read) ?? read[0];
+      setBoardId(chosen ? String(chosen.id) : null);
+      return;
+    }
     let cancelled = false;
     api
       .getBoards(view)
@@ -157,7 +193,7 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, targetWidgets]);
 
   // The lists follow the board; the first is picked by default.
   useEffect(() => {
@@ -167,8 +203,10 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     let cancelled = false;
     api
       .getTaskLists(boardId)
-      .then((readItems) => {
+      .then((all) => {
         if (cancelled) return;
+        // Those its Tâches widgets show (lib/lists.ts, inList).
+        const readItems = targets ? all.filter((l) => !l.list_key || targets.includes(l.list_key)) : all;
         setLists(readItems);
         setListId(readItems[0] ? String(readItems[0].id) : null);
       })

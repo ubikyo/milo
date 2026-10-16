@@ -4,12 +4,15 @@
 
 import { Router } from "express";
 import type { Request } from "express";
-import { isShareLevel } from "@milo/shared";
+import { SUBVIEW_KINDS, isShareLevel } from "@milo/shared";
 import type {
   EntraPrincipal,
   Id,
   OpeningView,
   ShareLevel,
+  SubviewGroup,
+  SubviewKind,
+  SubviewsSaved,
   View,
   ViewSharePermissions,
   ViewShares,
@@ -20,6 +23,8 @@ import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boards } from "../repositories/boards.js";
+import { subviewGroups, subviews } from "../repositories/subviews.js";
+import { mutation, transaction } from "../db/query.js";
 import { receivedOrder } from "../repositories/reorder.js";
 import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
 import { views, openView } from "../repositories/views.js";
@@ -28,7 +33,7 @@ import { workspaces } from "../repositories/workspaces.js";
 import { inviteToShare } from "../lib/invitations.js";
 import { sharePrincipals } from "../lib/workspace-people.js";
 import { root } from "../lib/notify.js";
-import { deleteBoard, visibleBoards } from "./boards.js";
+import { createBoard, deleteBoard, visibleBoards } from "./boards.js";
 import { byId, deleteWithUndo } from "../lib/undo.js";
 
 const VIEW_SCOPES = "views";
@@ -43,6 +48,8 @@ const viewForAccount = (view: ViewRow, user: UserRow): View => {
     ...rest,
     is_owner: ownsView(view, user),
     is_hidden: hiddenTabs.of(user.id, VIEW_SCOPES).has(String(view.id)),
+    parent_disabled: Boolean(view.parent_disabled),
+    subviews: subviewsOf(view, user),
   };
 };
 
@@ -139,6 +146,9 @@ viewRoutes.put("/:id", (req, res) => {
   requireOrganize(req);
   const existing = ownedView(req.params.id, req.user);
   views.rename.run(requireText(req.body.name ?? existing.name, "Le nom de la vue est requis"), existing.id);
+  if (typeof req.body.parent_disabled === "boolean") {
+    views.setParentDisabled.run(Number(req.body.parent_disabled), existing.id);
+  }
   res.json(viewForAccount(views.byId.get(existing.id)!, req.user));
 });
 
@@ -242,3 +252,140 @@ const replaceShares = (req: Request, view: ViewRow, principals: EntraPrincipal[]
   }
   return sharesOf(view);
 };
+
+/**
+ * A view's sub-views: those without a group first — as a group with no id
+ * nor name —, then each group's. A "page" sub-view none of whose boards this
+ * account sees is left out, it would open nothing — except for the view's
+ * owner, who adds its boards.
+ */
+const subviewsOf = (view: ViewRow, user: UserRow): SubviewGroup[] => {
+  const owner = ownsView(view, user);
+  const all = subviews.ofView
+    .all(view.id)
+    .filter(
+      (s) => s.kind !== "page" || owner || boards.visibleInSubview.all(s.id, user.id).length > 0,
+    );
+  const of = (group: Id | null) =>
+    all
+      .filter((s) => s.group_id === group)
+      .map((s) => ({ id: s.id, name: s.name, kind: s.kind as SubviewKind }));
+  return [
+    { id: null, name: "", subviews: of(null) },
+    ...subviewGroups.ofView.all(view.id).map((g) => ({ id: g.id, name: g.name, subviews: of(g.id) })),
+  ];
+};
+
+viewRoutes.get("/:id/subviews", (req, res) => {
+  res.json(subviewsOf(openView(req.params.id, req.user), req.user));
+});
+
+const renameBoard = mutation("UPDATE boards SET name = ? WHERE id = ?");
+
+/** A received row: its key, its id if it has one, and its name. */
+const received = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+
+/** A received list of sub-views. */
+const receivedList = (value: unknown): Record<string, unknown>[] => {
+  if (!Array.isArray(value)) badRequest("Les sous-vues sont requises");
+  return (value as unknown[]).map(received);
+};
+
+/**
+ * The sub-views, replaced as a whole: what is not listed goes — a "page"
+ * one with its boards, and everything they carry. A "page" sub-view is born
+ * with a first board, named after it; renamed, its single board, if it still
+ * bears its name, follows. A row just added and left without a name is not
+ * created; an existing one keeps its name.
+ */
+const replaceSubviews = transaction((req: Request, view: ViewRow): Record<string, Id> => {
+  const groupsIn: unknown = req.body.groups;
+  if (!Array.isArray(groupsIn)) badRequest("Les groupes sont requis");
+  const beforeGroups = new Map(subviewGroups.ofView.all(view.id).map((g) => [g.id, g]));
+  const beforeSubviews = new Map(subviews.ofView.all(view.id).map((s) => [s.id, s]));
+
+  const ungrouped = receivedList(req.body.subviews);
+  const groups = (groupsIn as unknown[])
+    .map(received)
+    .map((g) => ({ key: g.key, id: g.id, name: g.name, items: receivedList(g.subviews) }));
+  const keptGroups = new Set<Id>();
+  const keptSubviews = new Set<Id>();
+  for (const s of [...ungrouped, ...groups.flatMap((g) => g.items)]) {
+    if (s.id !== undefined) {
+      if (!beforeSubviews.has(Number(s.id))) badRequest("Sous-vue introuvable dans cette vue");
+      keptSubviews.add(Number(s.id));
+    }
+    if (!SUBVIEW_KINDS.includes(s.kind as SubviewKind)) badRequest("Type de sous-vue inconnu");
+  }
+  for (const g of groups) {
+    if (g.id === undefined) continue;
+    if (!beforeGroups.has(Number(g.id))) badRequest("Groupe introuvable dans cette vue");
+    keptGroups.add(Number(g.id));
+  }
+
+  // What goes first: the sub-views, with their boards, then the groups.
+  for (const s of beforeSubviews.values()) {
+    if (keptSubviews.has(s.id)) continue;
+    for (const board of boards.ofSubview.all(s.id)) deleteBoard(board, req);
+    subviews.remove.run(s.id);
+  }
+  for (const g of beforeGroups.values()) {
+    if (!keptGroups.has(g.id)) subviewGroups.remove.run(g.id);
+  }
+
+  const ids: Record<string, Id> = {};
+  /** A group's sub-views — or those without one —, in their order. */
+  const place = (items: Record<string, unknown>[], groupId: Id | null) => {
+    let position = 0;
+    for (const s of items) {
+      const existing = s.id === undefined ? undefined : beforeSubviews.get(Number(s.id));
+      const name = text(s.name) || existing?.name || "";
+      if (!name) continue;
+      // What it opens is chosen once, on its creation.
+      const kind = (existing?.kind ?? s.kind) as SubviewKind;
+      if (existing) {
+        const own = boards.ofSubview.all(existing.id);
+        if (own.length === 1 && own[0]!.name === existing.name && name !== existing.name) {
+          renameBoard.run(name, own[0]!.id);
+        }
+        subviews.update.run(groupId, name, kind, position, existing.id);
+      } else {
+        const id = Number(subviews.create.run(view.id, groupId, name, kind, position).lastInsertRowid);
+        if (kind === "page") createBoard(view.id, id, name, req.user.id, null);
+        ids[String(s.key)] = id;
+      }
+      position += 1;
+    }
+  };
+
+  place(ungrouped, null);
+  let groupPosition = 0;
+  for (const g of groups) {
+    const before = g.id === undefined ? undefined : beforeGroups.get(Number(g.id));
+    const name = text(g.name) || before?.name || "";
+    let groupId = before?.id;
+    if (groupId === undefined) {
+      // A group just added, without a name nor sub-views, is not created.
+      if (!name && !g.items.some((s) => text(s.name))) continue;
+      groupId = Number(subviewGroups.create.run(view.id, name, groupPosition).lastInsertRowid);
+      ids[String(g.key)] = groupId;
+    } else {
+      subviewGroups.update.run(name, groupPosition, groupId);
+    }
+    groupPosition += 1;
+    place(g.items, groupId);
+  }
+  return ids;
+});
+
+// Its owner arranges a view's sub-views, as they rename it.
+viewRoutes.put("/:id/subviews", (req, res) => {
+  requireOrganize(req);
+  const view = ownedView(req.params.id, req.user);
+  const ids = replaceSubviews(req, view);
+  const saved: SubviewsSaved = { groups: subviewsOf(view, req.user), ids };
+  res.json(saved);
+});

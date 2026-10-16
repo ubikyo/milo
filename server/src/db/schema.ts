@@ -30,7 +30,9 @@ export const SCHEMA = `
     position INTEGER NOT NULL DEFAULT 0,
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     is_private INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- "Désactiver vue parente": its tab leads nowhere, only its sub-views do.
+    parent_disabled INTEGER NOT NULL DEFAULT 0
   );
 
 
@@ -389,7 +391,10 @@ export const SCHEMA = `
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     is_private INTEGER NOT NULL DEFAULT 0,
     is_locked INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- The "page" sub-view it belongs to, out of its view's boards; null for
+    -- one of its view's boards.
+    subview_id INTEGER REFERENCES subviews(id)
   );
 
   -- Les partages d'un tableau, faits depuis « Partager » sur sa vue : à un
@@ -1413,6 +1418,27 @@ ${DECLARED_ASSET_SCHEMA}
     last_inventory TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+
+  -- A view's sub-views, gathered in their groups and in their order: the
+  -- list that opens under its tab. A "page" sub-view opens its own boards
+  -- (boards.subview_id), kept out of the view's; a "modal" one opens a
+  -- window.
+  CREATE TABLE IF NOT EXISTS subview_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- A sub-view without a group comes before the groups.
+  CREATE TABLE IF NOT EXISTS subviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
+    group_id INTEGER REFERENCES subview_groups(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'page',
+    position INTEGER NOT NULL DEFAULT 0
+  );
 `;
 
 // Indexes. The database had none: every foreign-key read — a list's cards, a
@@ -1424,6 +1450,10 @@ ${DECLARED_ASSET_SCHEMA}
 // indexes with it.
 export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_views_workspace ON views(workspace_id);
+  CREATE INDEX IF NOT EXISTS idx_subview_groups_view ON subview_groups(view_id, position);
+  CREATE INDEX IF NOT EXISTS idx_subviews_view ON subviews(view_id, position);
+  CREATE INDEX IF NOT EXISTS idx_subviews_group ON subviews(group_id, position);
+  CREATE INDEX IF NOT EXISTS idx_boards_subview ON boards(subview_id);
   CREATE INDEX IF NOT EXISTS idx_categories_board ON categories(board_id);
   CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 

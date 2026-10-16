@@ -10,6 +10,7 @@ export const displaySettingsRoutes = Router();
 const displaySettings = (): DisplaySettings => ({
   showGravatars: readSetting("display_show_gravatars", true),
   labThemes: readSetting("lab_themes", false),
+  labSubviews: readSetting("lab_subviews", false),
 });
 
 displaySettingsRoutes.get("/", (_req, res) => {
@@ -21,5 +22,6 @@ displaySettingsRoutes.put("/", (req, res) => {
   if (body.showGravatars !== undefined)
     writeSetting("display_show_gravatars", Boolean(body.showGravatars));
   if (body.labThemes !== undefined) writeSetting("lab_themes", Boolean(body.labThemes));
+  if (body.labSubviews !== undefined) writeSetting("lab_subviews", Boolean(body.labSubviews));
   res.json(displaySettings());
 });

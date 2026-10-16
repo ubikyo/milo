@@ -16,8 +16,8 @@ import { PERCENT_HEIGHT } from "../height";
 
 /**
  * The list settings: at the top, the Contact widgets its suppliers come from
- * and the Taxes widgets its prices' taxes come from, on any board; then the board's product labels, its categories tree,
- * then the grid's columns. The variants are each product's own, in its drawer.
+ * and the Taxes widgets its prices' taxes come from, on any board; then the
+ * grid's columns, the board's product labels and its categories tree. The variants are each product's own, in its drawer.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
@@ -30,10 +30,10 @@ function ListFields(props: IndicatorConfigProps) {
         config={props.config}
         onChange={props.onChange}
       />
+      <ColumnFields columns={PRODUCT_COLUMNS} {...props} />
       {/* The board's labels and categories: they go to saving. */}
       <LabelGroupFields kind="product-labels" />
       <ProductTablesFields />
-      <ColumnFields columns={PRODUCT_COLUMNS} {...props} />
     </Stack>
   );
 }

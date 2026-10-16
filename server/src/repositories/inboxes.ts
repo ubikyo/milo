@@ -13,7 +13,14 @@
 //
 // An inbox received by two widgets goes to the first: the oldest.
 
-import { COLLECTORS, NEW_MESSAGE_LABELS, NEW_TICKET_ACTORS, SUPPORT_NEW_MESSAGE_LABELS, listKey } from "@milo/shared";
+import {
+  COLLECTORS,
+  NEW_MESSAGE_LABELS,
+  NEW_TICKET_ACTORS,
+  SUPPORT_NEW_MESSAGE_LABELS,
+  listKey,
+  widgetReference,
+} from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { selection } from "../db/query.js";
 import { optins, pair } from "./optins.js";
@@ -203,6 +210,23 @@ export const receivedTags = (): Inbox[] => {
   }
   return [...views.values()];
 };
+
+/**
+ * The workstation list an agent names by its address — "/api/inventory/6WF6",
+ * its reference as its drawer shows it (widgetReference), without its "#",
+ * case aside —; null if no list has that reference.
+ */
+export const widgetInbox = (reference: string): Pick<Inbox, "board_id" | "list"> | null => {
+  const wanted = `#${reference.replace(/^#/, "").toUpperCase()}`;
+  for (const widget of receivers.all(TYPE)) {
+    const config = parsed(widget.config);
+    if (widgetReference(TYPE, config) === wanted) return { board_id: widget.board_id, list: listKey(config) };
+  }
+  return null;
+};
+
+/** The workstation lists' type. */
+const TYPE = "managed_device_asset.list";
 
 /** The list where a workstation of this tag goes; null if no list receives it. */
 export const tagInbox = (tag: string): Inbox | null =>

@@ -75,12 +75,11 @@
   min-height: 32px;
 }
 
-/* TEST: darker than the themes' menu hover, which barely stands out on the
-   account menu's background: a neutral gray in light, below the background
-   (dark-5) in dark. */
+/* The menus' hover — the account's, the sub-views' list and inset: a
+   neutral gray in light, lighter than the menus' background in dark. */
 .menuItem.menuItem:hover,
 .menuItem.menuItem[data-hovered] {
-  background-color: light-dark(#e0e0e0, var(--mantine-color-dark-6));
+  background-color: light-dark(#e0e0e0, var(--mantine-color-dark-5));
 }
 
 /* The account's avatar: no focus ring nor highlight, whatever gives it focus —

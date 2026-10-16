@@ -20,12 +20,15 @@ import {
   IconCopy,
   IconEye,
   IconFolderSymlink,
+  IconHeadset,
   IconMessage,
   IconPaperclip,
   IconSettings,
+  IconSquarePlus,
 } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { CreationsContext } from "../../lib/creations";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { useFileDrag } from "../../lib/useFileDrag";
@@ -68,6 +71,7 @@ import type {
   Category,
   Id,
   MilestoneType,
+  Project,
   ProjectAttachment,
   ProjectBoard,
   ProjectInput,
@@ -121,6 +125,9 @@ interface ProjectDrawerProps {
   context: string | null;
   /** On creation: the "Projets" widget it is added from. */
   listKey?: string;
+  /** On creation: the name and description it starts from — a ticket's (lib/creations.ts). */
+  defaultName?: string;
+  defaultDescription?: string;
   /** The milestone types from the settings: the slider picks one. */
   milestoneTypes: MilestoneType[];
   users: PublicUser[];
@@ -149,6 +156,8 @@ export default function ProjectDrawer({
   categories: boardCategories,
   context,
   listKey,
+  defaultName = "",
+  defaultDescription = "",
   milestoneTypes: boardMilestoneTypes,
   users,
   labels: boardLabels,
@@ -184,6 +193,10 @@ export default function ProjectDrawer({
   const [number, setNumber] = useState(0);
 
   const isEditing = Boolean(projectId);
+  /** The project as read: what its "Actions" menu creates from it. */
+  const [readProject, setReadProject] = useState<Project | null>(null);
+  const created = useContext(CreationsContext);
+  const creations = readProject && readProject.id === projectId ? created.ofProject(readProject) : {};
 
   // Its categories, milestone types and labels are its "Projets" widget's:
   // the project's own, read with it, or the one it is added from.
@@ -249,13 +262,14 @@ export default function ProjectDrawer({
       const defaultValue = types.find((t) => t.name === DEFAULT_MILESTONE_TYPE);
       setForm({
         ...emptyForm,
+        name: defaultName,
         category_id: categoryNodes(cats)[0]?.id ?? "",
         milestone_type_id: defaultValue ? String(defaultValue.id) : "",
       });
       setComments([]);
       setAttachments([]);
       setNumber(0);
-      editor?.commands.setContent("");
+      editor?.commands.setContent(defaultDescription);
       return;
     }
 
@@ -263,6 +277,7 @@ export default function ProjectDrawer({
     setNumber(0);
     setAttachments([]);
     api.getProject(projectId).then((project) => {
+      setReadProject(project);
       setReadKey(project.list_key);
       setNumber(project.number);
       setForm({
@@ -279,6 +294,8 @@ export default function ProjectDrawer({
       setAttachments(project.attachments);
       editor?.commands.setContent(project.description || "");
     });
+    // The name and description it starts from are those at its opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, projectId, editor]);
 
   const refreshComments = async () => {
@@ -527,6 +544,17 @@ export default function ProjectDrawer({
                       onClick={() => setMove("copy")}
                     >
                       Copier
+                    </Menu.Item>
+                  )}
+                  {(creations.request || creations.task) && <Menu.Divider />}
+                  {creations.request && (
+                    <Menu.Item leftSection={<IconHeadset size={16} />} onClick={creations.request}>
+                      Créer un ticket
+                    </Menu.Item>
+                  )}
+                  {creations.task && (
+                    <Menu.Item leftSection={<IconSquarePlus size={16} />} onClick={creations.task}>
+                      Créer une tâche
                     </Menu.Item>
                   )}
                 </Menu.Dropdown>

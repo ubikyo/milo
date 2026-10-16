@@ -39,6 +39,14 @@ export default function LabTab({ canEdit }: LabTabProps) {
             disabled={!canEdit || ongoing}
             color="teal"
           />
+          {/* Off: the tabs neither list nor manage the sub-views. */}
+          <Switch
+            label="Sous vue"
+            checked={settings.labSubviews}
+            onChange={(e) => change({ labSubviews: e.currentTarget.checked })}
+            disabled={!canEdit || ongoing}
+            color="teal"
+          />
         </Stack>
       </Input.Wrapper>
     </Stack>

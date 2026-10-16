@@ -12,9 +12,9 @@ export const PAGE_GUTTER = 50;
 export const BOTTOM_CLEARANCE = 30;
 
 /**
- * The top of the view switch, measured from the bottom of the window. Published
- * by the switch itself (components/ui/ViewSwitch.tsx), since only it knows its
- * height — it changes with the text size and the number of views. The fallback
+ * The top of the board switch, measured from the bottom of the window. Published
+ * by the switch itself (components/ui/BoardSwitch.tsx), since only it knows its
+ * height — it changes with the text size and the number of boards. The fallback
  * value covers the first render, before it has been able to measure itself:
  * the page inset, plus the height of the switch without inner padding.
  */

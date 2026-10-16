@@ -251,6 +251,11 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE users ADD COLUMN default_view TEXT NOT NULL DEFAULT ''");
   }
   viewsAndBoards(db);
+  ungroupedSubviews(db);
+  boardsOfSubviews(db);
+  if (!columns(db, "views").includes("parent_disabled")) {
+    db.exec("ALTER TABLE views ADD COLUMN parent_disabled INTEGER NOT NULL DEFAULT 0");
+  }
   splitSettings(db);
   permissionsByWidgetType(db);
   contexts(db);
@@ -4190,5 +4195,64 @@ const supportRepliesPerWidget = (db: Database): void => {
     }
     for (const key of TICKETS_MAIL_TEMPLATE_KEYS) delete custom[key];
     writeSetting(db, "mail_templates", custom);
+  })();
+};
+
+/**
+ * A sub-view's boards, once they pointed at it: a "page" sub-view had a single
+ * one, which it designated (subviews.board_id, dropped). Called once the old
+ * sub-views are renamed and the new ones created and filled.
+ */
+const pointBoardsAtSubviews = (db: Database): void => {
+  db.exec(`
+    ALTER TABLE boards ADD COLUMN subview_id INTEGER REFERENCES subviews(id);
+    UPDATE boards SET subview_id =
+      (SELECT s.id FROM subviews_migration s WHERE s.board_id = boards.id);
+    DROP TABLE subviews_migration;
+  `);
+};
+
+/**
+ * Boards from before they could belong to a sub-view: only those of the
+ * sub-views from before a "page" one had several boards (subviews.board_id)
+ * have one.
+ */
+const boardsOfSubviews = (db: Database): void => {
+  if (columns(db, "boards").includes("subview_id")) return;
+  if (!columns(db, "subviews").includes("board_id")) {
+    db.exec("ALTER TABLE boards ADD COLUMN subview_id INTEGER REFERENCES subviews(id)");
+    return;
+  }
+  db.transaction(() => {
+    db.exec("ALTER TABLE subviews RENAME TO subviews_migration");
+    db.exec("DROP INDEX IF EXISTS idx_subviews_view");
+    db.exec("DROP INDEX IF EXISTS idx_subviews_group");
+    db.exec("DROP INDEX IF EXISTS idx_subviews_board");
+    db.exec(SCHEMA);
+    db.exec(`
+      INSERT INTO subviews (id, view_id, group_id, name, kind, position)
+      SELECT id, view_id, group_id, name, kind, position FROM subviews_migration;
+    `);
+    pointBoardsAtSubviews(db);
+  })();
+};
+
+/**
+ * Sub-views from before those without a group: each one takes its group's
+ * view, and its group becomes optional.
+ */
+const ungroupedSubviews = (db: Database): void => {
+  if (columns(db, "subviews").includes("view_id")) return;
+  db.transaction(() => {
+    db.exec("ALTER TABLE subviews RENAME TO subviews_migration");
+    db.exec("DROP INDEX IF EXISTS idx_subviews_group");
+    db.exec("DROP INDEX IF EXISTS idx_subviews_board");
+    db.exec(SCHEMA);
+    db.exec(`
+      INSERT INTO subviews (id, view_id, group_id, name, kind, position)
+      SELECT s.id, g.view_id, s.group_id, s.name, s.kind, s.position
+      FROM subviews_migration s JOIN subview_groups g ON g.id = s.group_id;
+    `);
+    pointBoardsAtSubviews(db);
   })();
 };

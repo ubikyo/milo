@@ -6,6 +6,10 @@
 // to an input associates them. The cables hang, swing and bounce: each is a
 // rope (verlet) pinned to its two connectors.
 //
+// A widget that creates in others — a Tickets or Projets widget, its tasks,
+// projects or tickets — has outputs instead ("out"): on its right, plugged into
+// the input on the left of the widgets it creates in.
+//
 // The screen edits a draft: "Enregistrer" hands the drawer the widgets
 // associated with each input, and where each widget sits; the drawer's
 // "Sauvegarder" writes them, as its other fields.
@@ -41,7 +45,12 @@ export interface WidgetLinkInput {
   types: string[];
   /** True when the widgets it reads must all be of one type: an indicator's. */
   sameType?: boolean;
+  /** True when it takes one widget at most. */
+  single?: boolean;
 }
+
+/** Which way the widget's connectors go: it reads the others, or creates in them. */
+export type LinksDirection = "in" | "out";
 
 /** The widgets associated with each input, by field. */
 export type WidgetLinks = Record<string, string[]>;
@@ -119,6 +128,7 @@ export function WidgetLinksField({
   onChange,
   apply,
   label = "Widgets associés",
+  direction = "in",
 }: {
   inputs: WidgetLinkInput[];
   config: unknown;
@@ -129,6 +139,7 @@ export function WidgetLinksField({
     byKey: Map<string, SourceWidget>,
   ) => Record<string, unknown>;
   label?: string;
+  direction?: LinksDirection;
 }) {
   const [opened, setOpened] = useState(false);
   const types = [...new Set(inputs.flatMap((i) => i.types))];
@@ -193,6 +204,7 @@ export function WidgetLinksField({
             widgets={widgets}
             links={links}
             layout={layoutOf(config)}
+            direction={direction}
             onClose={() => setOpened(false)}
             onSave={save}
           />
@@ -356,16 +368,25 @@ const snap = (p: Point, grid: boolean): Point =>
   grid ? { x: Math.round(p.x / GRID) * GRID, y: Math.round(p.y / GRID) * GRID } : p;
 
 /** A widget read as the board draws it, still: the ghost of one dragged from the list. */
-function NodeFace({ widget, looks }: { widget: SourceWidget; looks: { label: string; output: string; icon: DrawerWidget["icon"] } }) {
+function NodeFace({
+  widget,
+  looks,
+  direction,
+}: {
+  widget: SourceWidget;
+  looks: { label: string; output: string; icon: DrawerWidget["icon"] };
+  direction: LinksDirection;
+}) {
   return (
     <div className={classes.node} data-referenced>
       <looks.icon size={28} stroke={1.5} />
       <Text size="xs" fw={600} ta="center" lineClamp={2}>
         {looks.label}
       </Text>
-      <div className={classes.port} data-side="out" style={{ top: NODE / 2 }}>
+      <div className={classes.port} data-side={direction === "out" ? "in" : "out"} style={{ top: NODE / 2 }}>
+        {direction === "out" && <span className={classes.portLabel}>{looks.output}</span>}
         <span className={classes.connector} />
-        <span className={classes.portLabel}>{looks.output}</span>
+        {direction === "in" && <span className={classes.portLabel}>{looks.output}</span>}
       </div>
       <div className={classes.caption}>
         <div className={classes.reference}>{widget.reference}</div>
@@ -382,6 +403,7 @@ function LinksBoard({
   widgets,
   links: initialLinks,
   layout: initialLayout,
+  direction,
   onClose,
   onSave,
 }: {
@@ -389,6 +411,7 @@ function LinksBoard({
   widgets: SourceWidget[];
   links: WidgetLinks;
   layout: Partial<Layout>;
+  direction: LinksDirection;
   onClose: () => void;
   onSave: (links: WidgetLinks, layout: Layout) => void;
 }) {
@@ -396,6 +419,8 @@ function LinksBoard({
   const byKey = useMemo(() => new Map(widgets.map((w) => [w.key, w])), [widgets]);
   const types = useMemo(() => new Set(inputs.flatMap((i) => i.types)), [inputs]);
   const offered = useMemo(() => widgets.filter((w) => types.has(w.type)), [widgets, types]);
+  // The widget's connectors on its right, the others' on their left.
+  const out = direction === "out";
 
   const [grid, setGrid] = useState(readGrid);
   const [links, setLinks] = useState<Link[]>(() =>
@@ -404,10 +429,11 @@ function LinksBoard({
   const [layout, setLayout] = useState<Layout>(() => {
     const nodes: Record<string, Point> = {};
     for (const [key, p] of Object.entries(initialLayout.nodes ?? {})) if (byKey.has(key)) nodes[key] = p;
-    // The widgets associated without a place yet: in a column, left of the widget.
+    // The widgets associated without a place yet: in a column, on the side of
+    // the widget's connectors.
     const unplaced = [...new Set(links.map((l) => l.key))].filter((k) => !nodes[k]);
     unplaced.forEach((key, i) => {
-      nodes[key] = { x: -NODE / 2 - 250, y: -NODE / 2 + (i - (unplaced.length - 1) / 2) * 150 };
+      nodes[key] = { x: -NODE / 2 + (out ? 250 : -250), y: -NODE / 2 + (i - (unplaced.length - 1) / 2) * 150 };
     });
     return { self: initialLayout.self ?? { x: -NODE / 2, y: -NODE / 2 }, nodes };
   });
@@ -457,10 +483,10 @@ function LinksBoard({
     if (end.side === "in") {
       const index = inputs.findIndex((i) => i.field === end.field);
       if (index < 0) return null;
-      return { x: o.x + at.x, y: o.y + at.y + (NODE * (index + 1)) / (inputs.length + 1) };
+      return { x: o.x + at.x + (out ? NODE : 0), y: o.y + at.y + (NODE * (index + 1)) / (inputs.length + 1) };
     }
     const node = nodes[end.key];
-    return node ? { x: o.x + node.x + NODE, y: o.y + node.y + NODE / 2 } : null;
+    return node ? { x: o.x + node.x + (out ? 0 : NODE), y: o.y + node.y + NODE / 2 } : null;
   };
 
   /** True when a widget's output can plug into an input, beside the cables there. */
@@ -470,6 +496,7 @@ function LinksBoard({
     if (!input || !type || !input.types.includes(type)) return false;
     const there = others.filter((l) => l.field === field);
     if (there.some((l) => l.key === key)) return false;
+    if (input.single && there.length > 0) return false;
     return !input.sameType || there.every((l) => typeOf(byKey, l.key) === type);
   };
 
@@ -744,7 +771,7 @@ function LinksBoard({
           browser draws it under the pointer (setDragImage). */}
       {ghost && (
         <div ref={ghostRef} className={classes.ghost}>
-          <NodeFace widget={ghost} looks={looksOf(ghost)} />
+          <NodeFace widget={ghost} looks={looksOf(ghost)} direction={direction} />
         </div>
       )}
       {/* The widgets one may associate: the widgets drawer's panel, its width,
@@ -889,7 +916,7 @@ function LinksBoard({
             ))}
           </svg>
 
-          {/* The widget being set, its inputs on its left. */}
+          {/* The widget being set, its inputs on its left — its outputs on its right. */}
           <div
             className={classes.node}
             data-referenced
@@ -906,16 +933,17 @@ function LinksBoard({
                 <div
                   key={input.field}
                   className={classes.port}
-                  data-side="in"
+                  data-side={out ? "out" : "in"}
                   style={{ top: (NODE * (index + 1)) / (inputs.length + 1) }}
                 >
-                  <span className={classes.portLabel}>{input.label}</span>
+                  {!out && <span className={classes.portLabel}>{input.label}</span>}
                   <span
                     className={classes.connector}
                     data-linked={linked(end) || undefined}
                     {...connectorState(end)}
                     onPointerDown={(e) => grab(end, e)}
                   />
+                  {out && <span className={classes.portLabel}>{input.label}</span>}
                 </div>
               );
             })}
@@ -925,7 +953,7 @@ function LinksBoard({
             </div>
           </div>
 
-          {/* The widgets read, their output on their right. */}
+          {/* The widgets read, their output on their right — those created in, their input on their left. */}
           {placed.map(([key, at]) => {
             const w = byKey.get(key);
             if (!w) return null;
@@ -951,14 +979,15 @@ function LinksBoard({
                 >
                   <IconX size={12} />
                 </UnstyledButton>
-                <div className={classes.port} data-side="out" style={{ top: NODE / 2 }}>
+                <div className={classes.port} data-side={out ? "in" : "out"} style={{ top: NODE / 2 }}>
+                  {out && <span className={classes.portLabel}>{looks.output}</span>}
                   <span
                     className={classes.connector}
                     data-linked={linked(end) || undefined}
                     {...connectorState(end)}
                     onPointerDown={(e) => grab(end, e)}
                   />
-                  <span className={classes.portLabel}>{looks.output}</span>
+                  {!out && <span className={classes.portLabel}>{looks.output}</span>}
                 </div>
                 {/* Its reference right under its frame, the whole width; its board under it. */}
                 <div className={classes.caption}>
@@ -973,7 +1002,9 @@ function LinksBoard({
 
           {placed.length === 0 && (
             <Text className={classes.hint} size="sm" c="dimmed">
-              Glissez un widget de la liste pour l'ajouter, puis reliez sa sortie à une entrée.
+              {out
+                ? "Glissez un widget de la liste pour l'ajouter, puis reliez une sortie à son entrée."
+                : "Glissez un widget de la liste pour l'ajouter, puis reliez sa sortie à une entrée."}
             </Text>
           )}
 

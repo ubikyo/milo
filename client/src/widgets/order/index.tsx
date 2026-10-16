@@ -48,10 +48,9 @@ export interface OrderWidget extends IndicatorWidgetBase<string> {
  * The list settings: at the top, the widgets it reads — the Contact widgets
  * its suppliers come from, the Produits widgets its products come from, the
  * Entrepôts widgets its delivery warehouses come from —, on
- * any board; then the widget's order labels, its numbering formats; for
- * whoever may modify the Paramétrage, the templates of the e-mails to the
- * supplier, then their predefined replies; last, its columns, right above
- * "Apparence".
+ * any board; then its columns, the widget's order labels, its numbering
+ * formats; for whoever may modify the Paramétrage, the templates of the
+ * e-mails to the supplier, then their predefined replies.
  */
 function ListFields(props: IndicatorConfigProps) {
   const canEditSettings = useSettingsMode();
@@ -67,6 +66,7 @@ function ListFields(props: IndicatorConfigProps) {
         config={props.config}
         onChange={props.onChange}
       />
+      <ColumnFields columns={ORDER_COLUMNS} {...props} />
       {/* The widget's labels: they go to saving. */}
       <LabelGroupFields kind="order-labels" />
       {/* Its numbering formats: its own data, written as they are edited. */}
@@ -101,7 +101,6 @@ function ListFields(props: IndicatorConfigProps) {
           />
         </>
       )}
-      <ColumnFields columns={ORDER_COLUMNS} {...props} />
     </Stack>
   );
 }

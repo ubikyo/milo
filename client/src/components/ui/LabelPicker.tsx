@@ -245,6 +245,8 @@ export default function LabelPicker({
   const [renamingGroup, setRenamingGroup] = useState<{ id: number; name: string } | null>(null);
   const [hoveredGroup, setHoveredGroup] = useState<number | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<LabelGroup | null>(null);
+  // The hovered "+" link, by its text.
+  const [addHovered, setAddHovered] = useState<string | null>(null);
 
   // The groups: read here, since the labels alone do not name the empty ones.
   const [groups, setGroups] = useState<LabelGroup[]>([]);
@@ -541,7 +543,17 @@ export default function LabelPicker({
 
   /** A green "+" link: a label at the end of a group, a group at the end. */
   const addLink = (text: string, onClick: () => void) => (
-    <Anchor component="button" type="button" size="sm" c={ADD_ACTION.color} onClick={onClick} px={4}>
+    <Anchor
+      component="button"
+      type="button"
+      size="sm"
+      // A tone darker on hover, as every "+" action (AddButton).
+      c={addHovered === text ? ADD_ACTION.hover : ADD_ACTION.color}
+      onMouseEnter={() => setAddHovered(text)}
+      onMouseLeave={() => setAddHovered(null)}
+      onClick={onClick}
+      px={4}
+    >
       <Group gap={PLUS_GAP} wrap="nowrap">
         <IconPlus size={PLUS_SIZE} />
         <span>{text}</span>

@@ -1,7 +1,7 @@
 import { Button, type ButtonProps } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
-import { ADD_ACTION } from "../../themes/colors";
+import { ADD_ACTION, darker } from "../../themes/colors";
 import { PLUS_SIZE } from "../../themes/plus";
 
 // "Add" action placed at the end of a list: a green label without background, a
@@ -27,7 +27,8 @@ export default function AddButton({ label, onClick, ...props }: AddButtonProps) 
         props.disabled
           ? "var(--mantine-color-dimmed)"
           : hovered
-            ? ADD_ACTION.hover
+            ? // A tone darker than its color — the window's own one included.
+              darker(`var(--milo-add-link-color, ${ADD_ACTION.color})`)
             : `var(--milo-add-link-color, ${ADD_ACTION.color})`
       }
       fz="var(--milo-add-link-size, var(--mantine-font-size-xs))"

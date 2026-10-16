@@ -156,9 +156,9 @@ const WITH_ENTRA = new Set(["administration", "backup"]);
  * in, its background reaching the edge (tabs.css), and it stands for
  * Mantine's single inset (--mb-padding).
  */
-const PADDING_LEFT = "var(--milo-settings-window-padding-left)";
+export const PADDING_LEFT = "var(--milo-settings-window-padding-left)";
 
-const MODAL_HEADER = {
+export const MODAL_HEADER = {
   ...modalHeaderStyles(PADDING_LEFT),
   // Its header's inset, set apart ("Entête").
   header: {
@@ -174,7 +174,7 @@ const MODAL_HEADER = {
 
 
 /** The tabs' labels' width, set in the themes ("Onglets"). */
-const TABS_WIDTH = "var(--milo-settings-tab-width)";
+export const TABS_WIDTH = "var(--milo-settings-tab-width)";
 
 /** The window widens as much as the tabs do, from their 170 px. */
 const WIDTH = SETTINGS_WINDOW_WIDTH;

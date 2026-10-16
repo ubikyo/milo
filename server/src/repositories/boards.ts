@@ -18,20 +18,32 @@ export const BOARD_NOT_FOUND = "Tableau introuvable";
 
 export const boards = {
   byId: selection<BoardRow>("SELECT * FROM boards WHERE id = ?"),
-  /** Those of a view that this account sees, in the common order: (view, account). */
+  /**
+   * Those of a view that this account sees, in the common order: (view,
+   * account). A sub-view's boards are not among them: they open from their
+   * sub-view.
+   */
   visibleIn: selection<BoardRow>(
     `SELECT b.* FROM boards b, users me
-     WHERE b.view_id = ? AND me.id = ? AND ${SEES_BOARD("b", "me")}
+     WHERE b.view_id = ? AND me.id = ? AND ${SEES_BOARD("b", "me")} AND b.subview_id IS NULL
      ORDER BY b.position, b.id`,
   ),
+  /** Those of a "page" sub-view that this account sees: (sub-view, account). */
+  visibleInSubview: selection<BoardRow>(
+    `SELECT b.* FROM boards b, users me
+     WHERE b.subview_id = ? AND me.id = ? AND ${SEES_BOARD("b", "me")}
+     ORDER BY b.position, b.id`,
+  ),
+  /** All those of a "page" sub-view, whoever sees them. */
+  ofSubview: selection<BoardRow>("SELECT * FROM boards WHERE subview_id = ? ORDER BY position, id"),
   /** All those of a view, whoever sees them. */
   ofView: selection<BoardRow>("SELECT * FROM boards WHERE view_id = ? ORDER BY position, id"),
   nextPosition: scalar<NextRow>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM boards WHERE view_id = ?",
   ),
   create: mutation(
-    `INSERT INTO boards (view_id, name, position, show_card_numbers, owner_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO boards (view_id, subview_id, name, position, show_card_numbers, owner_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
     `UPDATE boards SET name = ?, all_contexts_label = ?, context_group = ?, show_card_numbers = ?

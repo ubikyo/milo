@@ -62,7 +62,15 @@ export interface ContextsMenuProps {
    * button, the target is not another one, and the list starts from its left.
    */
   inTab?: boolean;
+  /**
+   * Placed in the open board's segment, at the bottom of the page, to the right
+   * of its name: the same target as in a tab, but the list opens upwards.
+   */
+  inSegment?: boolean;
 }
+
+/** The cell that holds the target, in a tab or in a segment. */
+const HOLDER = '[role="tab"], .mantine-SegmentedControl-control';
 
 export default function ContextsMenu({
   items,
@@ -76,7 +84,10 @@ export default function ContextsMenu({
   onChangeGroup,
   visibleFrom,
   inTab = false,
+  inSegment = false,
 }: ContextsMenuProps) {
+  // In a tab or in a segment, the target is the same: bare text after the name.
+  const inline = inTab || inSegment;
   const [isOpen, setOpened] = useState(false);
   // In the tab, the list lands on the row's rule and starts from the tab's left
   // edge. The target is only as tall as its text, to the right of the name:
@@ -91,19 +102,20 @@ export default function ContextsMenu({
   /** The target, captured on opening: the measurement follows it as long as the list is open. */
   const targetRef = useRef<HTMLElement | null>(null);
   const measure = (target: HTMLElement) => {
-    const tab = target.closest('[role="tab"]')?.getBoundingClientRect();
+    const tab = target.closest(HOLDER)?.getBoundingClientRect();
     const button = target.getBoundingClientRect();
     if (!tab) return;
     // Right under the tab: its bottom border already lies on the row's line
-    // and takes its background — the list must not cover it.
+    // and takes its background — the list must not cover it. Above the
+    // segment, the same gap as under a row.
     setTabOffset({
-      mainAxis: tab.bottom - button.bottom,
+      mainAxis: inSegment ? button.top - tab.top + ROW_MENU_OFFSET : tab.bottom - button.bottom,
       crossAxis: tab.left - button.left,
     });
     setTabWidth(tab.width);
   };
   const toggle = (target: HTMLElement) => {
-    if (inTab && !isOpen) {
+    if (inline && !isOpen) {
       targetRef.current = target;
       measure(target);
     }
@@ -113,10 +125,12 @@ export default function ContextsMenu({
   // target's label changing: the list follows.
   useEffect(() => {
     const target = targetRef.current;
-    const tab = target?.closest('[role="tab"]');
-    if (!inTab || !isOpen || !target || !tab) return;
+    const tab = target?.closest(HOLDER);
+    if (!inline || !isOpen || !target || !tab) return;
     const following = new ResizeObserver(() => measure(target));
     following.observe(tab);
+    // A segment does not change its colors: it only follows.
+    if (inSegment) return () => following.disconnect();
     // The tab takes a background close to the open list's, its border in the
     // same color (ContextsMenu.module.css, data-contexts-open).
     tab.setAttribute("data-contexts-open", "");
@@ -124,7 +138,7 @@ export default function ContextsMenu({
       following.disconnect();
       tab.removeAttribute("data-contexts-open");
     };
-  }, [inTab, isOpen]);
+  }, [inline, inSegment, isOpen]);
   /** "Tous les contextes" being renamed: the name in its field. */
   const [renamed, setRenamed] = useState<string | null>(null);
   // The validated name, shown while the server responds and the board comes
@@ -261,38 +275,38 @@ export default function ContextsMenu({
       <Popover
         opened={isOpen}
         onChange={setOpened}
-        position={inTab ? "bottom-start" : "bottom-end"}
+        position={inSegment ? "top-start" : inTab ? "bottom-start" : "bottom-end"}
         withinPortal
         shadow="md"
-        offset={inTab ? tabGap : ROW_MENU_OFFSET}
+        offset={inline ? tabGap : ROW_MENU_OFFSET}
         // The list connects to the rule, or to the tab: no top border and no
-        // top corners.
-        styles={TAB_MENU_STYLES}
+        // top corners. Above the segment, it stands free: all its border.
+        styles={inSegment ? undefined : TAB_MENU_STYLES}
       >
         <Popover.Target>
           {/* The same button as the "Actions" menu of the row. */}
           <Button
-            component={inTab ? "span" : "button"}
-            role={inTab ? "button" : undefined}
+            component={inline ? "span" : "button"}
+            role={inline ? "button" : undefined}
             // In the tab, lighter than the board's name; no background or inset
             // — hover changes the text color (tabTarget).
-            fw={inTab ? 300 : undefined}
+            fw={inline ? 300 : undefined}
             // The chevron tight against the label.
-            styles={inTab ? { section: { marginInlineStart: 2 } } : undefined}
-            variant={inTab ? "transparent" : "subtle"}
+            styles={inline ? { section: { marginInlineStart: 2 } } : undefined}
+            variant={inline ? "transparent" : "subtle"}
             color="gray"
             size="xs"
-            px={inTab ? 0 : undefined}
+            px={inline ? 0 : undefined}
             // At the height of the text: the button's 30 px would enlarge the
             // tab as soon as the list appears — in edit mode, for example.
-            h={inTab ? "auto" : undefined}
-            className={inTab ? classes.tabTarget : undefined}
+            h={inline ? "auto" : undefined}
+            className={inline ? classes.tabTarget : undefined}
             rightSection={<IconChevronDown size={14} />}
             aria-label="Contexte"
             visibleFrom={visibleFrom}
             onClick={(e: MouseEvent<HTMLElement>) => toggle(e.currentTarget)}
             style={
-              inTab ? undefined : ({ "--button-hover": NEUTRAL_HOVER } as CSSProperties)
+              inline ? undefined : ({ "--button-hover": NEUTRAL_HOVER } as CSSProperties)
             }
           >
             {current}
@@ -306,7 +320,7 @@ export default function ContextsMenu({
           // In the tab, at least its width: the list only widens if its content
           // requires it — with no context, it always fits. Elsewhere, its own
           // bounds.
-          {...(inTab && tabWidth > 0
+          {...(inline && tabWidth > 0
             ? { miw: tabWidth, maw: Math.max(WIDTH_MAX, tabWidth) }
             : { miw: WIDTH_MIN, maw: WIDTH_MAX })}
         >

@@ -15,23 +15,23 @@ import type { ContactWidget } from "../contact";
 import type { IndicatorConfigProps } from "../support/types";
 
 /**
- * The list settings: at the top, the widget's labels, then the Entrepôts
- * widgets its warehouses come from, on any board; then its label templates;
- * last, the grid's columns.
+ * The list settings: at the top, the Entrepôts widgets its warehouses come
+ * from, on any board; then the grid's columns, the widget's labels, and its
+ * label templates.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
-      {/* The widget's labels: they go to saving. */}
-      <LabelGroupFields kind="location-labels" />
       <WidgetLinksField
         inputs={[{ field: LOCATION_WAREHOUSE_SOURCES, label: "Entrepôt", types: ["warehouse.list"] }]}
         config={props.config}
         onChange={props.onChange}
       />
+      <ColumnFields columns={LOCATION_COLUMNS} defaults={DEFAULT_COLUMNS} {...props} />
+      {/* The widget's labels: they go to saving. */}
+      <LabelGroupFields kind="location-labels" />
       {/* Its label templates: its own data, as the declared assets'. */}
       <LabelTemplatesFields kind="location" />
-      <ColumnFields columns={LOCATION_COLUMNS} defaults={DEFAULT_COLUMNS} {...props} />
     </Stack>
   );
 }

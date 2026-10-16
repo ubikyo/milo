@@ -21,6 +21,16 @@ export const ROW_CONTROL_HEIGHT = 30;
 export const ROW_MENU_OFFSET = (TAB_ROW_HEIGHT - ROW_CONTROL_HEIGHT) / 2;
 
 /**
+ * How far under the row's rule the menus hanging from it open — the
+ * sub-views' list and inset (BoardTabs), the account's (AccountControls):
+ * apart from the row, not resting on it.
+ */
+export const MENU_DROP = 3;
+
+/** The lines inside those menus: the page's background. */
+export const SEPARATOR_COLOR = "var(--mantine-color-body)";
+
+/**
  * The same gap in a drawer's row of tabs. There, no height is imposed: the
  * button provides it, and only the bottom margin it gives itself to stand off
  * the rule remains.

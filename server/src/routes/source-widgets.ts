@@ -28,17 +28,34 @@ export interface SourceRow {
   board: string;
   view_id: Id;
   view: string;
+  rank: number;
 }
 
+/**
+ * In the order of the views and their boards, as the tabs show them: a
+ * view's own boards, then its sub-views' — those without a group first,
+ * then each group's. The rank counts every widget one sees, whatever its
+ * type: the lists of several types merge in that order.
+ */
 const visibleOfType = selection<SourceRow>(
-  `SELECT w.id, w.type, w.config, b.id AS board_id, b.name AS board,
-          v.id AS view_id, v.name AS view
-     FROM board_widgets w
-     JOIN board_sections s ON s.id = w.section_id
-     JOIN boards b ON b.id = s.board_id
-     JOIN views v ON v.id = b.view_id
-    WHERE ${VISIBLE_BOARDS_CLAUSE("b.id")} AND w.type = @type
-    ORDER BY v.position, v.id, b.position, b.id, s.position, s.id, w.position, w.id`,
+  `SELECT id, type, config, board_id, board, view_id, view, rank FROM (
+     SELECT w.id, w.type, w.config, b.id AS board_id, b.name AS board,
+            v.id AS view_id, v.name AS view,
+            ROW_NUMBER() OVER (
+              ORDER BY v.position, v.id, b.subview_id IS NOT NULL,
+                       COALESCE(g.position, -1), g.id, sv.position, sv.id,
+                       b.position, b.id, s.position, s.id, w.position, w.id
+            ) AS rank
+       FROM board_widgets w
+       JOIN board_sections s ON s.id = w.section_id
+       JOIN boards b ON b.id = s.board_id
+       JOIN views v ON v.id = b.view_id
+       LEFT JOIN subviews sv ON sv.id = b.subview_id
+       LEFT JOIN subview_groups g ON g.id = sv.group_id
+      WHERE ${VISIBLE_BOARDS_CLAUSE("b.id")}
+   )
+   WHERE type = @type
+   ORDER BY rank`,
 );
 
 const parsed = (config: string): unknown => {
@@ -71,6 +88,7 @@ export const visibleSources = (req: Request, type: string): SourceWidget[] => {
         board: row.board,
         view_id: row.view_id,
         view: row.view,
+        rank: row.rank,
         config,
       },
     ];

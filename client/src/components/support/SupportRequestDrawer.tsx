@@ -18,10 +18,13 @@ import {
   IconCheck,
   IconChevronDown,
   IconEye,
+  IconFolderPlus,
   IconMessage,
   IconSettings,
+  IconSquarePlus,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useContext, useEffect, useState, useMemo } from "react";
+import { CreationsContext } from "../../lib/creations";
 import { api } from "../../api";
 import { listOf } from "../../lib/list-ref";
 import {
@@ -192,6 +195,9 @@ export default function SupportRequestDrawer({
   following,
   onToggleFollow,
 }: SupportRequestDrawerProps) {
+  // "Créer une tâche", "Créer un projet": once its widget names where.
+  const created = useContext(CreationsContext);
+  const creations = request ? created.ofRequest(request) : {};
   // "Répondre", folded, sticks under the exchanges (SupportReply).
   const [replyAttached, setReplyAttached] = useState(false);
   const [subject, setSubject] = useState("");
@@ -599,6 +605,17 @@ export default function SupportRequestDrawer({
                   >
                     Suivre
                   </Menu.Item>
+                  {(creations.task || creations.project) && <Menu.Divider />}
+                  {creations.task && (
+                    <Menu.Item leftSection={<IconSquarePlus size={16} />} onClick={creations.task}>
+                      Créer une tâche
+                    </Menu.Item>
+                  )}
+                  {creations.project && (
+                    <Menu.Item leftSection={<IconFolderPlus size={16} />} onClick={creations.project}>
+                      Créer un projet
+                    </Menu.Item>
+                  )}
                 </Menu.Dropdown>
               </Menu>
             )}

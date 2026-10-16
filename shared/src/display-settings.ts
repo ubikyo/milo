@@ -8,4 +8,7 @@ export interface DisplaySettings {
   /** "Labo" > "Thèmes": the themes, still in development. Off, the themes'
    *  list, the theme editor and the profile's theme are hidden. */
   labThemes: boolean;
+  /** "Labo" > "Sous vue": the sub-views, still in development. Off, the tabs
+   *  neither list nor manage them, and every view opens on its own boards. */
+  labSubviews: boolean;
 }

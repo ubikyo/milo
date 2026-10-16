@@ -55,6 +55,9 @@ const readCatalog = (type: string, fresh = false): Promise<SourceWidget[]> => {
   return catalog.get(type)!;
 };
 
+/** The widgets of a type one can read, as the hooks below read them: for a gesture. */
+export const readSourceWidgets = (type: string): Promise<SourceWidget[]> => readCatalog(type);
+
 /** The widgets of a type one can read; null while they are read. */
 export function useSourceWidgets(type: string | null): SourceWidget[] | null {
   const [widgets, setWidgets] = useState<SourceWidget[] | null>(null);
@@ -89,7 +92,7 @@ export function useSourceWidgetsOf(types: string[]): SourceWidget[] | null {
     let current = true;
     const read = (fresh: boolean) =>
       Promise.all(types.map((t) => readCatalog(t, fresh)))
-        .then((all) => current && setWidgets(all.flat()))
+        .then((all) => current && setWidgets(all.flat().sort((a, b) => a.rank - b.rank)))
         .catch((e) => {
           for (const t of types) catalog.delete(t);
           notifyError(errorMessage(e));

@@ -92,9 +92,6 @@ export const TAB_ACTIVE_BORDER_WIDTH = "var(--milo-tab-active-border-width)";
 export const TAB_ACTIVE_SIZE = "var(--milo-tab-active-size)";
 export const TAB_ACTIVE_WEIGHT = "var(--milo-tab-active-weight)";
 
-// Green of the "add" actions placed at the end of a list, and its shade on
-// hover: a tone darker, without background. Each theme has its pair, otherwise the
-// hover would darken until unreadable on a dark background.
 /**
  * The dotted line and the "+" that insert a card between two cards, a
  * list between two lists, a section between two sections. It goes all the way to
@@ -102,10 +99,23 @@ export const TAB_ACTIVE_WEIGHT = "var(--milo-tab-active-weight)";
  */
 export const INSERT_LINE = "var(--mantine-color-white)";
 
+/**
+ * An action's color, a tone darker: its hover. Mixed with black rather than
+ * taken from a darker shade — the theme fills each palette with a single
+ * color, all shades alike (main.tsx): "teal-8" is "teal-4".
+ */
+export const darker = (color: string): string => `color-mix(in srgb, ${color} 72%, black)`;
+
+// Green of the "add" actions placed at the end of a list, and its shade on
+// hover: a tone darker, without background. Each theme has its own green.
+const ADD_COLOR = "light-dark(var(--mantine-color-teal-6), var(--mantine-color-teal-4))";
 export const ADD_ACTION = {
-  color: "light-dark(var(--mantine-color-teal-6), var(--mantine-color-teal-4))",
-  hover: "light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-6))",
+  color: ADD_COLOR,
+  hover: darker(ADD_COLOR),
 };
+
+/** A deletion's red, a tone darker: its hover ("Supprimer…"). */
+export const DANGER_HOVER = darker(RED);
 
 // White on a dark background, near-black on a light one: maximum contrast in
 // both themes. Used for modal titles and the active tab.

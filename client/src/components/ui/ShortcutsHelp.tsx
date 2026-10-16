@@ -85,8 +85,8 @@ export default function ShortcutsHelp({
         <Box
           aria-label="Raccourcis clavier"
           h={TARGET_SIZE}
-          // Its foot on the same line as the views' bottom, at the bottom left
-          // (ViewSwitch).
+          // Its foot on the same line as the boards' bottom, at the bottom left
+          // (BoardSwitch).
           style={{ ...CORNER, display: "flex", alignItems: "flex-end" }}
         >
           <Logo variant={2} h={LOGO_HEIGHT} />

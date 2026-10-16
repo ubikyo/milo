@@ -28,6 +28,7 @@ export const views = {
      VALUES (?, ?, ?, ?, ?)`,
   ),
   rename: mutation("UPDATE views SET name = ? WHERE id = ?"),
+  setParentDisabled: mutation("UPDATE views SET parent_disabled = ? WHERE id = ?"),
   remove: mutation("DELETE FROM views WHERE id = ?"),
 };
 

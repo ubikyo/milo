@@ -6,7 +6,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import type { Board, Id } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
-import type { BoardRow, UserRow } from "../db/rows.js";
+import type { BoardRow, SubviewRow, UserRow } from "../db/rows.js";
 import { requireInterface, requireOrganize, requireStructureRight } from "../lib/rights.js";
 import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { concerned, notifyDeletion, root } from "../lib/notify.js";
@@ -32,14 +32,19 @@ import { receivedOrder } from "../repositories/reorder.js";
 import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
 import { openView } from "../repositories/views.js";
 import { boardAccess, ownsView } from "../repositories/shares.js";
+import { subviews } from "../repositories/subviews.js";
 import { byId, deleteWithUndo } from "../lib/undo.js";
 
 /** A setting arrives as a boolean; the database stores it as 0 or 1. */
 const flag = (value: unknown, defaultValue: 0 | 1): 0 | 1 =>
   value === undefined ? defaultValue : (Number(Boolean(value)) as 0 | 1);
 
-/** A view's boards are arranged together, account by account. */
-const viewScope = (viewId: Id) => `boards:${viewId}`;
+/**
+ * A view's boards are arranged together, account by account; those of a
+ * "page" sub-view among themselves.
+ */
+const tabScope = (viewId: Id, subviewId: Id | null) =>
+  subviewId === null ? `boards:${viewId}` : `boards:${viewId}:${subviewId}`;
 
 /**
  * A board as this account sees it: what it may do with it, and the context
@@ -60,20 +65,41 @@ export const boardForAccount = (board: BoardRow, user: UserRow): Board => {
     context: selectedContext(user.id, board.id, contexts),
     is_locked: 0,
     access: boardAccess(board, user) ?? "read",
-    is_hidden: hiddenTabs.of(user.id, viewScope(board.view_id)).has(String(board.id)),
+    is_hidden: hiddenTabs
+      .of(user.id, tabScope(board.view_id, board.subview_id))
+      .has(String(board.id)),
   };
 };
 
+/** The boards of a view — or of one of its "page" sub-views — that this account sees. */
+const seenBoards = (viewId: Id, subviewId: Id | null, user: UserRow): BoardRow[] =>
+  subviewId === null
+    ? boards.visibleIn.all(viewId, user.id)
+    : boards.visibleInSubview.all(subviewId, user.id);
+
 /**
- * The boards of a view that this account sees, in their own order — those it
- * hid at the end.
+ * The boards of a view — or of one of its "page" sub-views — that this
+ * account sees, in their own order — those it hid at the end.
  */
-export const visibleBoards = (viewId: Id, user: UserRow): Board[] =>
+export const visibleBoards = (viewId: Id, user: UserRow, subviewId: Id | null = null): Board[] =>
   withHidden(
     user.id,
-    viewScope(viewId),
-    inOrderOf(user.id, viewScope(viewId), boards.visibleIn.all(viewId, user.id)),
+    tabScope(viewId, subviewId),
+    inOrderOf(user.id, tabScope(viewId, subviewId), seenBoards(viewId, subviewId, user)),
   ).map((b) => boardForAccount(b, user));
+
+/**
+ * The "page" sub-view of this view that a request designates (?subview=,
+ * "subview_id"); null when it designates none.
+ */
+const requestedSubview = (value: unknown, viewId: Id): SubviewRow | null => {
+  if (value === undefined || value === null || value === "") return null;
+  const subview = subviews.byId.get(value);
+  if (!subview || subview.view_id !== viewId || subview.kind !== "page") {
+    throw new HttpError(404, "Sous-vue introuvable");
+  }
+  return subview;
+};
 
 const boardProjects = selection<{ id: Id; name: string }>(
   "SELECT id, name FROM projects WHERE board_id = ?",
@@ -132,13 +158,16 @@ export const deleteBoard = (board: BoardRow, req: Request): void => {
 };
 
 /**
- * A new board in a view, after the others. It belongs to its creator. With no first widget, it is born
+ * A new board in a view — or in one of its "page" sub-views —, after the
+ * others. It belongs to its creator. With no first widget, it is born
  * with no section: its empty screen offers to create one.
  */
 export const createBoard = transaction(
-  (viewId: Id, name: string, owner: Id, firstWidget: string | null): Id => {
+  (viewId: Id, subviewId: Id | null, name: string, owner: Id, firstWidget: string | null): Id => {
     const { next } = boards.nextPosition(viewId);
-    const id = Number(boards.create.run(viewId, name, next, 1, owner, now()).lastInsertRowid);
+    const id = Number(
+      boards.create.run(viewId, subviewId, name, next, 1, owner, now()).lastInsertRowid,
+    );
     if (firstWidget) boardSections.setFirst(id, firstWidget);
     // A list widget brings its own default labels (repositories/list-seeds.ts).
     for (const widget of boardWidgets.all(id)) seedListWidget(widget, id);
@@ -159,7 +188,8 @@ boardRoutes.get("/", (req, res) => {
   const { view } = req.query;
   if (!view) badRequest("La vue est requise");
   const openedView = openView(view, req.user);
-  res.json(visibleBoards(openedView.id, req.user));
+  const subview = requestedSubview(req.query["subview"], openedView.id);
+  res.json(visibleBoards(openedView.id, req.user, subview?.id ?? null));
 });
 
 boardRoutes.post("/", (req, res) => {
@@ -170,8 +200,9 @@ boardRoutes.post("/", (req, res) => {
   if (!ownsView(openedView, req.user)) {
     throw new HttpError(403, "Seul le propriétaire de cette vue peut y ajouter un tableau");
   }
+  const subview = requestedSubview(req.body.subview_id, openedView.id);
   const name = requireText(req.body.name, "Le nom du tableau est requis");
-  const id = createBoard(openedView.id, name, req.user.id, null);
+  const id = createBoard(openedView.id, subview?.id ?? null, name, req.user.id, null);
   res.status(201).json(boardForAccount(boards.byId.get(id)!, req.user));
 });
 
@@ -181,29 +212,31 @@ boardRoutes.post("/", (req, res) => {
 boardRoutes.put("/reorder", (req, res) => {
   requireInterface(req);
   const openedView = openView(req.body.view_id, req.user);
+  const subviewId = requestedSubview(req.body.subview_id, openedView.id)?.id ?? null;
   const order = receivedOrder(
     req.body.ids,
-    boards.visibleIn.all(openedView.id, req.user.id),
+    seenBoards(openedView.id, subviewId, req.user),
     "La liste des identifiants ne correspond pas aux tableaux de cette vue",
   );
-  userTabOrders.store(req.user.id, viewScope(openedView.id), order);
-  res.json(visibleBoards(openedView.id, req.user));
+  userTabOrders.store(req.user.id, tabScope(openedView.id, subviewId), order);
+  res.json(visibleBoards(openedView.id, req.user, subviewId));
 });
 
 // "Masquer": hidden for this account, it only shows in interface editing,
-// greyed at the end of the row. The last board shown in a view stays.
+// greyed at the end of the row. The last board shown in a view — or in a
+// sub-view — stays.
 boardRoutes.put("/:id/hidden", (req, res) => {
   requireInterface(req);
   const board = openBoard(req.params.id, req.user);
   const hidden = req.body.hidden === true;
   if (hidden) {
-    const others = visibleBoards(board.view_id, req.user).filter(
+    const others = visibleBoards(board.view_id, req.user, board.subview_id).filter(
       (b) => b.id !== board.id && !b.is_hidden,
     );
     if (others.length === 0) badRequest("Le dernier tableau affiché ne peut pas être masqué");
   }
-  hiddenTabs.set(req.user.id, viewScope(board.view_id), board.id, hidden);
-  res.json(visibleBoards(board.view_id, req.user));
+  hiddenTabs.set(req.user.id, tabScope(board.view_id, board.subview_id), board.id, hidden);
+  res.json(visibleBoards(board.view_id, req.user, board.subview_id));
 });
 
 // A single board: its view above all, where the application must position

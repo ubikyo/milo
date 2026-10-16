@@ -1,3 +1,18 @@
+# 16 octobre 2026
+
+## Les dernières évolutions de Milo
+
+### Évolutions
+
+- Ajoute de Imprimante 3D et Téléviseurs dans les types de périphériques
+- Le Widget Tickets à une sortie pour créer une tâche et un projet dans ses liaisons
+- Le Widget Projets à une sortie pour créer une tâche et un ticket dans ses liaisons
+- Dans équipements supervisés, ajout du lien pour le collecteur.
+
+### Corrections
+- Augmentation de la largeur des panneaux de configuration de Equipements déclarés et Applications
+
+
 # 15 octobre 2026
 
 ## Les dernières évolutions de Milo
@@ -8,7 +23,7 @@
 - Widget Contact dans Logistique
 - Widget Liste dans Objets
 
-### Evolutions
+### Évolutions
 
 - Faire un CMD+V / CTRL+V télécharge le ou les fichiers dans l'encart "pièces jointes" des widgets compatibles.
 - Dans Équipements déclarés et Applications, le fournisseur est désormais une société d'un widget Contact.
@@ -18,6 +33,7 @@
 - Liste filtre et tri sont persistants pour l'utilisateur.
 - Ajout du délai d'actualisation des messages dans Tickets.
 - Ajout d'une variable {{ticket.original}} avec le message d'origine.
+- Inversement des tabs vues en hauts, tableaux en bas.
 
 ### Corrections
 
@@ -45,11 +61,12 @@ Widget support, on n'affiche plus de message d'erreur de configuration.
 - Ajouter d'entête sur les réponses pré-définies et automatiques.
 - Passage à 100% sur les widgets de contenus.
 
+
 # 14 octobre 2026 #2
 
 ## Corrections de dernières minutes
 
-### Evolutions
+### Évolutions
 
 - Ajout colonne Demandeur et Agents dans support.
 - Dans le menu de Milo en bas à droite, ajout d'un lien vers les versions
@@ -72,7 +89,7 @@ Widget support, on n'affiche plus de message d'erreur de configuration.
 - Fenêtre nouveautés (cette fenêtre).
 - Editeur des connections de widgets.
 
-### Evolutions
+### Évolutions
 
 - Ajout détection nouvelle version avec affichage d'un bouton pour actualiser la fenêtre.
 - Dans les colonnes acteurs ajout choix de l'affichage.

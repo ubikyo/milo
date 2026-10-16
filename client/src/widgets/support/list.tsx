@@ -6,8 +6,10 @@ import { useConfirmations } from "../../lib/confirmations";
 import {
   NEW_MESSAGE_LABELS,
   NEW_TICKET_ACTORS,
+  PROJECT_CREATION,
   SUPPORT_DEFAULT_COLUMNS,
   SUPPORT_NEW_MESSAGE_LABELS,
+  TASK_CREATION,
   TICKETS_MAIL_TEMPLATE_KEYS,
   listKey,
 } from "@milo/shared";
@@ -19,6 +21,7 @@ import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import EmptyPanel from "../../components/ui/EmptyPanel";
 import { DRAWER_WIDTH } from "../../components/ui/IndicatorDrawer";
 import ColumnFields from "../../components/ui/ColumnFields";
+import { WidgetLinksField } from "../../components/ui/WidgetLinks";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import NewMessageLabels from "../../components/settings/NewMessageLabels";
 import { useSupportLabels } from "../../lib/label-groups";
@@ -72,10 +75,11 @@ function NewTicketActors({ config, onChange }: IndicatorConfigProps) {
 }
 
 /**
- * The list's settings: who is told of its new tickets, the addresses it receives requests from, each with
- * the label it sets and confirmed by its inbox,
- * what it does with the retrieved e-mails, then its columns, the board's
- * Support labels and those an e-mail receives. For whoever may modify the
+ * The list's settings: the Tâches and Projets widgets its tickets create
+ * in, then its columns, who is told of its new tickets, the
+ * board's Support labels and those an e-mail receives, then the addresses it
+ * receives requests from, each with the label it sets and confirmed by its
+ * inbox, and what it does with the retrieved e-mails. For whoever may modify the
  * Paramétrage, Support's options and the templates of the e-mails the list
  * sends follow.
  */
@@ -86,13 +90,22 @@ function ListFields(props: IndicatorConfigProps) {
   const list = useListRef();
   return (
     <Stack gap="xl">
-      <NewTicketActors {...props} />
-      <Inboxes {...props} />
+      <WidgetLinksField
+        direction="out"
+        inputs={[
+          { field: TASK_CREATION, label: "Création d'une tâche", types: ["task.list"] },
+          { field: PROJECT_CREATION, label: "Création d'un projet", types: ["project.list"], single: true },
+        ]}
+        config={props.config}
+        onChange={props.onChange}
+      />
       <ColumnFields columns={SUPPORT_COLUMNS} defaults={SUPPORT_DEFAULT_COLUMNS} {...props} />
+      <NewTicketActors {...props} />
       {/* The board's Support labels: they go to saving. */}
       <LabelGroupFields kind="support-labels" />
       {/* Right under the labels it picks from. */}
       <NewMessageFields {...props} />
+      <Inboxes {...props} />
       {canEditSettings && (
         <>
           <SupportOptions canEdit part="settings" />

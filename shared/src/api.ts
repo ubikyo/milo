@@ -12,6 +12,8 @@ import type {
   PublicUser,
   ReplyEditorView,
   SectionWidthUnit,
+  SubviewGroup,
+  SubviewKind,
   SupportStatus,
 } from "./domain.js";
 
@@ -88,6 +90,37 @@ export interface OpeningView {
 
 export interface ViewInput {
   name?: string;
+  /** "Désactiver vue parente" (View). */
+  parent_disabled?: boolean;
+}
+
+/**
+ * A view's sub-views, saved as a whole: what is not listed goes. "key" names
+ * each row the page holds, so that those just created get their id back.
+ */
+export interface SubviewsInput {
+  /** Those without a group, before the groups. */
+  subviews: SubviewInput[];
+  groups: {
+    key: string;
+    id?: Id;
+    name: string;
+    subviews: SubviewInput[];
+  }[];
+}
+
+/** A sub-view as it is saved. */
+export interface SubviewInput {
+  key: string;
+  id?: Id;
+  name: string;
+  kind: SubviewKind;
+}
+
+/** The sub-views once saved, and the id given to each row just created, by its key. */
+export interface SubviewsSaved {
+  groups: SubviewGroup[];
+  ids: Record<string, Id>;
 }
 
 /**

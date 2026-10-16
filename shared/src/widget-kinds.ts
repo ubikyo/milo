@@ -177,6 +177,16 @@ export const sourcesOf = (config: unknown, field: string = SOURCES): string[] =>
   return [...new Set(value.filter((k): k is string => typeof k === "string" && k !== ""))];
 };
 
+/**
+ * The outputs of a Tickets or Projets widget ("Widgets associés"): the
+ * widgets its items create in, by their keys (sourcesOf) — a task in a Tâches
+ * widget, a project in a Projets widget, a ticket in a Tickets widget. An
+ * item offers to create one only once its widget names where.
+ */
+export const TASK_CREATION = "task_creation";
+export const PROJECT_CREATION = "project_creation";
+export const SUPPORT_CREATION = "support_creation";
+
 /** The data types whose counting widgets read their lists ("project.list"…). */
 const COUNTED_PREFIXES = ["project", "task", "support", "managed_device_asset"];
 
@@ -215,6 +225,8 @@ export interface SourceWidget {
   board: string;
   view_id: Id;
   view: string;
+  /** Its place among all the widgets one sees, in the order of the views and boards. */
+  rank: number;
   /** Its configuration: whose mailbox or calendar it reads, for one. */
   config: unknown;
 }

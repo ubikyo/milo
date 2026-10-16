@@ -6,13 +6,15 @@ import {
   IconChevronDown,
   IconCircleX,
   IconEye,
+  IconFolderPlus,
   IconPencil,
   IconSquarePlus,
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
 import { useRights } from "../../lib/rights";
-import { useImperativeHandle, useState, type Ref } from "react";
+import { useContext, useImperativeHandle, useState, type Ref } from "react";
+import { CreationsContext } from "../../lib/creations";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
@@ -37,8 +39,6 @@ interface SupportActionsProps {
   users: PublicUser[];
   /** "Modifier", on right-click: the request opens in its drawer. */
   onEdit: (request: SupportRequest) => void;
-  /** "Créer une tâche", on right-click of a request. */
-  onCreateTask?: (request: SupportRequest) => void;
   /** An action succeeded: the list is re-read, the checkboxes are unchecked. */
   onDone: () => void | Promise<void>;
   /** What "Actions multiples", under the list, runs on the checked requests. */
@@ -142,7 +142,6 @@ export default function SupportActions({
   selected,
   users,
   onEdit,
-  onCreateTask,
   onDone,
   bulkRef,
   context = null,
@@ -175,6 +174,9 @@ export default function SupportActions({
 
   // The actions follow the account's rights on support.
   const can = useRights();
+  // "Créer une tâche", "Créer un projet": once its widget names where.
+  const creations = useContext(CreationsContext);
+  const created = context ? creations.ofRequest(context.request) : {};
   const canForRequests = (requests: SupportRequest[], right: "update" | "delete") =>
     requests.length > 0 && can("support", right);
   const targetEdit = context
@@ -322,12 +324,14 @@ export default function SupportActions({
               </Menu.Item>
             </>
           )}
-          {onCreateTask && (
-            <Menu.Item
-              leftSection={<IconSquarePlus size={16} />}
-              onClick={() => onCreateTask(context.request)}
-            >
+          {created.task && (
+            <Menu.Item leftSection={<IconSquarePlus size={16} />} onClick={created.task}>
               Créer une tâche
+            </Menu.Item>
+          )}
+          {created.project && (
+            <Menu.Item leftSection={<IconFolderPlus size={16} />} onClick={created.project}>
+              Créer un projet
             </Menu.Item>
           )}
           {deleteTargeted && (

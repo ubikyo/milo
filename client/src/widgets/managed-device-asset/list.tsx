@@ -4,6 +4,7 @@ import { COLLECTORS, COLLECTOR_TYPES } from "@milo/shared";
 import ManagedDeviceAssetsList, {
   MANAGED_DEVICE_ASSET_COLUMNS,
 } from "../../components/managed-device-assets/ManagedDeviceAssetsList";
+import InventoryUrlField from "../../components/managed-device-assets/InventoryUrlField";
 import ManagedDeviceAssetTablesFields from "../../components/managed-device-assets/ManagedDeviceAssetTablesFields";
 import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
@@ -14,14 +15,15 @@ import type { IndicatorConfigProps } from "../support/types";
 import type { ManagedDeviceAssetIndicatorWidget } from "./types";
 
 /**
- * The list settings: at the top, the board's asset labels, then the list's
- * collectors — each names the GLPI agent tag of the workstations it
- * receives —, then its columns, then the board's model and VLAN tables, then
- * its label templates.
+ * The list settings: at the top, its columns, then the board's asset labels,
+ * then the list's collectors — each names the GLPI agent tag of the
+ * workstations it receives —, the address its agents send to, then the
+ * board's model and VLAN tables, then its label templates.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
+      <ColumnFields columns={MANAGED_DEVICE_ASSET_COLUMNS} {...props} />
       {/* The board's labels: they go to saving. */}
       <LabelGroupFields kind="managed-device-asset-labels" />
       {/* The list's own: the server files the inventories by their tag. */}
@@ -37,7 +39,8 @@ function ListFields(props: IndicatorConfigProps) {
         types={COLLECTOR_TYPES}
         {...props}
       />
-      <ColumnFields columns={MANAGED_DEVICE_ASSET_COLUMNS} {...props} />
+      {/* Right under them: the address its agents send to, to copy. */}
+      <InventoryUrlField config={props.config} />
       {/* The board's models and VLANs: they go to saving too. */}
       <ManagedDeviceAssetTablesFields />
       {/* Its label templates, before the "Apparence" block: board data too. */}

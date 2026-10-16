@@ -19,6 +19,7 @@ import {
   IconCopyPlus,
   IconFolderOpen,
   IconFolderSymlink,
+  IconHeadset,
   IconPencil,
   IconSelector,
   IconSquarePlus,
@@ -40,6 +41,7 @@ import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { listKey, locationPaths, projectReference } from "@milo/shared";
+import { CreationsContext } from "../../lib/creations";
 import { categoryNodes } from "../../lib/categories";
 import { useListRef } from "../../lib/list-ref";
 import { inList } from "../../lib/lists";
@@ -356,7 +358,6 @@ interface ProjectContextMenuProps {
   onMove: (project: Project, mode: ProjectAction) => void;
   onDuplicate: (project: Project) => void;
   onDelete: (project: Project) => void;
-  onCreateTask: (project: Project) => void;
   /** The person follows this project: they are notified of every change. */
   following: boolean;
   onToggleFollow: (project: Project) => void;
@@ -369,7 +370,6 @@ function ProjectContextMenu({
   onMove,
   onDuplicate,
   onDelete,
-  onCreateTask,
   following,
   onToggleFollow,
 }: ProjectContextMenuProps) {
@@ -380,7 +380,8 @@ function ProjectContextMenu({
   const updateStatement = can("projects", "update");
   const add = can("projects", "create");
   const canDelete = can("projects", "delete");
-  const createTask = can("tasks", "create");
+  // "Créer un ticket", "Créer une tâche": once its widget names where.
+  const created = useContext(CreationsContext).ofProject(project);
   const isEditing = useIsEditing();
 
   // When editing, the menu only offers "Copier", which only works there:
@@ -456,16 +457,16 @@ function ProjectContextMenu({
             Déplacer
           </Menu.Item>
         )}
-        {createTask && (
-          <>
-            <Menu.Divider />
-            <Menu.Item
-              leftSection={<IconSquarePlus size={16} />}
-              onClick={() => onCreateTask(project)}
-            >
-              Créer une tâche
-            </Menu.Item>
-          </>
+        {(created.request || created.task) && <Menu.Divider />}
+        {created.request && (
+          <Menu.Item leftSection={<IconHeadset size={16} />} onClick={created.request}>
+            Créer un ticket
+          </Menu.Item>
+        )}
+        {created.task && (
+          <Menu.Item leftSection={<IconSquarePlus size={16} />} onClick={created.task}>
+            Créer une tâche
+          </Menu.Item>
         )}
         {canDelete && (
           <>
@@ -607,8 +608,6 @@ interface ProjectTableProps extends ProjectFiltersProps {
   onMoveProject: (project: Project, mode: ProjectAction) => void;
   onDuplicateProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
-  /** "Créer une tâche", in a project's context menu. */
-  onCreateTask: (project: Project) => void;
   /** Without it — without the right to add a project —, no add row. */
   onAddProject?: () => void;
   /** The projects the person follows, for the "Suivre" checkmark. */
@@ -624,7 +623,6 @@ export default function ProjectTable({
   onMoveProject,
   onDuplicateProject,
   onDeleteProject,
-  onCreateTask,
   onAddProject,
   followedIds,
   onToggleFollow,
@@ -913,7 +911,6 @@ export default function ProjectTable({
           onMove={onMoveProject}
           onDuplicate={onDuplicateProject}
           onDelete={onDeleteProject}
-          onCreateTask={onCreateTask}
           following={followedIds.includes(contextMenu.project.id)}
           onToggleFollow={onToggleFollow}
         />

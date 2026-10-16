@@ -8,26 +8,26 @@ import {
 } from "@tabler/icons-react";
 import { initialsOf } from "./ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
-import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import {
+  MENU_DROP,
+  ROW_CONTROL_HEIGHT,
+  SEPARATOR_COLOR,
+  ROW_MENU_OFFSET,
+  TAB_MENU_STYLES,
+} from "../../themes/menus";
 import { TAB_ACTIVE_BG, TAB_ACTIVE_BORDER_WIDTH } from "../../themes/colors";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { PublicUser, SearchResult } from "@milo/shared";
-import type { ContextsMenuProps } from "./ContextsMenu";
 import Logo from "./Logo";
 import WorkspaceMenu from "./WorkspaceMenu";
+import { PANEL_PADDING_RIGHT } from "./SubviewsPanel";
 import contextsClasses from "../../assets/styles/ContextsMenu.module.css";
 
-// The open board's contexts and the account, at the end of each view's tab
-// row. This used to be the header's content, which no longer exists: the
+// The account, at the end of the views' tab row. This used to be the header's content, which no longer exists: the
 // tab row is now the first line of the screen, and carries what was
 // there.
 export interface AccountControlsProps {
-  /**
-   * The open board's contexts; absent without a board. They are no
-   * longer placed here but in the active tab (BoardTabs), on trial.
-   */
-  contexts?: Omit<ContextsMenuProps, "visibleFrom">;
   user: PublicUser;
   onLogout: () => void;
   onOpenSettings: () => void;
@@ -116,9 +116,10 @@ export default function AccountControls({
     const target = targetRef.current?.getBoundingClientRect();
     const row = targetRef.current?.closest('[role="tablist"]')?.getBoundingClientRect();
     if (opened && frame && target) {
-      // Minus one pixel: the menu's top sits on the rule's line (ContextsMenu).
+      // Minus one pixel, the menu's top would sit on the rule's line: it
+      // opens MENU_DROP under it, as the sub-views' list (BoardTabs).
       setGap({
-        mainAxis: (row?.bottom ?? frame.bottom) - target.bottom - 1,
+        mainAxis: (row?.bottom ?? frame.bottom) - target.bottom - 1 + MENU_DROP,
         crossAxis: frame.right - target.right,
       });
     }
@@ -142,9 +143,6 @@ export default function AccountControls({
     <Group gap="xs" wrap="nowrap" align="center">
       {actions}
 
-      {/* The contexts are placed in the active tab, to the right of its name
-          (BoardTabs): on trial. */}
-
       {/* The workspace, next to the account: only if there are several. */}
       <WorkspaceMenu user={user} />
 
@@ -165,13 +163,9 @@ export default function AccountControls({
           // menus' "xs" (main.tsx).
           radius="md"
           offset={gap}
-          // TEST: the open frame's background, which the menu extends.
-          styles={{
-            dropdown: {
-              ...TAB_MENU_STYLES.dropdown,
-              backgroundColor: PROFILE_FRAME_OPEN.backgroundColor,
-            },
-          }}
+          // The menus' own background, and no border, as the sub-views' list
+          // (BoardTabs).
+          styles={{ dropdown: { ...TAB_MENU_STYLES.dropdown, border: "none" } }}
           classNames={{ item: contextsClasses.menuItem }}
           // Focus stays where it is on closing: handed back to the avatar,
           // it would highlight the frame.
@@ -249,11 +243,12 @@ export default function AccountControls({
           </Menu.Target>
           <Menu.Dropdown
             data-profile-menu
-            pt={4}
-            pb={3}
-            px={2}
+            // The sub-views' inset's side padding (SubviewsPanel), on all four
+            // sides; its line crosses it (menus.css).
+            p={PANEL_PADDING_RIGHT}
             w={PROFILE_MENU_WIDTH}
             className={contextsClasses.dropdown}
+            style={{ "--milo-menu-px": `${PANEL_PADDING_RIGHT}px` } as CSSProperties}
           >
             {/* TEST: two columns, Milo's logo on the left, the menu on the right. */}
             <Group gap={0} wrap="nowrap" align="stretch">
@@ -286,13 +281,8 @@ export default function AccountControls({
                     Paramétrage
                   </Menu.Item>
                 )}
-                {/* A shade lighter than Mantine's (gray-2 / dark-4). */}
-                <Menu.Divider
-                  style={{
-                    borderColor:
-                      "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-3))",
-                  }}
-                />
+                {/* The page's background, as the sub-views' list's lines (BoardTabs). */}
+                <Menu.Divider style={{ borderColor: SEPARATOR_COLOR }} />
                 <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
                   Déconnexion
                 </Menu.Item>

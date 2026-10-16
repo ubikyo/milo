@@ -27,7 +27,7 @@ import {
   contentUser,
 } from "../repositories/managed-device-assets.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
-import { tagInbox } from "../repositories/inboxes.js";
+import { tagInbox, widgetInbox } from "../repositories/inboxes.js";
 
 /**
  * A workstation inventory weighs a few hundred kilobytes — six hundred
@@ -64,7 +64,13 @@ inventoryRoutes.use(touch("managed-device-assets"));
  * the workstation; later submissions replace it — it is a state, not a log:
  * we want to know what the machine is today, not what it used to be.
  */
-inventoryRoutes.post("/", agentBody, (req: Request, res) => {
+inventoryRoutes.post(["/", "/:widget"], agentBody, (req: Request, res) => {
+  // An agent given a widget's address — its reference, "6WF6" — files there,
+  // whatever its tag; one given "/api/inventory" alone, by its tag.
+  const widget = typeof req.params.widget === "string" ? req.params.widget : "";
+  const widgetList = widget ? widgetInbox(widget) : null;
+  if (widget && !widgetList) notFound("Widget introuvable");
+
   const body: unknown = req.body;
   if (!Buffer.isBuffer(body) || body.length === 0) badRequest("Inventaire vide");
 
@@ -116,7 +122,7 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
   const timestamp = parisTime(textOf(content, "ACCESSLOG", "LOGDATE")) ?? now();
   const existing = assets.byDeviceId.get(deviceid);
   // The workstation list that receives its tag.
-  const inbox = tagInbox(tag);
+  const inbox = widgetList ?? tagInbox(tag);
   const json = JSON.stringify(content);
   const user = contentUser(content);
 
